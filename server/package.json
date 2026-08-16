@@ -1,0 +1,48 @@
+{
+  "name": "@aether/server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "verify:db": "tsx src/scripts/verify-mongo.ts",
+    "verify:health": "tsx src/scripts/verify-health.ts"
+  },
+  "dependencies": {
+    "@aether/shared": "*",
+    "argon2": "^0.45.1",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.1",
+    "express": "^4.21.2",
+    "google-auth-library": "^11.0.2",
+    "helmet": "^8.1.0",
+    "jose": "^6.2.8",
+    "mongoose": "^9.9.2",
+    "multer": "^2.2.0",
+    "pino": "^9.9.0",
+    "pino-http": "^10.5.0",
+    "zod": "^4.0.17"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.33.0",
+    "@types/cookie-parser": "^1.4.10",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^4.17.21",
+    "@types/multer": "^2.2.0",
+    "@types/node": "^24.3.0",
+    "@types/supertest": "^6.0.3",
+    "eslint": "^9.33.0",
+    "pino-pretty": "^13.1.1",
+    "supertest": "^7.1.4",
+    "tsx": "^4.20.4",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.39.1",
+    "vitest": "^3.2.4"
+  }
+}

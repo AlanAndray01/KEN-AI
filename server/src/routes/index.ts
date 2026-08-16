@@ -1,0 +1,37 @@
+import { Router } from "express";
+import { API_ROUTES } from "@aether/shared";
+import { adminRouter } from "./admin.js";
+import { analysisRouter } from "./analysis.js";
+import { authRouter } from "./auth.js";
+import { chatRouter } from "./chat.js";
+import { conversationsRouter } from "./conversations.js";
+import { filesRouter } from "./files.js";
+import { healthRouter } from "./health.js";
+import { meRouter } from "./me.js";
+import { modelsRouter } from "./models.js";
+import { providersRouter } from "./providers.js";
+import { toolsRouter } from "./tools.js";
+import { voiceRouter } from "./voice.js";
+import { gptsRouter } from "./gpts.js";
+import { memoriesRouter } from "./memories.js";
+import { notificationsRouter } from "./notifications.js";
+import { shareRouter } from "./share.js";
+
+export const apiRouter = Router();
+
+apiRouter.use(API_ROUTES.health, healthRouter);
+apiRouter.use("/auth", authRouter);
+apiRouter.use(API_ROUTES.models, modelsRouter);
+apiRouter.use(API_ROUTES.providers, providersRouter);
+apiRouter.use("/me", meRouter);
+apiRouter.use(API_ROUTES.conversations, conversationsRouter);
+apiRouter.use(API_ROUTES.chat, chatRouter);
+apiRouter.use(API_ROUTES.files, filesRouter);
+apiRouter.use(API_ROUTES.tools, toolsRouter);
+apiRouter.use(API_ROUTES.voice, voiceRouter);
+apiRouter.use(API_ROUTES.analysis, analysisRouter);
+apiRouter.use(API_ROUTES.memories, memoriesRouter);
+apiRouter.use(API_ROUTES.gpts, gptsRouter);
+apiRouter.use(API_ROUTES.notifications, notificationsRouter);
+apiRouter.use(API_ROUTES.share, shareRouter);
+apiRouter.use("/admin", adminRouter);

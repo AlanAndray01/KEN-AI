@@ -1,0 +1,28 @@
+{
+  "name": "aether",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Aether — a production MERN TypeScript AI chatbot platform",
+  "workspaces": [
+    "shared",
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "predev": "npm run build -w @aether/shared",
+    "dev": "concurrently -n shared,server,client -c gray,magenta,cyan \"npm run dev -w @aether/shared\" \"npm run dev -w @aether/server\" \"npm run dev -w @aether/client\"",
+    "client": "npm run dev -w @aether/client",
+    "server": "npm run build -w @aether/shared && npm run dev -w @aether/server",
+    "build": "npm run build -w @aether/shared && npm run build -w @aether/server && npm run build -w @aether/client",
+    "test": "npm run build -w @aether/shared && npm run test -w @aether/shared && npm run test -w @aether/server && npm run test -w @aether/client",
+    "lint": "npm run lint -w @aether/shared && npm run lint -w @aether/server && npm run lint -w @aether/client",
+    "typecheck": "npm run typecheck -w @aether/shared && npm run build -w @aether/shared && npm run typecheck -w @aether/server && npm run typecheck -w @aether/client"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "typescript": "^5.9.2"
+  }
+}

@@ -1,0 +1,12 @@
+---
+description: No fake production behavior; mark missing infrastructure honestly
+alwaysApply: true
+---
+
+# Honest capability
+
+If a feature cannot run safely yet: keep the abstraction, API contract, and UI, and return a configured/unavailable error. Do not silently invent AI replies, search hits, or analysis results.
+
+Mock providers are isolated and enabled only by `ENABLE_MOCK_AI=true`.
+Do not execute AI-generated code inside the Express process.
+When a model lacks a capability (vision, tools, image generation), disable the control and explain why.

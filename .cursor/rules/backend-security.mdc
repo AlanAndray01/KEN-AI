@@ -1,0 +1,20 @@
+---
+description: Express security, validation, and error-handling defaults
+globs: server/**/*.ts
+alwaysApply: false
+---
+
+# Backend security
+
+Validate every request with Zod (or equivalent) on the server. Frontend validation is UX only.
+Protect authenticated routes with auth middleware; admin routes require `role === 'admin'`.
+Use Helmet, CORS allowlist (`CLIENT_URL`), and centralized error handling.
+Never send stack traces in production. Never return `passwordHash` or raw API keys.
+
+```ts
+// ❌ BAD
+res.status(500).json({ error: err.stack });
+
+// ✅ GOOD
+res.status(err.statusCode ?? 500).json({ error: { code, message, requestId } });
+```

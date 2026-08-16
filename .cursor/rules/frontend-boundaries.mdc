@@ -1,0 +1,21 @@
+---
+description: React talks only to the Express API — no providers, no MongoDB
+globs: client/**/*.{ts,tsx}
+alwaysApply: false
+---
+
+# Frontend boundaries
+
+Use `client/src/services` API modules (`api.auth`, `api.chat`, …). Do not scatter `fetch`/`axios` in components.
+
+Never import AI vendor SDKs, Mongoose, or MongoDB drivers.
+Never read provider credentials.
+Models and providers come from backend endpoints such as `GET /api/models`.
+
+```ts
+// ❌ BAD
+await fetch('/api/conversations');
+
+// ✅ GOOD
+await api.conversations.list();
+```

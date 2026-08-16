@@ -1,0 +1,23 @@
+---
+description: AI provider abstraction — never hardcode Gemini as the architecture
+globs: server/src/services/ai/**/*.ts
+alwaysApply: false
+---
+
+# Provider adapters
+
+Gemini is the first adapter, not the system.
+
+- Implement `AIProvider` (generate, stream, tools, models, validate, capabilities).
+- Route only through `AIProviderManager`.
+- Normalize to `AIResponse` / stream events in `normalizers/`.
+- OpenAI-compatible custom providers are first-class.
+- Do not require React changes to add a provider.
+
+```ts
+// ❌ BAD
+await gemini.generate(prompt);
+
+// ✅ GOOD
+await aiProviderManager.generate({ providerId, modelId, messages });
+```

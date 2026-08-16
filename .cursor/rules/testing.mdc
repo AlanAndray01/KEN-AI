@@ -1,0 +1,12 @@
+---
+description: Testing expectations for Aether packages
+globs: "**/*.{test,spec}.{ts,tsx}"
+alwaysApply: false
+---
+
+# Testing
+
+Use Vitest. Server API tests use Supertest against the exported `app` (do not listen on a port).
+Client tests use React Testing Library. Cover auth, provider manager, chat/message CRUD, files, memory, and GPT CRUD as those phases land.
+Do not hit real paid AI APIs in unit tests; inject fake adapters.
+Do not assert on secrets or log output that might contain credentials.

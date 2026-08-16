@@ -1,0 +1,11 @@
+---
+description: Prefer existing components; avoid unnecessary dependencies
+alwaysApply: true
+---
+
+# Dependencies and reuse
+
+Reuse layouts, inputs, dialogs, and the API client instead of adding one-off copies.
+Do not add libraries unless they are required by the spec or clearly simpler than in-house code.
+Do not add Next.js, Firebase, Supabase, or another UI kit without an explicit request.
+New dependencies belong in the package that uses them (`client`, `server`, or `shared`), not the root, unless they are workspace tooling.

@@ -1,0 +1,21 @@
+---
+description: Core Aether architecture, layers, and phase discipline
+alwaysApply: true
+---
+
+# Architecture
+
+Aether is a MERN TypeScript monorepo: `client/` (React + Vite), `server/` (Express), `shared/` (types/constants/schemas), MongoDB.
+
+Layers: React → Express routes → controllers → services → models → MongoDB.
+AI: Controller → AIProviderManager → provider adapter → external API.
+Tools: AIProviderManager → ToolManager → tool implementation.
+
+Never use Next.js, Firebase, or Supabase as the backend/database.
+Never put business logic, provider SDKs, or database access in React.
+Never call Gemini/OpenAI/etc. outside `server/src/services/ai/providers/`.
+Application code talks to `AIProviderManager`, never to a vendor SDK.
+
+Do not implement later phases while foundational errors remain.
+Do not fake production AI, search, or storage. If a provider is missing, return a clear error. Mock AI only when `ENABLE_MOCK_AI=true`.
+Do not make destructive git or file changes without checking existing code.
