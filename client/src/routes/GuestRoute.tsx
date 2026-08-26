@@ -1,6 +1,6 @@
 import { Navigate, Outlet } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { CLIENT_ROUTES } from "@aether/shared";
+import { CLIENT_ROUTES } from "@Ken/shared";
 
 export function GuestRoute() {
   const { user, isLoading } = useAuth();

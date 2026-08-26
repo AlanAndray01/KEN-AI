@@ -1,7 +1,7 @@
 import { SignJWT, jwtVerify } from "jose";
 import { env } from "../../config/env.js";
 import { AppError } from "../../utils/AppError.js";
-import type { UserRole } from "@aether/shared";
+import type { UserRole } from "@Ken/shared";
 import { getJwtSecret } from "./config.js";
 
 export interface AccessTokenPayload {

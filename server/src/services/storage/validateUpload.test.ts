@@ -30,7 +30,7 @@ describe("validateUploadBuffer", () => {
     const result = validateUploadBuffer({
       originalName: "notes.txt",
       mimeType: "text/plain",
-      buffer: Buffer.from("hello from aether"),
+      buffer: Buffer.from("hello from Ken"),
     });
     expect(result.kind).toBe("document");
   });

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
-import { CLIENT_ROUTES } from "@aether/shared";
+import { CLIENT_ROUTES } from "@Ken/shared";
 import { Link } from "react-router-dom";
 import { ApiError, api } from "@/services/api";
 import { QUERY_STALE_MS } from "@/query";

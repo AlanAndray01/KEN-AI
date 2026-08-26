@@ -1,6 +1,8 @@
 import type { Request, Response } from "express";
-import { patchMeSchema, type ThemePreference } from "@aether/shared";
+import { deleteAccountSchema, patchMeSchema, type ThemePreference } from "@Ken/shared";
 import { AppError } from "../utils/AppError.js";
+import { deleteAccount } from "../services/auth/accountDeletionService.js";
+import { clearAuthCookies } from "../services/auth/cookies.js";
 import { updateProfile } from "../services/auth/authService.js";
 
 export async function updateMeHandler(req: Request, res: Response): Promise<void> {
@@ -40,4 +42,22 @@ export async function updateMeHandler(req: Request, res: Response): Promise<void
   }
   const user = await updateProfile(req.auth.userId, input);
   res.status(200).json({ user });
+}
+
+/**
+ * Permanently deletes the caller's own account. Cookies are cleared on the way
+ * out so the browser is not left holding tokens for a user row that no longer
+ * exists — every session was revoked server-side by the purge as well.
+ */
+export async function deleteMeHandler(req: Request, res: Response): Promise<void> {
+  if (!req.auth) {
+    throw new AppError("Authentication required", { statusCode: 401, code: "UNAUTHORIZED" });
+  }
+  const body = deleteAccountSchema.parse(req.body);
+  await deleteAccount(req.auth.userId, {
+    confirmEmail: body.confirmEmail,
+    password: body.password,
+  });
+  clearAuthCookies(res);
+  res.status(200).json({ ok: true });
 }

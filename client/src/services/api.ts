@@ -24,7 +24,7 @@ import type {
   PublicUserCredential,
   PublicCredentialTest,
   PublicVoiceStatus,
-} from "@aether/shared";
+} from "@Ken/shared";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -418,7 +418,10 @@ export const api = {
     }) => request<{ user: PublicUser }>("/me", { method: "PATCH", body: JSON.stringify(body) }),
     usage: () => request<{ usage: PublicUsageSummary }>("/me/usage"),
     exportChats: (format: ExportFormat) =>
-      downloadRequest(`/me/export?format=${format}`, `aether-chats.${format}`),
+      downloadRequest(`/me/export?format=${format}`, `Ken-chats.${format}`),
+    /** Irreversible. The server clears auth cookies as part of the response. */
+    deleteAccount: (body: { confirmEmail: string; password?: string }) =>
+      request<OkResponse>("/me", { method: "DELETE", body: JSON.stringify(body) }),
     credentials: {
       list: () => request<{ credentials: PublicUserCredential[] }>("/me/provider-credentials"),
       upsert: (providerId: string, body: { apiKey: string; baseUrl?: string; enabled?: boolean }) =>

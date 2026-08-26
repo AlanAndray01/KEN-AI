@@ -8,8 +8,8 @@ Cookies (httpOnly, `SameSite=lax`, `Secure` in production):
 
 | Cookie | Path | Lifetime | Purpose |
 | --- | --- | --- | --- |
-| `aether_access` | `/` | 15 minutes | Access JWT |
-| `aether_refresh` | `/api/auth` | 7 days | Refresh token (revocable session in MongoDB) |
+| `Ken_access` | `/` | 15 minutes | Access JWT |
+| `Ken_refresh` | `/api/auth` | 7 days | Refresh token (revocable session in MongoDB) |
 
 Send cookies with `credentials: include`. Do not put tokens in `localStorage`.
 
@@ -79,7 +79,7 @@ Rate limited (`RATE_LIMIT_AUTH`, default 10 / 60s) except logout, me, and Google
 | `GET` | `/api/auth/google/callback` | No | OAuth callback. The `state` must match the cookie or the request is rejected with `/login?error=google_state`. The cookie is cleared on every callback, so a `state` cannot be replayed. |
 | `POST` | `/api/auth/google` | No | Body: Google ID token (alternative to redirect). |
 
-Passwords are hashed with argon2id. `passwordHash` is `select: false` and stripped from JSON. Email verification codes are stored as SHA-256 hashes in `verification_tokens` with a 15-minute TTL; plaintext codes are never stored. Google sign-in marks the account verified. Existing local accounts without `isVerified: false` can still sign in. Session JWTs are HttpOnly cookies (`aether_access` / `aether_refresh`), never `localStorage`. Production rejects `ENABLE_DEV_AUTH_TOOLS` and `ENABLE_MOCK_AI`.
+Passwords are hashed with argon2id. `passwordHash` is `select: false` and stripped from JSON. Email verification codes are stored as SHA-256 hashes in `verification_tokens` with a 15-minute TTL; plaintext codes are never stored. Google sign-in marks the account verified. Existing local accounts without `isVerified: false` can still sign in. Session JWTs are HttpOnly cookies (`Ken_access` / `Ken_refresh`), never `localStorage`. Production rejects `ENABLE_DEV_AUTH_TOOLS` and `ENABLE_MOCK_AI`.
 
 ## Models and providers
 

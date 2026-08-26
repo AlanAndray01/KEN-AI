@@ -3,7 +3,7 @@ import type {
   PublicCredentialTest,
   PublicUserCredential,
   ProviderType,
-} from "@aether/shared";
+} from "@Ken/shared";
 import type { z } from "zod";
 import mongoose from "mongoose";
 import type {
@@ -12,7 +12,7 @@ import type {
   testProviderSchema,
   upsertProviderSchema,
   upsertUserCredentialSchema,
-} from "@aether/shared";
+} from "@Ken/shared";
 import { AIModel } from "../../models/AIModel.js";
 import { AIProvider } from "../../models/AIProvider.js";
 import { UserProviderCredential } from "../../models/UserProviderCredential.js";

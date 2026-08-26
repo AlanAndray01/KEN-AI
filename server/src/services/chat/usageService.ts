@@ -1,4 +1,4 @@
-import type { PublicUsageByGroup, PublicUsageRecord, PublicUsageSummary } from "@aether/shared";
+import type { PublicUsageByGroup, PublicUsageRecord, PublicUsageSummary } from "@Ken/shared";
 import { logger } from "../../config/logger.js";
 import { UsageRecord } from "../../models/UsageRecord.js";
 import { toSafeError } from "../../utils/redact.js";

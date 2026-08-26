@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export const DRAFT_STORAGE_KEY = "aether.drafts";
+export const DRAFT_STORAGE_KEY = "Ken.drafts";
 
 function readDrafts(): Record<string, string> {
   if (typeof window === "undefined") return {};

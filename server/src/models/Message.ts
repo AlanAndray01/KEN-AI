@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { MESSAGE_ROLES } from "@aether/shared";
+import { MESSAGE_ROLES } from "@Ken/shared";
 import { applyJsonTransform } from "./applyJsonTransform.js";
 
 const messageSchema = new mongoose.Schema(

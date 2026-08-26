@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { MODEL_CAPABILITIES, PROVIDER_TYPES } from "@aether/shared";
+import { MODEL_CAPABILITIES, PROVIDER_TYPES } from "@Ken/shared";
 import { applyJsonTransform } from "./applyJsonTransform.js";
 
 const aiProviderSchema = new mongoose.Schema(

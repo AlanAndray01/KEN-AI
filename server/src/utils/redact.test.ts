@@ -3,7 +3,7 @@ import { hasLeakedSecret, redactSensitive } from "./redact.js";
 
 describe("redactSensitive", () => {
   it("removes MongoDB connection strings", () => {
-    const input = "Failed to connect to mongodb+srv://user:secret-pass@cluster.example.net/aether";
+    const input = "Failed to connect to mongodb+srv://user:secret-pass@cluster.example.net/Ken";
     const redacted = redactSensitive(input);
 
     expect(redacted).toContain("mongodb://[redacted]");
@@ -13,7 +13,7 @@ describe("redactSensitive", () => {
   });
 
   it("redacts credential assignments", () => {
-    const redacted = redactSensitive("MONGODB_URI=mongodb://localhost:27017/aether");
+    const redacted = redactSensitive("MONGODB_URI=mongodb://localhost:27017/Ken");
     expect(redacted).toContain("[redacted]");
     expect(redacted).not.toContain("localhost:27017");
   });

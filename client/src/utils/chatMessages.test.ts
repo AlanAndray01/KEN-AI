@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { PublicMessage } from "@aether/shared";
+import type { PublicMessage } from "@Ken/shared";
 import { appendChunk, applyFeedback, markLastAssistant, optimisticTurn } from "./chatMessages";
 
 function message(id: string, feedback?: PublicMessage["feedback"]): PublicMessage {

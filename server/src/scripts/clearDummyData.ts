@@ -26,7 +26,7 @@ const DUMMY_EMAIL = /@(example\.com|example\.test|test\.local)$/i;
 /**
  * Deletes dummy/test user graphs while leaving collections and indexes intact.
  *
- *   CLEAR_DUMMY_DATA=true npm run clear:dummy -w @aether/server
+ *   CLEAR_DUMMY_DATA=true npm run clear:dummy -w @Ken/server
  *
  * Production also requires CLEAR_DUMMY_DATA_PRODUCTION=true.
  */

@@ -1,0 +1,71 @@
+# Render blueprint for the KEN AI Express API.
+#
+# The repo is an npm-workspaces monorepo, so the build runs from the REPO ROOT
+# (not server/): the server imports @Ken/shared, which must be compiled first.
+# Render reads the root package.json "engines" field for the Node version.
+#
+# Secrets are deliberately declared with `sync: false` so Render prompts for
+# them in the dashboard instead of storing them in this committed file.
+services:
+  - type: web
+    name: ken-ai-api
+    runtime: node
+    plan: free
+    region: oregon
+    branch: main
+    buildCommand: npm ci && npm run build -w @Ken/shared && npm run build -w @Ken/server
+    startCommand: npm run start -w @Ken/server
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      # Render injects its own PORT; server.ts must bind to it.
+      - key: PORT
+        value: 10000
+
+      # Comma-separated list of allowed browser origins (see config/cors.ts).
+      # Both apex and www are listed because Vercel serves both.
+      - key: CLIENT_URL
+        value: https://ken-ai.tech,https://www.ken-ai.tech
+
+      # Leading dot shares the auth cookie between ken-ai.tech and
+      # api.ken-ai.tech, and switches cookies to SameSite=None; Secure.
+      - key: COOKIE_DOMAIN
+        value: .ken-ai.tech
+
+      - key: GOOGLE_CALLBACK_URL
+        value: https://api.ken-ai.tech/api/auth/google/callback
+
+      - key: LOG_LEVEL
+        value: info
+
+      # Never enable outside local development.
+      - key: ENABLE_DEV_AUTH_TOOLS
+        value: "false"
+      - key: ENABLE_MOCK_AI
+        value: "false"
+
+      # ---- Set these in the Render dashboard; the app will not boot without them ----
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false
+
+      # ---- Chat engine. Without a Groq key the app returns provider errors. ----
+      - key: GROQ_API_KEY
+        sync: false
+
+      # ---- Optional: email, extra providers, first admin ----
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        sync: false
+      - key: INITIAL_ADMIN_EMAIL
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false

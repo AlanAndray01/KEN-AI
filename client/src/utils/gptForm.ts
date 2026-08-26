@@ -1,4 +1,4 @@
-import type { GptCategory, GptVisibility, ModelCapability } from "@aether/shared";
+import type { GptCategory, GptVisibility, ModelCapability } from "@Ken/shared";
 
 export interface GptFormValue {
   name: string;

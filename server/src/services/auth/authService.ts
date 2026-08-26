@@ -1,5 +1,5 @@
 import type { Request } from "express";
-import type { PublicUser, ThemePreference } from "@aether/shared";
+import type { PublicUser, ThemePreference } from "@Ken/shared";
 import { env } from "../../config/env.js";
 import { PasswordReset } from "../../models/PasswordReset.js";
 import { User } from "../../models/User.js";

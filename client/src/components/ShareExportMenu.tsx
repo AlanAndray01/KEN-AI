@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Download, Link2, Share2 } from "lucide-react";
-import type { ExportFormat } from "@aether/shared";
+import type { ExportFormat } from "@Ken/shared";
 import { ApiError, api } from "@/services/api";
 import { toast } from "@/stores/toastStore";
 import { downloadBlob } from "@/utils/download";

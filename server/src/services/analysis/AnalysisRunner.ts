@@ -1,4 +1,4 @@
-import type { PublicAnalysisJob } from "@aether/shared";
+import type { PublicAnalysisJob } from "@Ken/shared";
 
 export interface AnalysisSubmitInput {
   userId: string;

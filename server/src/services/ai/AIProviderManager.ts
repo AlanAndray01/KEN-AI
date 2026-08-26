@@ -1,5 +1,5 @@
-import type { ChatToolId, ModelCapability, PublicAnalysisJob, PublicTool } from "@aether/shared";
-import { CLOUDFLARE_VISION_MODEL_ID, resolveDeepSeekModelId, resolveGroqModelId } from "@aether/shared";
+import type { ChatToolId, ModelCapability, PublicAnalysisJob, PublicTool } from "@Ken/shared";
+import { CLOUDFLARE_VISION_MODEL_ID, resolveDeepSeekModelId, resolveGroqModelId } from "@Ken/shared";
 import { env } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
 import { AppError } from "../../utils/AppError.js";
@@ -9,6 +9,7 @@ import {
   type ToolExecuteResult,
   type ToolManager,
 } from "../tools/ToolManager.js";
+import { withKenIdentity } from "../chat/identity.js";
 import type { AIProvider, AIResponse, GenerateRequest, StreamEvent } from "./AIProvider.js";
 import { createProviderAdapter } from "./createProviderAdapter.js";
 import { requireConfigured, resolveCredentials, envKeyCount } from "./credentials.js";
@@ -137,14 +138,14 @@ export class AIProviderManager {
   }
 
   private async generateOnce(request: GenerateRequest): Promise<AIResponse> {
-    const resolved = this.withVisionModel(request);
+    const resolved = this.prepareRequest(request);
     const adapter = await this.getAdapter(resolved.providerId, resolved.userId);
     await modelRegistry.assertModelAvailable(resolved.providerId, resolved.modelId, resolved.userId);
     return adapter.generate(resolved);
   }
 
   private async *streamOnce(request: GenerateRequest): AsyncIterable<StreamEvent> {
-    const resolved = this.withVisionModel(request);
+    const resolved = this.prepareRequest(request);
     const adapter = await this.getAdapter(resolved.providerId, resolved.userId);
     await modelRegistry.assertModelAvailable(resolved.providerId, resolved.modelId, resolved.userId);
     if (adapter.stream) {
@@ -163,6 +164,17 @@ export class AIProviderManager {
       const message = error instanceof Error ? error.message : "Provider request failed";
       yield { type: "error", message, code: error instanceof AppError ? error.code : "PROVIDER_ERROR" };
     }
+  }
+
+  /**
+   * Every model call in the app funnels through generateOnce/streamOnce, so
+   * this is the one place that can guarantee the assistant knows it is Ken AI
+   * no matter which route built the prompt.
+   */
+  private prepareRequest(request: GenerateRequest): GenerateRequest {
+    const resolved = this.withVisionModel(request);
+    const messages = withKenIdentity(resolved.messages);
+    return messages === resolved.messages ? resolved : { ...resolved, messages };
   }
 
   private withVisionModel(request: GenerateRequest): GenerateRequest {

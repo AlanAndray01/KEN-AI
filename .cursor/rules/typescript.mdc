@@ -6,7 +6,7 @@ alwaysApply: false
 
 # TypeScript
 
-Keep `strict` on. Prefer named exports. Share DTOs via `@aether/shared`.
+Keep `strict` on. Prefer named exports. Share DTOs via `@Ken/shared`.
 Server uses ESM + NodeNext: import with `.js` extensions for local files.
 Client uses Vite bundler resolution (no `.js` extensions).
 Do not use `any` unless a vendor type forces it; then isolate and comment.

@@ -1,4 +1,4 @@
-import type { PublicSearchHit } from "@aether/shared";
+import type { PublicSearchHit } from "@Ken/shared";
 
 export interface SearchRequest {
   query: string;

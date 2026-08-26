@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { CLIENT_ROUTES } from "@aether/shared";
+import { CLIENT_ROUTES } from "@Ken/shared";
 import { api } from "@/services/api";
 
 export function SettingsVoicePage() {

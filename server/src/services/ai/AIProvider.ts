@@ -1,4 +1,4 @@
-import type { MessageRole, ModelCapability, ProviderType } from "@aether/shared";
+import type { MessageRole, ModelCapability, ProviderType } from "@Ken/shared";
 
 export interface ChatContentPart {
   type: "inline";

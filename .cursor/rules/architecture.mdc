@@ -1,12 +1,12 @@
 ---
-description: Core Aether architecture, layers, and phase discipline
+description: Core Ken architecture, layers, and phase discipline
 globs: ""
 alwaysApply: false
 ---
 
 # Architecture
 
-Aether is a MERN TypeScript monorepo: `client/` (React + Vite), `server/` (Express), `shared/` (types/constants/schemas), MongoDB.
+Ken is a MERN TypeScript monorepo: `client/` (React + Vite), `server/` (Express), `shared/` (types/constants/schemas), MongoDB.
 
 Layers: React → Express routes → controllers → services → models → MongoDB.
 AI: Controller → AIProviderManager → provider adapter → external API.

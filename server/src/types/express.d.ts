@@ -8,7 +8,7 @@ declare global {
         userId: string;
         sessionId: string;
         role: "user" | "admin";
-        user: import("@aether/shared").PublicUser;
+        user: import("@Ken/shared").PublicUser;
       };
     }
   }

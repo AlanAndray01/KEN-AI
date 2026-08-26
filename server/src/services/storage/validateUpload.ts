@@ -1,6 +1,6 @@
 import path from "node:path";
-import { ALLOWED_UPLOAD_MIME_TYPES, MAX_UPLOAD_BYTES } from "@aether/shared";
-import type { PublicFile } from "@aether/shared";
+import { ALLOWED_UPLOAD_MIME_TYPES, MAX_UPLOAD_BYTES } from "@Ken/shared";
+import type { PublicFile } from "@Ken/shared";
 import { AppError } from "../../utils/AppError.js";
 
 export type FileKind = PublicFile["kind"];

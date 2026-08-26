@@ -7,7 +7,7 @@ import {
   upsertProviderSchema,
   saveProviderKeySchema,
   upsertUserCredentialSchema,
-} from "@aether/shared";
+} from "@Ken/shared";
 import { AppError } from "../utils/AppError.js";
 import { modelRegistry } from "../services/ai/ModelRegistry.js";
 import {

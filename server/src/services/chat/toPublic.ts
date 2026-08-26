@@ -1,5 +1,5 @@
-import type { PublicConversation, PublicMessage, PublicMessageFeedback } from "@aether/shared";
-import type { MessageStatus } from "@aether/shared";
+import type { PublicConversation, PublicMessage, PublicMessageFeedback } from "@Ken/shared";
+import type { MessageStatus } from "@Ken/shared";
 
 function iso(value: unknown): string {
   if (value instanceof Date) return value.toISOString();

@@ -1,4 +1,4 @@
-import type { ModelCapability, ProviderType } from "@aether/shared";
+import type { ModelCapability, ProviderType } from "@Ken/shared";
 import {
   CLOUDFLARE_VISION_MODEL_ID,
   DEFAULT_CEREBRAS_MODEL_ID,
@@ -6,7 +6,7 @@ import {
   DEFAULT_DEEPSEEK_MODEL_ID,
   DEFAULT_GROQ_MODEL_ID,
   GROQ_QUALITY_MODEL_ID,
-} from "@aether/shared";
+} from "@Ken/shared";
 import type { ProviderModelDescriptor } from "./AIProvider.js";
 
 export interface BuiltInProviderDefinition {

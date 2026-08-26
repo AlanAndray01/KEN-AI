@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { APP_SERVICE_ID, type HealthResponse } from "@aether/shared";
+import { APP_SERVICE_ID, type HealthResponse } from "@Ken/shared";
 import { getDatabaseHealthStatus } from "../config/database.js";
 
 export function getHealth(_req: Request, res: Response): void {

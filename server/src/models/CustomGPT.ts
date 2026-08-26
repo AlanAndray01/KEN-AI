@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { GPT_CATEGORIES, GPT_VISIBILITY, MODEL_CAPABILITIES } from "@aether/shared";
+import { GPT_CATEGORIES, GPT_VISIBILITY, MODEL_CAPABILITIES } from "@Ken/shared";
 import { applyJsonTransform } from "./applyJsonTransform.js";
 
 const customGptSchema = new mongoose.Schema(

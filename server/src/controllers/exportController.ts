@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { exportFormatSchema } from "@aether/shared";
+import { exportFormatSchema } from "@Ken/shared";
 import { AppError } from "../utils/AppError.js";
 import { exportAllConversations, exportConversation } from "../services/export/exportService.js";
 

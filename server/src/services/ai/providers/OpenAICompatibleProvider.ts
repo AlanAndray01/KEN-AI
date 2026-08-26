@@ -1,4 +1,4 @@
-import type { ProviderType } from "@aether/shared";
+import type { ProviderType } from "@Ken/shared";
 import { logger } from "../../../config/logger.js";
 import { AppError } from "../../../utils/AppError.js";
 import { isAbortError } from "../../../utils/abort.js";
@@ -15,7 +15,7 @@ import type {
 } from "../AIProvider.js";
 import { getBuiltInProvider } from "../catalog.js";
 import { normalizeAIResponse, compactUsage, toOpenAIMessages } from "../normalizers/normalize.js";
-import { createReasoningFilter, stripReasoning } from "@aether/shared";
+import { createReasoningFilter, stripReasoning } from "@Ken/shared";
 
 export class OpenAICompatibleProvider implements AIProvider {
   readonly id: string;

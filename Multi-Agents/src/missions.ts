@@ -103,7 +103,7 @@ const ARCHITECT_TASK = task(
 Confirm React reaches the backend only through \`client/src/services\`, that no
 vendor AI SDK or Mongoose import has leaked into the client, that provider calls
 stay inside \`server/src/services/ai/providers/\`, and that the DTOs in
-\`@aether/shared\` still match both the code that produces and consumes them.`,
+\`@Ken/shared\` still match both the code that produces and consumes them.`,
   false,
 );
 

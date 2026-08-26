@@ -1,5 +1,5 @@
 ---
-description: Testing expectations for Aether packages
+description: Testing expectations for Ken packages
 globs: "**/*.{test,spec}.{ts,tsx}"
 alwaysApply: false
 ---

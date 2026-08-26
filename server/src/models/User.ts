@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { AUTH_PROVIDERS, USER_ROLES } from "@aether/shared";
+import { AUTH_PROVIDERS, USER_ROLES } from "@Ken/shared";
 import { applyJsonTransform } from "./applyJsonTransform.js";
 
 const userSchema = new mongoose.Schema(

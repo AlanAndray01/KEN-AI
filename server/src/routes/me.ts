@@ -6,7 +6,7 @@ import {
   upsertMyCredential,
 } from "../controllers/providerController.js";
 import { exportAllConversationsHandler } from "../controllers/exportController.js";
-import { updateMeHandler } from "../controllers/meController.js";
+import { deleteMeHandler, updateMeHandler } from "../controllers/meController.js";
 import { getInstructionsHandler, upsertInstructionsHandler } from "../controllers/memoryController.js";
 import { myUsageHandler } from "../controllers/usageController.js";
 import { requireAuth } from "../middleware/requireAuth.js";
@@ -16,6 +16,7 @@ export const meRouter = Router();
 
 meRouter.use(requireAuth);
 meRouter.patch("/", asyncHandler(updateMeHandler));
+meRouter.delete("/", asyncHandler(deleteMeHandler));
 meRouter.get("/usage", asyncHandler(myUsageHandler));
 meRouter.get("/export", asyncHandler(exportAllConversationsHandler));
 meRouter.get("/provider-credentials", asyncHandler(listMyCredentials));

@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { CLIENT_ROUTES } from "@aether/shared";
+import { CLIENT_ROUTES } from "@Ken/shared";
 import { cn } from "@/utils/cn";
 
 const TABS = [

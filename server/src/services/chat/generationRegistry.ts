@@ -29,6 +29,22 @@ export class GenerationRegistry {
     return this.abort(generationId);
   }
 
+  /**
+   * Stops every stream still running for one user. Account deletion calls this
+   * first so an in-flight generation cannot write a message row back into a
+   * collection that is about to be purged.
+   */
+  abortUser(userId: string): number {
+    const prefix = `${userId}:`;
+    let aborted = 0;
+    for (const [key, generationId] of this.byConversation.entries()) {
+      if (!key.startsWith(prefix)) continue;
+      if (this.abort(generationId)) aborted += 1;
+      this.byConversation.delete(key);
+    }
+    return aborted;
+  }
+
   finish(generationId: string, userId?: string, conversationId?: string): void {
     this.controllers.delete(generationId);
     if (userId && conversationId) {

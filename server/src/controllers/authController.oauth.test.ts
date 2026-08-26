@@ -43,7 +43,7 @@ function stateFromLocation(location: string): string {
 function stateCookie(response: { headers: Record<string, unknown> }): string | undefined {
   const raw = response.headers["set-cookie"];
   const cookies = Array.isArray(raw) ? raw.map(String) : [];
-  return cookies.find((cookie) => cookie.startsWith("aether_oauth_state="));
+  return cookies.find((cookie) => cookie.startsWith("Ken_oauth_state="));
 }
 
 describe("Google OAuth CSRF state", () => {

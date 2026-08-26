@@ -7,7 +7,7 @@ export default defineConfig({
     env: {
       NODE_ENV: "test",
       LOG_LEVEL: "silent",
-      JWT_SECRET: "test-jwt-secret-aether-phase3",
+      JWT_SECRET: "test-jwt-secret-Ken-phase3",
       ENABLE_DEV_AUTH_TOOLS: "true",
     },
     fileParallelism: false,

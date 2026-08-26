@@ -1,5 +1,5 @@
 import { AppError } from "../../utils/AppError.js";
-import type { PublicSearchHit } from "@aether/shared";
+import type { PublicSearchHit } from "@Ken/shared";
 import type { SearchProvider, SearchRequest } from "./SearchProvider.js";
 
 export class TavilySearchProvider implements SearchProvider {

@@ -106,7 +106,7 @@ Messages are stored per conversation with pagination-friendly indexes. `password
 
 ## Authentication
 
-Email/password auth is live. Local registration creates an unverified user and emails a 6-digit code (hashed, 15-minute expiry). The API does not issue a session until `POST /api/auth/verify-email` succeeds. Google accounts are treated as verified. Sessions use HttpOnly JWT cookies (`aether_access`, `aether_refresh`) with SameSite=Strict (SameSite=None only when `COOKIE_DOMAIN` is set for cross-subdomain deploys). Tokens are never stored in `localStorage`. `GET /api/auth/me` hydrates the client. Passwords are hashed with argon2id. `passwordHash` is never returned.
+Email/password auth is live. Local registration creates an unverified user and emails a 6-digit code (hashed, 15-minute expiry). The API does not issue a session until `POST /api/auth/verify-email` succeeds. Google accounts are treated as verified. Sessions use HttpOnly JWT cookies (`Ken_access`, `Ken_refresh`) with SameSite=Strict (SameSite=None only when `COOKIE_DOMAIN` is set for cross-subdomain deploys). Tokens are never stored in `localStorage`. `GET /api/auth/me` hydrates the client. Passwords are hashed with argon2id. `passwordHash` is never returned.
 
 Google sign-in is a backend OAuth redirect:
 
@@ -122,7 +122,7 @@ Password reset and email verification send mail when `RESEND_API_KEY` is set. Th
 Dummy `@example.com` / `@example.test` records can be removed without dropping collections:
 
 ```bash
-CLEAR_DUMMY_DATA=true npm run clear:dummy -w @aether/server
+CLEAR_DUMMY_DATA=true npm run clear:dummy -w @Ken/server
 ```
 
 ## Provider setup
@@ -156,13 +156,13 @@ Integration tests in `server/src/routes/*.integration.test.ts` run against a rea
 Health (no secrets in the payload):
 
 ```bash
-npm run verify:health -w @aether/server
+npm run verify:health -w @Ken/server
 ```
 
 MongoDB connectivity (prints only `connected` / `disconnected` / `not_configured`):
 
 ```bash
-npm run verify:db -w @aether/server
+npm run verify:db -w @Ken/server
 ```
 
 ## Deployment
@@ -181,7 +181,7 @@ npm run build
 node server/dist/server.js
 ```
 
-Or `npm run start -w @aether/server`.
+Or `npm run start -w @Ken/server`.
 
 In production, Express serves `client/dist` (static assets + SPA fallback for non-`/api` GET routes) when that folder exists after the client build. You can also put `client/dist` behind a reverse proxy or static host and point `CLIENT_URL` at that origin; CORS allows only `CLIENT_URL`.
 

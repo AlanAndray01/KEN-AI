@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { CLIENT_ROUTES, passwordSchema } from "@aether/shared";
+import { CLIENT_ROUTES, passwordSchema } from "@Ken/shared";
 import { AuthField } from "@/components/AuthField";
 import { OtpInput } from "@/components/OtpInput";
 import { ApiError, api } from "@/services/api";

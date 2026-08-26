@@ -8,7 +8,7 @@
  */
 
 export const PROJECT_BRIEF = `
-# Project: KEN AI (package name "aether")
+# Project: KEN AI (package name "Ken")
 
 A production MERN + TypeScript AI chat platform, organised as npm workspaces:
 
@@ -17,7 +17,7 @@ A production MERN + TypeScript AI chat platform, organised as npm workspaces:
 - \`server/\` — Express + TypeScript + Mongoose/MongoDB. ESM + NodeNext, so local
   imports MUST carry a \`.js\` extension. Tests: Vitest + Supertest against the
   exported \`app\` (never listen on a port in a test).
-- \`shared/\` — \`@aether/shared\`: DTOs, constants and Zod schemas used by both sides.
+- \`shared/\` — \`@Ken/shared\`: DTOs, constants and Zod schemas used by both sides.
 
 This is strictly a WEB application. There is no mobile, Android, Kotlin or
 Jetpack Compose code in this repository; ignore any such reference.
@@ -54,7 +54,7 @@ Tools: \`AIProviderManager\` → \`ToolManager\` → tool implementation.
    isolated and gated behind \`ENABLE_MOCK_AI=true\`. Never execute AI-generated
    code inside the Express process.
 6. **TypeScript.** \`strict\` stays on. Prefer named exports. Share DTOs via
-   \`@aether/shared\`. Avoid \`any\`; if a vendor type forces it, isolate it and
+   \`@Ken/shared\`. Avoid \`any\`; if a vendor type forces it, isolate it and
    leave a comment explaining why.
 7. **Dependencies.** Reuse the existing layouts, inputs, dialogs and API client
    instead of adding one-off copies. Do not add a library unless the spec

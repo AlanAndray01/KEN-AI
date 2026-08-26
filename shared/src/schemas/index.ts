@@ -60,6 +60,17 @@ export const changePasswordSchema = z.object({
   newPassword: passwordSchema,
 });
 
+/**
+ * Account deletion is irreversible, so it is gated twice: the account email must
+ * be retyped, and local accounts must also re-enter their password. Google-only
+ * accounts have no password to check, so `password` stays optional here and the
+ * server decides which proof it actually requires.
+ */
+export const deleteAccountSchema = z.object({
+  confirmEmail: z.string().trim().email().max(320),
+  password: z.string().min(1).max(128).optional(),
+});
+
 export const verifyEmailSchema = z.object({
   email: z.string().trim().email().max(320),
   code: z.string().trim().regex(/^\d{6}$/, "Enter the 6-digit code"),

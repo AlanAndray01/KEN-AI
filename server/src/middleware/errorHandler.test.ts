@@ -47,7 +47,7 @@ describe("errorHandler", () => {
     const { res, state } = mockRes();
     const req = { path: "/api/health", method: "GET" } as Request;
     errorHandler(
-      new Error("Failed mongodb+srv://user:hunter2@cluster0.example.mongodb.net/aether"),
+      new Error("Failed mongodb+srv://user:hunter2@cluster0.example.mongodb.net/Ken"),
       req,
       res,
       vi.fn() as NextFunction,

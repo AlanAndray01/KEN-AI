@@ -15,10 +15,9 @@
     "exactOptionalPropertyTypes": true,
     "verbatimModuleSyntax": true,
     "forceConsistentCasingInFileNames": true,
-    "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"],
-      "@aether/shared": ["../shared/src/index.ts"]
+      "@/*": ["./src/*"],
+      "@Ken/shared": ["../shared/src/index.ts"]
     },
     "types": ["vite/client"]
   },

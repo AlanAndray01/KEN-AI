@@ -1,4 +1,4 @@
-import type { PublicShare, PublicSharedConversation, PublicSharedMessage } from "@aether/shared";
+import type { PublicShare, PublicSharedConversation, PublicSharedMessage } from "@Ken/shared";
 import { env } from "../../config/env.js";
 import { Conversation } from "../../models/Conversation.js";
 import { Message } from "../../models/Message.js";

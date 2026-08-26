@@ -1,4 +1,4 @@
-import { GROQ_MODEL_ALIASES, type PublicAIModel } from "@aether/shared";
+import { GROQ_MODEL_ALIASES, type PublicAIModel } from "@Ken/shared";
 import { AppError } from "../../utils/AppError.js";
 import { AIModel } from "../../models/AIModel.js";
 import { BUILT_IN_PROVIDERS, getBuiltInProvider } from "./catalog.js";

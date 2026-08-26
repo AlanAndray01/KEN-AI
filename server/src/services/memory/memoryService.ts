@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import type { PublicMemory } from "@aether/shared";
+import type { PublicMemory } from "@Ken/shared";
 import { Memory } from "../../models/Memory.js";
 import { AppError } from "../../utils/AppError.js";
 

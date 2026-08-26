@@ -1,5 +1,5 @@
 import { env, isProduction } from "../../../config/env.js";
-import type { ModelCapability } from "@aether/shared";
+import type { ModelCapability } from "@Ken/shared";
 import type {
   AIProvider,
   CredentialValidation,

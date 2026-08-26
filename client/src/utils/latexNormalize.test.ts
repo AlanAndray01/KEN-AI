@@ -39,7 +39,26 @@ describe("normalizeLatex", () => {
 
   it("still promotes a complete aligned environment to block math", () => {
     expect(normalizeLatex("\\begin{aligned}v &= u\\end{aligned}")).toContain(
-      "$$\\begin{aligned}v &= u\\end{aligned}$$",
+      "$$\n\\begin{aligned}v &= u\\end{aligned}\n$$",
+    );
+  });
+
+  it("moves the delimiters of a multi-line block onto their own lines", () => {
+    // remark-math reads anything trailing an opening `$$` as fence meta, so the
+    // block never closes and swallows the rest of the reply into one math node.
+    const source = "**Solution**\n$$\\begin{aligned}\na &= 1 \\\\\nb &= 2\n\\end{aligned}$$\n\n**Answer** $a=1$.";
+    expect(normalizeLatex(source)).toBe(
+      "**Solution**\n\n$$\n\\begin{aligned}\na &= 1 \\\\\nb &= 2\n\\end{aligned}\n$$\n\n**Answer** $a=1$.",
+    );
+  });
+
+  it("keeps text that follows a block in its own paragraph", () => {
+    expect(normalizeLatex("$$\nx = 1\n$$ done.")).toBe("$$\nx = 1\n$$\n\ndone.");
+  });
+
+  it("leaves a trailing block without inventing extra blank lines", () => {
+    expect(normalizeLatex("Result:\n$$\\begin{aligned}x &= 1\\end{aligned}$$")).toBe(
+      "Result:\n\n$$\n\\begin{aligned}x &= 1\\end{aligned}\n$$\n",
     );
   });
 });

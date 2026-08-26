@@ -12,7 +12,7 @@ describe("LocalDiskStorage", () => {
   });
 
   it("writes, reads, and deletes objects under the root directory", async () => {
-    root = await mkdtemp(path.join(os.tmpdir(), "aether-storage-"));
+    root = await mkdtemp(path.join(os.tmpdir(), "Ken-storage-"));
     const storage = new LocalDiskStorage(root);
     const key = "user-1/note.txt";
     await storage.put({ key, buffer: Buffer.from("hello"), mimeType: "text/plain" });
@@ -24,7 +24,7 @@ describe("LocalDiskStorage", () => {
   });
 
   it("rejects path traversal keys", async () => {
-    root = await mkdtemp(path.join(os.tmpdir(), "aether-storage-"));
+    root = await mkdtemp(path.join(os.tmpdir(), "Ken-storage-"));
     const storage = new LocalDiskStorage(root);
     await expect(
       storage.put({ key: "../escape.txt", buffer: Buffer.from("nope"), mimeType: "text/plain" }),

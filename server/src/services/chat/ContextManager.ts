@@ -1,4 +1,4 @@
-import { estimatePromptTokens } from "@aether/shared";
+import { estimatePromptTokens } from "@Ken/shared";
 import type { ChatMessage } from "../ai/AIProvider.js";
 import { getBuiltInProvider } from "../ai/catalog.js";
 

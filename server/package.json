@@ -1,5 +1,5 @@
 {
-  "name": "@aether/server",
+  "name": "@Ken/server",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -15,7 +15,7 @@
     "clear:dummy": "tsx src/scripts/clearDummyData.ts"
   },
   "dependencies": {
-    "@aether/shared": "*",
+    "@Ken/shared": "*",
     "argon2": "^0.45.1",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",

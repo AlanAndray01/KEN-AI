@@ -1,4 +1,4 @@
-import type { PublicUser, UserRole } from "@aether/shared";
+import type { PublicUser, UserRole } from "@Ken/shared";
 import { env } from "../../config/env.js";
 
 interface UserLike {

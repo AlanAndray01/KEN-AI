@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
 import multer from "multer";
-import { speakSchema } from "@aether/shared";
+import { speakSchema } from "@Ken/shared";
 import { env } from "../config/env.js";
 import { voiceService } from "../services/voice/index.js";
 import { AppError } from "../utils/AppError.js";

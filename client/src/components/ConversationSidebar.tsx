@@ -21,7 +21,7 @@ import {
   Sparkles,
   Trash2,
 } from "lucide-react";
-import { APP_NAME, CLIENT_ROUTES, type PublicConversation } from "@aether/shared";
+import { APP_NAME, CLIENT_ROUTES, type PublicConversation } from "@Ken/shared";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError, api } from "@/services/api";
 import { CONVERSATION_STALE_MS } from "@/query";

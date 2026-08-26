@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { CLIENT_ROUTES } from "@aether/shared";
+import { CLIENT_ROUTES } from "@Ken/shared";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useThemeStore } from "@/stores/themeStore";
 import { cn } from "@/utils/cn";

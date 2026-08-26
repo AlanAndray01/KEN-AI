@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { CLIENT_ROUTES } from "@aether/shared";
+import { CLIENT_ROUTES } from "@Ken/shared";
 import { AuthField } from "@/components/AuthField";
 import { AuthModeNav } from "@/components/AuthModeNav";
 import { GoogleMark } from "@/components/GoogleMark";

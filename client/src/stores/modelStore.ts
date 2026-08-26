@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { api } from "@/services/api";
 
-const STORAGE_KEY = "aether.model";
+const STORAGE_KEY = "Ken.model";
 
 interface ModelSelection {
   providerId: string;

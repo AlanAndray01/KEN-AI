@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { FileText, X } from "lucide-react";
-import type { PublicAttachment, PublicFile } from "@aether/shared";
+import type { PublicAttachment, PublicFile } from "@Ken/shared";
 import { api } from "@/services/api";
 
 type AttachmentLike = Pick<PublicFile, "id" | "originalName" | "mimeType" | "kind"> & { fileId?: string };

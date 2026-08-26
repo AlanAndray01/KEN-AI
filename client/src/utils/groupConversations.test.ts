@@ -1,4 +1,4 @@
-import type { PublicConversation } from "@aether/shared";
+import type { PublicConversation } from "@Ken/shared";
 import { describe, expect, it } from "vitest";
 import { groupConversations } from "./groupConversations";
 

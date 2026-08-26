@@ -9,7 +9,7 @@ import {
   resendVerificationSchema,
   resetPasswordSchema,
   verifyEmailSchema,
-} from "@aether/shared";
+} from "@Ken/shared";
 import { AppError } from "../utils/AppError.js";
 import { OAUTH_STATE_COOKIE, REFRESH_COOKIE, isGoogleOAuthConfigured } from "../services/auth/config.js";
 import {

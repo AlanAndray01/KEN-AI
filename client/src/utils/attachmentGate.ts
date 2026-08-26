@@ -1,5 +1,5 @@
-import type { ModelCapability } from "@aether/shared";
-import { ALLOWED_UPLOAD_MIME_TYPES, MAX_UPLOAD_BYTES } from "@aether/shared";
+import type { ModelCapability } from "@Ken/shared";
+import { ALLOWED_UPLOAD_MIME_TYPES, MAX_UPLOAD_BYTES } from "@Ken/shared";
 
 export function attachmentRejection(
   file: { name: string; type: string; size: number },

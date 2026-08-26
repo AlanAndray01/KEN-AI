@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import mongoose from "mongoose";
-import type { ChatToolId, PublicConversation, PublicMessage } from "@aether/shared";
-import { DEFAULT_GROQ_MODEL_ID, resolveDeepSeekModelId, resolveGroqModelId } from "@aether/shared";
+import type { ChatToolId, PublicConversation, PublicMessage } from "@Ken/shared";
+import { DEFAULT_GROQ_MODEL_ID, resolveDeepSeekModelId, resolveGroqModelId } from "@Ken/shared";
 import { logger } from "../../config/logger.js";
 import { AppError } from "../../utils/AppError.js";
 import { isAbortError, isTimeoutAbort } from "../../utils/abort.js";

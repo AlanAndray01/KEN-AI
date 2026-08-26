@@ -1,4 +1,4 @@
-import type { NotificationType, PublicNotification } from "@aether/shared";
+import type { NotificationType, PublicNotification } from "@Ken/shared";
 import { Notification } from "../../models/Notification.js";
 import { AppError } from "../../utils/AppError.js";
 

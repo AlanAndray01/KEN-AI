@@ -1,4 +1,4 @@
-import type { PublicCustomInstruction } from "@aether/shared";
+import type { PublicCustomInstruction } from "@Ken/shared";
 import { CustomInstruction } from "../../models/CustomInstruction.js";
 
 function iso(value: unknown): string {

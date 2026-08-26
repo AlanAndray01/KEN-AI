@@ -1,4 +1,4 @@
-import type { PublicConversation } from "@aether/shared";
+import type { PublicConversation } from "@Ken/shared";
 
 export interface ConversationGroup {
   id: "pinned" | "today" | "yesterday" | "week" | "month" | "older";

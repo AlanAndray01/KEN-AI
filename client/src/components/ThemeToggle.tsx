@@ -1,5 +1,5 @@
 import { Monitor, Moon, Sun } from "lucide-react";
-import type { ThemePreference } from "@aether/shared";
+import type { ThemePreference } from "@Ken/shared";
 import { useThemeStore } from "@/stores/themeStore";
 import { cn } from "@/utils/cn";
 

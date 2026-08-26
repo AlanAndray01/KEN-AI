@@ -101,6 +101,7 @@ export {
   createGptSchema,
   createMemorySchema,
   databaseHealthStatusSchema,
+  deleteAccountSchema,
   enableFlagSchema,
   exportFormatSchema,
   forgotPasswordSchema,

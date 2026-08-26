@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import mongoose from "mongoose";
-import type { ModelCapability, PublicAttachment, PublicFile } from "@aether/shared";
-import { MAX_ATTACHMENTS_PER_MESSAGE } from "@aether/shared";
+import type { ModelCapability, PublicAttachment, PublicFile } from "@Ken/shared";
+import { MAX_ATTACHMENTS_PER_MESSAGE } from "@Ken/shared";
 import { env } from "../../config/env.js";
 import { Attachment } from "../../models/Attachment.js";
 import { File as StoredFile } from "../../models/File.js";

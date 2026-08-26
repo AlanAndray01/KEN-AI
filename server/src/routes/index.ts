@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { API_ROUTES } from "@aether/shared";
+import { API_ROUTES } from "@Ken/shared";
 import { adminRouter } from "./admin.js";
 import { analysisRouter } from "./analysis.js";
 import { authRouter } from "./auth.js";

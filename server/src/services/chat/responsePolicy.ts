@@ -1,4 +1,5 @@
 import type { ChatMessage } from "../ai/AIProvider.js";
+import { KEN_IDENTITY } from "./identity.js";
 import { TUTOR_PROTOCOL } from "./tutorProtocol.js";
 
 export type ReplyBudget = "minimal" | "short" | "medium" | "long";
@@ -99,9 +100,12 @@ export function buildResponsePolicyMessage(
 ): ChatMessage {
   const signals = detectTaskSignals(content);
   const policy = renderPolicy(signals);
+  // The identity block leads on every turn, custom GPTs included: a custom
+  // persona replaces the tutor protocol, never the answer to "who are you?".
+  const body = options?.skipTutor ? policy : `${TUTOR_PROTOCOL}\n\n${policy}`;
   return {
     role: "system",
-    content: options?.skipTutor ? policy : `${TUTOR_PROTOCOL}\n\n${policy}`,
+    content: `${KEN_IDENTITY}\n\n${body}`,
   };
 }
 
@@ -131,7 +135,9 @@ export function renderPolicy(signals: TaskSignals): string {
     "Use a blockquote (>) only for a citation or quoted wording.",
   ];
   if (signals.needsMath) {
-    formatBits.push("This turn needs math: write it as $inline$ or $$display$$ LaTeX, not unicode approximations.");
+    formatBits.push(
+      "This turn needs math: write it as $inline$ or $$display$$ LaTeX, not unicode approximations. Each $$ fence sits alone on its own line, with a blank line before the opening fence and after the closing one.",
+    );
   } else {
     formatBits.push("Skip LaTeX unless an equation actually appears.");
   }

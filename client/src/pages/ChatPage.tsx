@@ -8,7 +8,7 @@ import {
   type PublicFile,
   type PublicMessage,
   type PublicMessageFeedback,
-} from "@aether/shared";
+} from "@Ken/shared";
 import { AddModelKeysDialog } from "@/components/AddModelKeysDialog";
 import { MessageAttachments } from "@/components/AttachmentChips";
 import { ChatComposer } from "@/components/ChatComposer";

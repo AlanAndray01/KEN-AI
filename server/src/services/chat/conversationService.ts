@@ -5,7 +5,7 @@ import {
   MAX_STORED_MESSAGE_TURNS,
   type createConversationSchema,
   type patchConversationSchema,
-} from "@aether/shared";
+} from "@Ken/shared";
 import { Conversation } from "../../models/Conversation.js";
 import { Message } from "../../models/Message.js";
 import { AppError } from "../../utils/AppError.js";

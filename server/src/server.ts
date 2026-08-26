@@ -1,14 +1,24 @@
-import { APP_NAME } from "@aether/shared";
-import { env } from "./config/env.js";
+import dns from "node:dns";
+import { APP_NAME } from "@Ken/shared";
+import { env, isProduction } from "./config/env.js";
 import { logger } from "./config/logger.js";
 import { connectDatabase, disconnectDatabase } from "./config/database.js";
 import { app } from "./app.js";
 import { bootstrapProviders } from "./services/ai/bootstrap.js";
 import { toSafeError } from "./utils/redact.js";
-import dns from 'node:dns';
-dns.setServers(['8.8.8.8', '1.1.1.1']);
 
-
+/**
+ * Some local networks (notably Windows machines behind an ISP resolver that
+ * drops SRV records) cannot resolve a MongoDB Atlas `mongodb+srv://` URI. A
+ * public resolver fixes that during development.
+ *
+ * It must NOT apply in production: hosts like Render provide their own resolver
+ * with private networking and egress rules, and overriding it can break Atlas
+ * lookups or add latency on every connection.
+ */
+if (!isProduction) {
+  dns.setServers(["8.8.8.8", "1.1.1.1"]);
+}
 
 
 async function start(): Promise<void> {

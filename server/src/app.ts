@@ -3,7 +3,7 @@ import cors from "cors";
 import express from "express";
 import helmet from "helmet";
 import { pinoHttp } from "pino-http";
-import { API_PREFIX } from "@aether/shared";
+import { API_PREFIX } from "@Ken/shared";
 import { corsOptions } from "./config/cors.js";
 import { isProduction } from "./config/env.js";
 import { logger } from "./config/logger.js";

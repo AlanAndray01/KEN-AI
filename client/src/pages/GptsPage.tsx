@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { CLIENT_ROUTES, GPT_CATEGORIES, type GptCategory, type PublicCustomGpt } from "@aether/shared";
+import { CLIENT_ROUTES, GPT_CATEGORIES, type GptCategory, type PublicCustomGpt } from "@Ken/shared";
 import { api } from "@/services/api";
 
 export function GptsPage() {

@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { MODEL_CAPABILITIES } from "@aether/shared";
+import { MODEL_CAPABILITIES } from "@Ken/shared";
 import { applyJsonTransform } from "./applyJsonTransform.js";
 
 const aiModelSchema = new mongoose.Schema(

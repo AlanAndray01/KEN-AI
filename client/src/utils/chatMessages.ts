@@ -1,4 +1,4 @@
-import type { MessageStatus, PublicAttachment, PublicMessage, PublicMessageFeedback } from "@aether/shared";
+import type { MessageStatus, PublicAttachment, PublicMessage, PublicMessageFeedback } from "@Ken/shared";
 
 export function dedupeMessages(messages: PublicMessage[]): PublicMessage[] {
   const seen = new Set<string>();

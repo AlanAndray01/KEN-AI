@@ -36,6 +36,23 @@ describe("detectTaskSignals", () => {
     expect(buildResponsePolicyMessage("hi", { skipTutor: true }).content).not.toContain("You are Ken, a tutor");
   });
 
+  it("sends the Ken AI identity on every turn, custom GPTs included", () => {
+    for (const message of [
+      buildResponsePolicyMessage("hi"),
+      buildResponsePolicyMessage("which model are you?"),
+      buildResponsePolicyMessage("who made you?", { skipTutor: true }),
+    ]) {
+      expect(message.content).toContain("You are Ken AI");
+      expect(message.content).toContain("provided by Groq");
+      expect(message.content).toContain("Never identify as ChatGPT");
+    }
+  });
+
+  it("asks for display fences on their own lines when the turn needs math", () => {
+    // A `$$` fence sharing its line with LaTeX never closes in remark-math.
+    expect(buildResponsePolicyMessage("Solve 3x^2 - 12x + 9 = 0").content).toContain("alone on its own line");
+  });
+
   it("uses structure for how-to questions and quotes for citations", () => {
     expect(detectTaskSignals("How do I set up a MERN stack?").needsStructure).toBe(true);
     expect(detectTaskSignals('He said that "cookies must stay HttpOnly" — is that true?').needsQuotes).toBe(true);

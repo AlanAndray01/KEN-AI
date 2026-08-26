@@ -1,7 +1,7 @@
 import { createContext } from "react";
-import type { PublicUser } from "@aether/shared";
+import type { PublicUser } from "@Ken/shared";
 
-export type AuthUser = Pick<PublicUser, "id" | "name" | "email" | "role" | "preferences">;
+export type AuthUser = Pick<PublicUser, "id" | "name" | "email" | "role" | "preferences" | "googleId">;
 
 export interface AuthContextValue {
   user: AuthUser | null;

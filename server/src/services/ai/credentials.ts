@@ -1,4 +1,4 @@
-import type { ModelCapability, ProviderTestStatus, ProviderType } from "@aether/shared";
+import type { ModelCapability, ProviderTestStatus, ProviderType } from "@Ken/shared";
 import { env } from "../../config/env.js";
 import { AIProvider } from "../../models/AIProvider.js";
 import { UserProviderCredential } from "../../models/UserProviderCredential.js";

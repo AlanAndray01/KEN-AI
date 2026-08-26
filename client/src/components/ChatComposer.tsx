@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
 import { Globe, Image as ImageIcon, Mic, Plus, Send, Square, X } from "lucide-react";
-import { estimatePromptTokens, type ModelCapability, type PublicFile } from "@aether/shared";
+import { estimatePromptTokens, type ModelCapability, type PublicFile } from "@Ken/shared";
 import { AttachmentChips } from "@/components/AttachmentChips";
 import { cn } from "@/utils/cn";
 import { composerAccept } from "@/utils/attachmentGate";

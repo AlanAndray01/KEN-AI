@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { PublicAIModel } from "@aether/shared";
+import type { PublicAIModel } from "@Ken/shared";
 import { pickDefaultModel, shouldReplaceStoredModel } from "./defaultModel";
 
 function model(partial: Partial<PublicAIModel> & Pick<PublicAIModel, "id" | "providerId" | "name">): PublicAIModel {

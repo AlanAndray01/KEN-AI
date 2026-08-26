@@ -1,4 +1,4 @@
-import { GROQ_MODEL_ALIASES } from "@aether/shared";
+import { GROQ_MODEL_ALIASES } from "@Ken/shared";
 import { logger } from "../../config/logger.js";
 import { AIModel } from "../../models/AIModel.js";
 import { AIProvider } from "../../models/AIProvider.js";

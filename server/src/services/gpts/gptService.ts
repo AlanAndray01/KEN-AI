@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import type { GptCategory, ModelCapability, PublicCustomGpt } from "@aether/shared";
+import type { GptCategory, ModelCapability, PublicCustomGpt } from "@Ken/shared";
 import { CustomGPT } from "../../models/CustomGPT.js";
 import { AppError } from "../../utils/AppError.js";
 import { loadOwnedFiles } from "../storage/fileService.js";

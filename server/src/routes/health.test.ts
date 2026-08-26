@@ -1,6 +1,6 @@
 import request from "supertest";
 import { describe, expect, it } from "vitest";
-import { APP_SERVICE_ID } from "@aether/shared";
+import { APP_SERVICE_ID } from "@Ken/shared";
 import { app } from "../app.js";
 import { getDatabaseHealthStatus } from "../config/database.js";
 import { hasLeakedSecret } from "../utils/redact.js";

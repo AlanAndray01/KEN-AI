@@ -54,8 +54,8 @@ describe.skipIf(!mongo.ok)("auth routes (real MongoDB)", () => {
     expect(verified.body.user).not.toHaveProperty("passwordHash");
 
     const cookies = cookiesFrom(verified).join(";");
-    expect(cookies).toContain("aether_access=");
-    expect(cookies).toContain("aether_refresh=");
+    expect(cookies).toContain("Ken_access=");
+    expect(cookies).toContain("Ken_refresh=");
     expect((await User.findOne({ email: "ada@example.com" }).lean())?.["isVerified"]).toBe(true);
   });
 
@@ -146,7 +146,7 @@ describe.skipIf(!mongo.ok)("auth routes (real MongoDB)", () => {
   it("rejects a forged access cookie", async () => {
     const response = await request(app)
       .get("/api/auth/me")
-      .set("Cookie", ["aether_access=not.a.real.token"]);
+      .set("Cookie", ["Ken_access=not.a.real.token"]);
 
     expect(response.status).toBe(401);
   });

@@ -1,6 +1,6 @@
 import dns from "node:dns";
 import mongoose from "mongoose";
-import type { DatabaseHealthStatus } from "@aether/shared";
+import type { DatabaseHealthStatus } from "@Ken/shared";
 import { env } from "./env.js";
 import { logger } from "./logger.js";
 import { toSafeError } from "../utils/redact.js";

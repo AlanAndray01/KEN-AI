@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { Link, Outlet } from "react-router-dom";
-import { APP_NAME, CLIENT_ROUTES } from "@aether/shared";
+import { APP_NAME, CLIENT_ROUTES } from "@Ken/shared";
 import { PageFallback } from "@/components/PageFallback";
 import { ThemeToggle } from "@/components/ThemeToggle";
 

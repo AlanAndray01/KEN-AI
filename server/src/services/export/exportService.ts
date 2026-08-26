@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import type { ExportFormat } from "@aether/shared";
+import type { ExportFormat } from "@Ken/shared";
 import { Conversation } from "../../models/Conversation.js";
 import { Message } from "../../models/Message.js";
 import { findOwnedConversation } from "../chat/conversationService.js";
@@ -79,7 +79,7 @@ export async function exportAllConversations(
     body: `Exported ${payload.length} conversation${payload.length === 1 ? "" : "s"} as ${format.toUpperCase()}.`,
   });
   return {
-    filename: `aether-chats.${exportExtension(format)}`,
+    filename: `Ken-chats.${exportExtension(format)}`,
     mimeType: exportMimeType(format),
     body,
   };

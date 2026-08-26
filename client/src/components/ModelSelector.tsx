@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, Plus } from "lucide-react";
-import type { PublicAIModel } from "@aether/shared";
+import type { PublicAIModel } from "@Ken/shared";
 import { cn } from "@/utils/cn";
 
 interface ModelSelectorProps {

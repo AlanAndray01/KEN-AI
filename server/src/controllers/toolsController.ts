@@ -1,10 +1,10 @@
 import type { Request, Response } from "express";
-import type { ModelCapability } from "@aether/shared";
+import type { ModelCapability } from "@Ken/shared";
 import {
   createAnalysisJobSchema,
   imageGenerationSchema,
   webSearchSchema,
-} from "@aether/shared";
+} from "@Ken/shared";
 import { modelRegistry } from "../services/ai/ModelRegistry.js";
 import { aiProviderManager } from "../services/ai/AIProviderManager.js";
 import { AppError } from "../utils/AppError.js";

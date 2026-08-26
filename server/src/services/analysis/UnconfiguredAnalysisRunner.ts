@@ -1,5 +1,5 @@
 import { AppError } from "../../utils/AppError.js";
-import type { PublicAnalysisJob } from "@aether/shared";
+import type { PublicAnalysisJob } from "@Ken/shared";
 import type { AnalysisRunner, AnalysisSubmitInput } from "./AnalysisRunner.js";
 
 export class UnconfiguredAnalysisRunner implements AnalysisRunner {

@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { CLIENT_ROUTES } from "@aether/shared";
+import { CLIENT_ROUTES } from "@Ken/shared";
 
 const LINKS = [
   { to: CLIENT_ROUTES.settingsAccount, title: "Account", description: "Profile, password, and session security." },

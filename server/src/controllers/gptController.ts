@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
-import { createGptSchema, GPT_CATEGORIES, patchGptSchema } from "@aether/shared";
-import type { GptCategory } from "@aether/shared";
+import { createGptSchema, GPT_CATEGORIES, patchGptSchema } from "@Ken/shared";
+import type { GptCategory } from "@Ken/shared";
 import { createGpt, deleteGpt, getAccessibleGpt, listGpts, updateGpt } from "../services/gpts/gptService.js";
 import { AppError } from "../utils/AppError.js";
 

@@ -1,4 +1,4 @@
-import { APP_NAME, type ExportFormat } from "@aether/shared";
+import { APP_NAME, type ExportFormat } from "@Ken/shared";
 
 export interface ExportMessage {
   role: string;

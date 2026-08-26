@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { APP_NAME, CLIENT_ROUTES } from "@aether/shared";
+import { APP_NAME, CLIENT_ROUTES } from "@Ken/shared";
 import { api } from "@/services/api";
 
 export function HomePage() {

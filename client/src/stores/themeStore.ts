@@ -1,12 +1,12 @@
 import { create } from "zustand";
-import type { ThemePreference } from "@aether/shared";
+import type { ThemePreference } from "@Ken/shared";
 
 interface ThemeState {
   preference: ThemePreference;
   setPreference: (preference: ThemePreference) => void;
 }
 
-const STORAGE_KEY = "aether.theme";
+const STORAGE_KEY = "Ken.theme";
 
 function readPreference(): ThemePreference {
   if (typeof window === "undefined") {

@@ -1,8 +1,8 @@
 {
-  "name": "aether",
+  "name": "Ken",
   "version": "1.0.0",
   "private": true,
-  "description": "Aether — a production MERN TypeScript AI chatbot platform",
+  "description": "Ken — a production MERN TypeScript AI chatbot platform",
   "workspaces": [
     "shared",
     "server",
@@ -10,17 +10,17 @@
     "Multi-Agents"
   ],
   "scripts": {
-    "predev": "npm run build -w @aether/shared",
-    "dev": "concurrently -n shared,server,client -c gray,magenta,cyan \"npm run dev -w @aether/shared\" \"npm run dev -w @aether/server\" \"npm run dev -w @aether/client\"",
-    "client": "npm run dev -w @aether/client",
-    "server": "npm run build -w @aether/shared && npm run dev -w @aether/server",
-    "build": "npm run build -w @aether/shared && npm run build -w @aether/server && npm run build -w @aether/client",
-    "test": "npm run build -w @aether/shared && npm run test -w @aether/shared && npm run test -w @aether/server && npm run test -w @aether/client",
-    "lint": "npm run lint -w @aether/shared && npm run lint -w @aether/server && npm run lint -w @aether/client",
-    "typecheck": "npm run typecheck -w @aether/shared && npm run build -w @aether/shared && npm run typecheck -w @aether/server && npm run typecheck -w @aether/client",
-    "agents": "npm run agents -w @aether/multi-agents --",
-    "agents:audit": "npm run agents -w @aether/multi-agents -- run audit",
-    "agents:verify": "npm run agents -w @aether/multi-agents -- verify"
+    "predev": "npm run build -w @Ken/shared",
+    "dev": "concurrently -n shared,server,client -c gray,magenta,cyan \"npm run dev -w @Ken/shared\" \"npm run dev -w @Ken/server\" \"npm run dev -w @Ken/client\"",
+    "client": "npm run dev -w @Ken/client",
+    "server": "npm run build -w @Ken/shared && npm run dev -w @Ken/server",
+    "build": "npm run build -w @Ken/shared && npm run build -w @Ken/server && npm run build -w @Ken/client",
+    "test": "npm run build -w @Ken/shared && npm run test -w @Ken/shared && npm run test -w @Ken/server && npm run test -w @Ken/client",
+    "lint": "npm run lint -w @Ken/shared && npm run lint -w @Ken/server && npm run lint -w @Ken/client",
+    "typecheck": "npm run typecheck -w @Ken/shared && npm run build -w @Ken/shared && npm run typecheck -w @Ken/server && npm run typecheck -w @Ken/client",
+    "agents": "npm run agents -w @Ken/multi-agents --",
+    "agents:audit": "npm run agents -w @Ken/multi-agents -- run audit",
+    "agents:verify": "npm run agents -w @Ken/multi-agents -- verify"
   },
   "engines": {
     "node": ">=20"

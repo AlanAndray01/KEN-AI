@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { type FormEvent } from "react";
-import { DEFAULT_GROQ_MODEL_ID, GPT_CATEGORIES, GPT_VISIBILITY, type GptCategory, type GptVisibility, type ModelCapability } from "@aether/shared";
+import { DEFAULT_GROQ_MODEL_ID, GPT_CATEGORIES, GPT_VISIBILITY, type GptCategory, type GptVisibility, type ModelCapability } from "@Ken/shared";
 import { api } from "@/services/api";
 import type { GptFormValue } from "@/utils/gptForm";
 

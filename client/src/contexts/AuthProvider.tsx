@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import type { PublicUser } from "@aether/shared";
+import type { PublicUser } from "@Ken/shared";
 import { AuthContext, type AuthUser } from "@/contexts/auth-context";
 import { ApiError, api, onUnauthorized } from "@/services/api";
 import { hydrateModelSelection } from "@/stores/modelStore";
@@ -12,6 +12,9 @@ function toAuthUser(user: PublicUser): AuthUser {
     email: user.email,
     role: user.role,
     preferences: user.preferences,
+    // Present for Google sign-in; the delete-account form uses it to decide
+    // whether to ask for a password the account may not have.
+    ...(user.googleId ? { googleId: user.googleId } : {}),
   };
 }
 

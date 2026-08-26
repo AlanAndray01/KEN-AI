@@ -4,7 +4,7 @@ import {
   GROQ_QUALITY_MODEL_ID,
   resolveGroqModelId,
   type PublicAIModel,
-} from "@aether/shared";
+} from "@Ken/shared";
 
 export function pickDefaultModel(models: PublicAIModel[]): PublicAIModel | undefined {
   const available = models.filter((model) => model.available && model.enabled !== false);

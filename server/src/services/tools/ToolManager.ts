@@ -1,4 +1,4 @@
-import type { ChatToolId, ModelCapability, PublicAnalysisJob, PublicFile, PublicSearchHit, PublicTool } from "@aether/shared";
+import type { ChatToolId, ModelCapability, PublicAnalysisJob, PublicFile, PublicSearchHit, PublicTool } from "@Ken/shared";
 import { AppError } from "../../utils/AppError.js";
 import type { ChatMessage } from "../ai/AIProvider.js";
 import { analysisRunner } from "../analysis/index.js";
@@ -107,7 +107,7 @@ export class ToolManager {
       const generated = await this.images.generate({ prompt, userId: ctx.userId });
       const file = await uploadUserFile({
         userId: ctx.userId,
-        originalName: "aether-image.png",
+        originalName: "Ken-image.png",
         mimeType: generated.mimeType,
         buffer: generated.buffer,
       });

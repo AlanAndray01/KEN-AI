@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { CLIENT_ROUTES } from "@aether/shared";
+import { CLIENT_ROUTES } from "@Ken/shared";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError, api } from "@/services/api";
 import { toast } from "@/stores/toastStore";

@@ -5,7 +5,7 @@ import {
   DEFAULT_GROQ_MODEL_ID,
   DEFAULT_OPENAI_MODEL_ID,
   GROQ_QUALITY_MODEL_ID,
-} from "@aether/shared";
+} from "@Ken/shared";
 
 export const GROQ_PRIMARY_MODEL_IDS = [DEFAULT_GROQ_MODEL_ID, GROQ_QUALITY_MODEL_ID, "qwen/qwen3.6-27b"] as const;
 export const OPENAI_FALLBACK_MODEL_IDS = [DEFAULT_OPENAI_MODEL_ID, "gpt-4.1"] as const;

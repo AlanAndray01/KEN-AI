@@ -34,9 +34,9 @@ Every command is available three ways — pick whichever you prefer:
 
 | Via root script | Via workspace | Via the entry file |
 | --- | --- | --- |
-| `npm run agents:audit` | `npm run audit -w @aether/multi-agents` | `npx tsx Multi-Agents/run-agents.ts run audit` |
-| `npm run agents:verify` | `npm run verify -w @aether/multi-agents` | `npx tsx Multi-Agents/run-agents.ts verify` |
-| `npm run agents -- <args>` | `npm run agents -w @aether/multi-agents -- <args>` | `npx tsx Multi-Agents/run-agents.ts <args>` |
+| `npm run agents:audit` | `npm run audit -w @Ken/multi-agents` | `npx tsx Multi-Agents/run-agents.ts run audit` |
+| `npm run agents:verify` | `npm run verify -w @Ken/multi-agents` | `npx tsx Multi-Agents/run-agents.ts verify` |
+| `npm run agents -- <args>` | `npm run agents -w @Ken/multi-agents -- <args>` | `npx tsx Multi-Agents/run-agents.ts <args>` |
 
 ```bash
 npm run agents -- list                  # show missions and specialists

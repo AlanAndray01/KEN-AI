@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { PublicSearchHit } from "@aether/shared";
+import type { PublicSearchHit } from "@Ken/shared";
 import { UnconfiguredAnalysisRunner } from "../analysis/UnconfiguredAnalysisRunner.js";
 import { UnconfiguredImageProvider } from "../image/UnconfiguredImageProvider.js";
 import { UnconfiguredSearchProvider } from "../search/UnconfiguredSearchProvider.js";
@@ -8,7 +8,7 @@ import { formatSearchHits, ToolManager } from "./ToolManager.js";
 vi.mock("../storage/fileService.js", () => ({
   uploadUserFile: vi.fn(async () => ({
     id: "file1",
-    originalName: "aether-image.png",
+    originalName: "Ken-image.png",
     mimeType: "image/png",
     size: 8,
     kind: "image",
@@ -79,7 +79,7 @@ describe("ToolManager", () => {
   });
 
   it("returns ANALYSIS_SANDBOX_NOT_CONFIGURED and never executes code in-process", async () => {
-    const sentinel = "__AETHER_ANALYSIS_EXECUTED";
+    const sentinel = "__Ken_ANALYSIS_EXECUTED";
     (globalThis as Record<string, unknown>)[sentinel] = false;
     const manager = new ToolManager(
       new UnconfiguredSearchProvider(),

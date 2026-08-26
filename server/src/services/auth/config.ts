@@ -24,6 +24,6 @@ export function isGoogleOAuthConfigured(): boolean {
   return Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
 }
 
-export const ACCESS_COOKIE = "aether_access";
-export const REFRESH_COOKIE = "aether_refresh";
-export const OAUTH_STATE_COOKIE = "aether_oauth_state";
+export const ACCESS_COOKIE = "Ken_access";
+export const REFRESH_COOKIE = "Ken_refresh";
+export const OAUTH_STATE_COOKIE = "Ken_oauth_state";

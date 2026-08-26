@@ -9,7 +9,7 @@ describe("analysis runner", () => {
   });
 
   it("never executes submitted code in the API process", async () => {
-    const sentinel = "__AETHER_ANALYSIS_EXECUTED";
+    const sentinel = "__Ken_ANALYSIS_EXECUTED";
     (globalThis as Record<string, unknown>)[sentinel] = false;
     const runner = new UnconfiguredAnalysisRunner();
     await expect(

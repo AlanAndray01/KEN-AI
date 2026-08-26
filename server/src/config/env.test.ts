@@ -4,7 +4,7 @@ import { envSchema } from "./env.js";
 const productionBase = {
   NODE_ENV: "production",
   JWT_SECRET: "a-real-production-secret-value",
-  MONGODB_URI: "mongodb://localhost:27017/aether",
+  MONGODB_URI: "mongodb://localhost:27017/Ken",
 };
 
 function issuePaths(input: Record<string, unknown>): string[] {

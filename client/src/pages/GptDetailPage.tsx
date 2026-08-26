@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { CLIENT_ROUTES } from "@aether/shared";
+import { CLIENT_ROUTES } from "@Ken/shared";
 import { GptForm } from "@/components/GptForm";
 import { emptyGptForm, gptFormToPayload, type GptFormValue } from "@/utils/gptForm";
 import { ApiError, api } from "@/services/api";

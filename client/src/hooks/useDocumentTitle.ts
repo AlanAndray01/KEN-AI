@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
-import { APP_NAME } from "@aether/shared";
+import { APP_NAME } from "@Ken/shared";
 
 function titleForPath(pathname: string): string {
   if (pathname === "/") return APP_NAME;

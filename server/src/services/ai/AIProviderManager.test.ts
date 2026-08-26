@@ -111,6 +111,38 @@ describe("AIProviderManager", () => {
     expect(fakeGenerate).toHaveBeenCalledTimes(1);
   });
 
+  it("gives every model call the Ken AI identity, whichever route built the prompt", async () => {
+    const { AIProviderManager } = await import("./AIProviderManager.js");
+    const manager = new AIProviderManager();
+    await manager.generate({
+      providerId: "groq",
+      modelId: "openai/gpt-oss-20b",
+      messages: [{ role: "user", content: "Which model are you?" }],
+    });
+
+    const sent = fakeGenerate.mock.calls[0]?.[0] as unknown as { messages: { role: string; content: string }[] };
+    expect(sent.messages[0]?.role).toBe("system");
+    expect(sent.messages[0]?.content).toContain("You are Ken AI");
+    expect(sent.messages[1]).toMatchObject({ role: "user", content: "Which model are you?" });
+  });
+
+  it("does not repeat the identity when the caller already sent it", async () => {
+    const { AIProviderManager } = await import("./AIProviderManager.js");
+    const { KEN_IDENTITY } = await import("../chat/identity.js");
+    const manager = new AIProviderManager();
+    await manager.generate({
+      providerId: "groq",
+      modelId: "openai/gpt-oss-20b",
+      messages: [
+        { role: "system", content: `${KEN_IDENTITY}\n\nreply policy` },
+        { role: "user", content: "Hi" },
+      ],
+    });
+
+    const sent = fakeGenerate.mock.calls[0]?.[0] as unknown as { messages: { role: string }[] };
+    expect(sent.messages).toHaveLength(2);
+  });
+
   it("does not silently switch models when the requested model is unavailable", async () => {
     assertModelAvailable.mockRejectedValue(
       new AppError("Model unavailable", { statusCode: 404, code: "MODEL_UNAVAILABLE" }),

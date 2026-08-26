@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-const STORAGE_KEY = "aether.sidebarCollapsed";
+const STORAGE_KEY = "Ken.sidebarCollapsed";
 
 function readCollapsed(): boolean {
   if (typeof window === "undefined") {

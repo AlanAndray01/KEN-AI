@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { createMemorySchema, patchMemorySchema, upsertInstructionSchema } from "@aether/shared";
+import { createMemorySchema, patchMemorySchema, upsertInstructionSchema } from "@Ken/shared";
 import {
   createMemory,
   deleteMemory,

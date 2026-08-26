@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useState, type FormEvent } from "react";
 import { X } from "lucide-react";
-import { DEFAULT_GROQ_MODEL_ID } from "@aether/shared";
+import { DEFAULT_GROQ_MODEL_ID } from "@Ken/shared";
 import { ApiError, api } from "@/services/api";
 
 const PROVIDERS = [

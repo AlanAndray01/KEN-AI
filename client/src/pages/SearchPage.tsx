@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { CLIENT_ROUTES } from "@aether/shared";
+import { CLIENT_ROUTES } from "@Ken/shared";
 import { api } from "@/services/api";
 import { CONVERSATION_STALE_MS } from "@/query";
 import { useUiStore } from "@/stores/uiStore";

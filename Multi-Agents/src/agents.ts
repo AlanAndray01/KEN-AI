@@ -56,7 +56,7 @@ Look for:
 - Contract drift between \`shared/\` types and the code that consumes them — a
   DTO the server sends that the client types differently, or a Zod schema that
   no longer matches its TypeScript type.
-- Duplicated logic that should live in a shared service or in \`@aether/shared\`.
+- Duplicated logic that should live in a shared service or in \`@Ken/shared\`.
 - Modules that import across a boundary they should not know about, and any
   import cycle you can trace.
 

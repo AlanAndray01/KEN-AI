@@ -25,7 +25,7 @@ describe("search providers", () => {
       })),
     );
     const provider = new TavilySearchProvider("test-key");
-    const hits = await provider.search({ query: "aether" });
+    const hits = await provider.search({ query: "Ken" });
     expect(hits).toEqual([
       { title: "Docs", url: "https://docs.example", snippet: "Official docs" },
     ]);

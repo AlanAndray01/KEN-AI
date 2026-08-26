@@ -117,7 +117,7 @@ KEN AI — Multi-Agent System
 
 USAGE
 
-  npm run agents -w @aether/multi-agents -- <command> [options]
+  npm run agents -w @Ken/multi-agents -- <command> [options]
 
 COMMANDS
 
@@ -150,10 +150,10 @@ OPTIONS
 
 EXAMPLES
 
-  npm run agents -w @aether/multi-agents -- run audit
-  npm run agents -w @aether/multi-agents -- run security --apply
-  npm run agents -w @aether/multi-agents -- run custom --goal "Find every route missing an ownership check"
-  npm run agents -w @aether/multi-agents -- verify
+  npm run agents -w @Ken/multi-agents -- run audit
+  npm run agents -w @Ken/multi-agents -- run security --apply
+  npm run agents -w @Ken/multi-agents -- run custom --goal "Find every route missing an ownership check"
+  npm run agents -w @Ken/multi-agents -- verify
 
 `);
 }

@@ -10,7 +10,7 @@ import {
   tryStartInMemoryMongo,
 } from "../test/mongoHarness.js";
 import { registerVerified } from "../test/registerVerified.js";
-import { DEFAULT_GROQ_MODEL_ID } from "@aether/shared";
+import { DEFAULT_GROQ_MODEL_ID } from "@Ken/shared";
 import { Conversation } from "../models/Conversation.js";
 import { Message } from "../models/Message.js";
 

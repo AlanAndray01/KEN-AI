@@ -5,7 +5,7 @@ import {
   messageFeedbackSchema,
   patchConversationSchema,
   sendMessageSchema,
-} from "@aether/shared";
+} from "@Ken/shared";
 import { AppError } from "../utils/AppError.js";
 import { writeSseDone, writeSseEvent, writeSseHeaders } from "../utils/sse.js";
 import {

@@ -5,7 +5,7 @@ import remarkMath from "remark-math";
 import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
 import type { Components } from "react-markdown";
-import { stripReasoning } from "@aether/shared";
+import { stripReasoning } from "@Ken/shared";
 import { CodeBlock } from "@/components/CodeBlock";
 import { normalizeLatex } from "@/utils/latexNormalize";
 import "katex/dist/katex.min.css";

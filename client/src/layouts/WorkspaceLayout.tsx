@@ -1,7 +1,7 @@
 import { Suspense, useEffect } from "react";
 import { Menu } from "lucide-react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
-import { CLIENT_ROUTES } from "@aether/shared";
+import { CLIENT_ROUTES } from "@Ken/shared";
 import { ConversationSidebar } from "@/components/ConversationSidebar";
 import { PageFallback } from "@/components/PageFallback";
 import { ShortcutsModal } from "@/components/ShortcutsModal";
