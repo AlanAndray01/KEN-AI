@@ -1,10 +1,10 @@
 /**
  * Language mirroring.
  *
- * This sits at the same tier as the identity block rather than inside the tutor
- * protocol, because a custom GPT turn skips the tutor protocol entirely
- * (`buildResponsePolicyMessage({ skipTutor: true })`). Language matching is a
- * product-wide guarantee, not a tutoring behaviour, so it has to survive that
+ * This sits at the same tier as the identity block rather than inside the answer
+ * protocol, because a custom GPT turn skips the answer protocol entirely
+ * (`buildResponsePolicyMessage({ skipProtocol: true })`). Language matching is a
+ * product-wide guarantee rather than a behaviour of one persona, so it must survive that
  * path — otherwise a user writing Urdu to a custom GPT gets English back.
  *
  * Keeping it as its own constant also means a custom persona can override tone
@@ -18,4 +18,4 @@ Hold that language for the rest of the conversation. Switch only when the user s
 
 Do not mix two languages inside one sentence, and never announce, label, or apologise for the language you are using.
 
-Technical terms, formulas, units, symbols and code stay in English inside every language, because that is how they appear in the syllabus and on the exam paper. Do not translate them.`;
+Technical terms, formulas, units, symbols and code stay in English inside every language, because that is the form people actually read and search for. Do not translate them.`;

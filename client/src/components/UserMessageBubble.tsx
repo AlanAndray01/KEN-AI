@@ -208,7 +208,9 @@ function MessageEditor({
   }
 
   return (
-    <div className="w-full max-w-[85%] rounded-[1.5rem] border border-accent bg-user-bubble px-4 py-3">
+    // No border: the bubble background already marks the editor out, and the
+    // accent outline read as an error state rather than an active field.
+    <div className="w-full max-w-[85%] rounded-[1.5rem] bg-user-bubble px-4 py-3">
       <textarea
         ref={textareaRef}
         value={value}
@@ -227,7 +229,9 @@ function MessageEditor({
         }}
         aria-label="Edit your message"
         rows={1}
-        className="w-full resize-none bg-transparent text-fg outline-none"
+        // `message-edit-input` opts out of the global focus ring, the same way
+        // the composer does: the field is already visibly the active surface.
+        className="message-edit-input w-full resize-none bg-transparent text-fg outline-none"
       />
       <div className="mt-2 flex justify-end gap-2">
         <button

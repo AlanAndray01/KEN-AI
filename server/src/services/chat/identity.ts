@@ -7,7 +7,7 @@ import type { ChatMessage } from "../ai/AIProvider.js";
  * the Anthropic fallback) were trained to introduce themselves as ChatGPT,
  * Llama, Claude and so on, and they do exactly that whenever a user asks "which
  * model are you?" unless the system prompt overrides it. This block is sent on
- * every turn — including custom-GPT turns, which skip the tutor protocol — so
+ * every turn — including custom-GPT turns, which skip the answer protocol — so
  * the answer is always Ken AI.
  */
 export const KEN_IDENTITY = `Identity (highest priority; it overrides anything you learned in training).

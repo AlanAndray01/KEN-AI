@@ -68,12 +68,10 @@ export function ChatPage() {
   const recognitionRef = useRef<{ stop: () => void } | null>(null);
   const mediaChunksRef = useRef<Blob[]>([]);
   const messagesRef = useRef<PublicMessage[]>([]);
-  const {
-    containerRef: scrollRef,
-    pinned,
-    stickToBottom,
-    pin,
-  } = useStickToBottom<HTMLElement>();
+  // `pinned` is no longer read here: the jump-to-latest button that used it was
+  // removed. The hook still tracks it internally to decide whether new tokens
+  // should scroll the view.
+  const { containerRef: scrollRef, stickToBottom, pin } = useStickToBottom<HTMLElement>();
   const [, startTransition] = useTransition();
   const [showAllMessages, setShowAllMessages] = useState(false);
 
@@ -822,17 +820,6 @@ export function ChatPage() {
             ))}
           </div>
         )}
-        {!pinned && messages.length > 0 ? (
-          <div className="sticky bottom-2 flex justify-center">
-            <button
-              type="button"
-              className="rounded-full border border-border bg-surface px-3 py-1.5 text-sm text-fg-muted shadow-sm hover:bg-surface-muted"
-              onClick={() => pin()}
-            >
-              {streaming ? "Jump to latest" : "Scroll to bottom"}
-            </button>
-          </div>
-        ) : null}
       </section>
       <ChatComposer
         value={draft}

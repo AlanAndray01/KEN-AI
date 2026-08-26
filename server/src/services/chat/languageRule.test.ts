@@ -27,10 +27,10 @@ describe("buildResponsePolicyMessage language coverage", () => {
   });
 
   it("still sends it when a custom GPT skips the tutor protocol", () => {
-    // The gap this guards: `skipTutor` drops TUTOR_PROTOCOL, so a language rule
+    // The gap this guards: `skipProtocol` drops ANSWER_PROTOCOL, so a language rule
     // living inside that block would silently vanish for every custom GPT and a
     // user writing Urdu would be answered in English.
-    const message = buildResponsePolicyMessage("Explain photosynthesis", { skipTutor: true });
+    const message = buildResponsePolicyMessage("Explain photosynthesis", { skipProtocol: true });
     expect(message.content).toContain(LANGUAGE_RULE);
     expect(message.content).not.toContain("You are Ken, a tutor");
   });

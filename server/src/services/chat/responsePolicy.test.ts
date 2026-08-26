@@ -21,7 +21,7 @@ describe("detectTaskSignals", () => {
   });
 
   it("drops all formatting scaffolding for small talk", () => {
-    const policy = buildResponsePolicyMessage("hey", { skipTutor: true }).content;
+    const policy = buildResponsePolicyMessage("hey", { skipProtocol: true }).content;
     expect(policy).toContain("one short line");
     expect(policy).not.toContain("80 words");
     expect(policy).not.toMatch(/heading only when/);
@@ -32,15 +32,17 @@ describe("detectTaskSignals", () => {
     expect(signals.needsMath).toBe(true);
     expect(signals.budget).toBe("medium");
     expect(buildResponsePolicyMessage("Solve 2+2").content).toMatch(/\$inline\$/);
-    expect(buildResponsePolicyMessage("hi").content).toContain("You are Ken, a tutor");
-    expect(buildResponsePolicyMessage("hi", { skipTutor: true }).content).not.toContain("You are Ken, a tutor");
+    expect(buildResponsePolicyMessage("hi").content).toContain("general-purpose assistant");
+    expect(buildResponsePolicyMessage("hi", { skipProtocol: true }).content).not.toContain(
+      "general-purpose assistant",
+    );
   });
 
   it("sends the Ken AI identity on every turn, custom GPTs included", () => {
     for (const message of [
       buildResponsePolicyMessage("hi"),
       buildResponsePolicyMessage("which model are you?"),
-      buildResponsePolicyMessage("who made you?", { skipTutor: true }),
+      buildResponsePolicyMessage("who made you?", { skipProtocol: true }),
     ]) {
       expect(message.content).toContain("You are Ken AI");
       expect(message.content).toContain("provided by Groq");

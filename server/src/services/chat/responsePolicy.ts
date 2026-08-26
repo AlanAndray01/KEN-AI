@@ -1,7 +1,7 @@
 import type { ChatMessage } from "../ai/AIProvider.js";
 import { KEN_IDENTITY } from "./identity.js";
 import { LANGUAGE_RULE } from "./languageRule.js";
-import { TUTOR_PROTOCOL } from "./tutorProtocol.js";
+import { ANSWER_PROTOCOL } from "./answerProtocol.js";
 
 export type ReplyBudget = "minimal" | "short" | "medium" | "long";
 
@@ -54,7 +54,7 @@ const TRIVIAL_RE = new RegExp(
 /** Emoji-only turns are small talk too, and never match a word pattern. */
 const EMOJI_ONLY_RE = /^[\p{Extended_Pictographic}\p{Emoji_Component}\s!.,?]+$/u;
 
-/** True when the turn is small talk rather than a request for teaching. */
+/** True when the turn is small talk rather than a real question. */
 export function isTrivialTurn(text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed || trimmed.length > 40) return false;
@@ -97,14 +97,14 @@ export function detectTaskSignals(content: string): TaskSignals {
 
 export function buildResponsePolicyMessage(
   content: string,
-  options?: { skipTutor?: boolean },
+  options?: { skipProtocol?: boolean },
 ): ChatMessage {
   const signals = detectTaskSignals(content);
   const policy = renderPolicy(signals);
   // Identity and language lead on every turn, custom GPTs included: a custom
-  // persona replaces the tutor protocol, never the answer to "who are you?" and
+  // persona replaces the answer protocol, never the answer to "who are you?" and
   // never the language the user is owed a reply in.
-  const body = options?.skipTutor ? policy : `${TUTOR_PROTOCOL}\n\n${policy}`;
+  const body = options?.skipProtocol ? policy : `${ANSWER_PROTOCOL}\n\n${policy}`;
   return {
     role: "system",
     content: `${KEN_IDENTITY}\n\n${LANGUAGE_RULE}\n\n${body}`,
@@ -124,17 +124,24 @@ export function renderPolicy(signals: TaskSignals): string {
     ].join("\n");
   }
 
+  // These are ceilings against padding, not targets to hit. They were tightened
+  // once to stop the model writing 80 words for "hi", and the small-talk branch
+  // above now handles that case on its own — so a real question is allowed the
+  // room to define its terms and carry a worked example, which is the whole
+  // point of an explanation.
   const length =
     signals.budget === "short"
-      ? "Short: lead with the answer. About 80 words unless a list or formula needs more. No filler."
+      ? "Short: lead with the answer, then explain it. Around 150 words is usually right; go over only if an example, list, or formula genuinely needs it. No filler."
       : signals.budget === "medium"
-        ? "Medium: about 180 words unless the user asked for more. Cut repetition."
-        : "Longer only because the user asked for depth. Still no padding. Prefer under 350 words.";
+        ? "Medium: answer fully and show an example. Around 300 words is usually right. Cut repetition, not substance."
+        : "Long: the user asked for depth, so give it - cover the parts that matter and work through examples. Still no padding or repetition.";
 
   const formatBits = [
     "Use a heading only when there are two or more distinct sections.",
     "Use a list only for steps, options, or ranked items.",
     "Use a blockquote (>) only for a citation or quoted wording.",
+    "Put code in a fenced block tagged with its language.",
+    "Explain any technical term in plain words the first time it appears, and include a short concrete example whenever one would make the idea clearer.",
   ];
   if (signals.needsMath) {
     formatBits.push(

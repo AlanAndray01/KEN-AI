@@ -405,7 +405,7 @@ export async function runGeneration(
     const messages = contextManager.build({
       messages: [
         buildResponsePolicyMessage(prepared.userMessage.content, {
-          skipTutor: Boolean(prepared.customGptId),
+          skipProtocol: Boolean(prepared.customGptId),
         }),
         ...persona,
         ...(prepared.toolSystemMessages ?? []),
