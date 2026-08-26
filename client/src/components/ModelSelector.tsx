@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronDown } from "lucide-react";
+import { Check, ChevronDown, Plus } from "lucide-react";
 import type { PublicAIModel } from "@aether/shared";
 import { cn } from "@/utils/cn";
 
@@ -9,9 +9,17 @@ interface ModelSelectorProps {
   modelId: string;
   onChange: (providerId: string, modelId: string) => void;
   disabled?: boolean;
+  onAddModel?: () => void;
 }
 
-export function ModelSelector({ models, providerId, modelId, onChange, disabled = false }: ModelSelectorProps) {
+export function ModelSelector({
+  models,
+  providerId,
+  modelId,
+  onChange,
+  disabled = false,
+  onAddModel,
+}: ModelSelectorProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -107,6 +115,21 @@ export function ModelSelector({ models, providerId, modelId, onChange, disabled 
               })}
             </li>
           ))}
+          {onAddModel ? (
+            <li className="border-t border-border px-1 py-1">
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm hover:bg-surface-muted"
+                onClick={() => {
+                  setOpen(false);
+                  onAddModel();
+                }}
+              >
+                <Plus className="size-4" />
+                Add model / API key
+              </button>
+            </li>
+          ) : null}
         </ul>
       ) : null}
     </div>

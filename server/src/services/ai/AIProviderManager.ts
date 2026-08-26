@@ -1,4 +1,5 @@
 import type { ChatToolId, ModelCapability, PublicAnalysisJob, PublicTool } from "@aether/shared";
+import { CLOUDFLARE_VISION_MODEL_ID, resolveDeepSeekModelId, resolveGroqModelId } from "@aether/shared";
 import { env } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
 import { AppError } from "../../utils/AppError.js";
@@ -10,9 +11,11 @@ import {
 } from "../tools/ToolManager.js";
 import type { AIProvider, AIResponse, GenerateRequest, StreamEvent } from "./AIProvider.js";
 import { createProviderAdapter } from "./createProviderAdapter.js";
-import { requireConfigured, resolveCredentials } from "./credentials.js";
-import { isRetryableProviderError } from "./fallback.js";
+import { requireConfigured, resolveCredentials, envKeyCount } from "./credentials.js";
+import { consumePlatformChatQuota } from "./platformChatQuota.js";
+import { isProviderQuotaError, isRetryableProviderError } from "./fallback.js";
 import { modelRegistry } from "./ModelRegistry.js";
+import { FREE_FALLBACK_CHAIN, pickConfiguredModel, preferredIdsForProvider } from "./primaryModel.js";
 
 export interface AIProviderManagerOptions {
   fallbackProviderId?: string;
@@ -27,10 +30,6 @@ export class AIProviderManager {
   constructor(options: AIProviderManagerOptions = {}) {
     this.tools = options.tools ?? toolManager;
     this.options = options;
-  }
-
-  private fallbackProviderId(): string | undefined {
-    return this.options.fallbackProviderId ?? env.AI_FALLBACK_PROVIDER_ID;
   }
 
   private fallbackModelId(): string | undefined {
@@ -66,13 +65,29 @@ export class AIProviderManager {
     try {
       return await this.generateOnce(request);
     } catch (error) {
-      const fallback = await this.buildFallbackRequest(request, error);
-      if (!fallback) throw error;
-      logger.warn(
-        { primary: request.providerId, fallback: fallback.providerId },
-        "Primary provider failed; using configured fallback provider",
-      );
-      return this.generateOnce(fallback);
+      let last: unknown = error;
+      if (isProviderQuotaError(error) && envKeyCount(request.providerId) > 1) {
+        try {
+          return await this.generateOnce(request);
+        } catch (rotated) {
+          last = rotated;
+        }
+      }
+      if (!isRetryableProviderError(last)) throw last;
+      const hops = await this.fallbackHops(request);
+      for (const hop of hops) {
+        logger.warn(
+          { primary: request.providerId, fallback: hop.providerId, fallbackModel: hop.modelId },
+          "Primary provider failed; failing over immediately",
+        );
+        try {
+          return await this.generateOnce(hop);
+        } catch (next) {
+          last = next;
+          if (!isRetryableProviderError(next)) throw next;
+        }
+      }
+      throw last;
     }
   }
 
@@ -93,33 +108,53 @@ export class AIProviderManager {
       }
     } catch (error) {
       if (yieldedOutput) throw error;
-      const fallback = await this.buildFallbackRequest(request, error);
-      if (!fallback) throw error;
-      logger.warn(
-        { primary: request.providerId, fallback: fallback.providerId },
-        "Primary provider failed; using configured fallback provider",
-      );
-      yield* this.streamOnce(fallback);
+      let last: unknown = error;
+      if (isProviderQuotaError(error) && envKeyCount(request.providerId) > 1) {
+        try {
+          yield* this.streamOnce(request);
+          return;
+        } catch (rotated) {
+          last = rotated;
+        }
+      }
+      if (!isRetryableProviderError(last)) throw last;
+      const hops = await this.fallbackHops(request);
+      for (const hop of hops) {
+        logger.warn(
+          { primary: request.providerId, fallback: hop.providerId, fallbackModel: hop.modelId },
+          "Primary provider failed; failing over immediately",
+        );
+        try {
+          yield* this.streamOnce(hop);
+          return;
+        } catch (next) {
+          last = next;
+          if (!isRetryableProviderError(next)) throw next;
+        }
+      }
+      throw last;
     }
   }
 
   private async generateOnce(request: GenerateRequest): Promise<AIResponse> {
-    const adapter = await this.getAdapter(request.providerId, request.userId);
-    await modelRegistry.assertModelAvailable(request.providerId, request.modelId, request.userId);
-    return adapter.generate(request);
+    const resolved = this.withVisionModel(request);
+    const adapter = await this.getAdapter(resolved.providerId, resolved.userId);
+    await modelRegistry.assertModelAvailable(resolved.providerId, resolved.modelId, resolved.userId);
+    return adapter.generate(resolved);
   }
 
   private async *streamOnce(request: GenerateRequest): AsyncIterable<StreamEvent> {
-    const adapter = await this.getAdapter(request.providerId, request.userId);
-    await modelRegistry.assertModelAvailable(request.providerId, request.modelId, request.userId);
+    const resolved = this.withVisionModel(request);
+    const adapter = await this.getAdapter(resolved.providerId, resolved.userId);
+    await modelRegistry.assertModelAvailable(resolved.providerId, resolved.modelId, resolved.userId);
     if (adapter.stream) {
-      yield* adapter.stream(request);
+      yield* adapter.stream(resolved);
       return;
     }
 
-    yield { type: "start", model: request.modelId, provider: adapter.id };
+    yield { type: "start", model: resolved.modelId, provider: adapter.id };
     try {
-      const response = await adapter.generate(request);
+      const response = await adapter.generate(resolved);
       if (response.content) {
         yield { type: "chunk", text: response.content };
       }
@@ -130,33 +165,82 @@ export class AIProviderManager {
     }
   }
 
-  private async buildFallbackRequest(request: GenerateRequest, error: unknown): Promise<GenerateRequest | undefined> {
-    const fallbackProviderId = this.fallbackProviderId();
-    if (!fallbackProviderId || fallbackProviderId === request.providerId) return undefined;
-    if (!isRetryableProviderError(error)) return undefined;
+  private withVisionModel(request: GenerateRequest): GenerateRequest {
+    const hasImage = request.messages.some((message) =>
+      message.parts?.some((part) => part.mimeType.startsWith("image/")),
+    );
+    if (!hasImage || request.providerId !== "cloudflare") return request;
+    return { ...request, modelId: CLOUDFLARE_VISION_MODEL_ID };
+  }
 
-    const resolved = await resolveCredentials(fallbackProviderId, request.userId);
-    if (!resolved?.configured || !resolved.enabled) return undefined;
-
+  private async fallbackHops(request: GenerateRequest): Promise<GenerateRequest[]> {
     const models = await modelRegistry.listPublicModels(request.userId);
-    const configuredModelId = this.fallbackModelId();
-    const match = configuredModelId
-      ? models.find((model) => model.providerId === fallbackProviderId && model.id === configuredModelId)
-      : models.find((model) => model.providerId === fallbackProviderId);
-    if (!match) return undefined;
+    const hops: GenerateRequest[] = [];
+    const seen = new Set([`${request.providerId}:${request.modelId}`]);
 
-    const fallback: GenerateRequest = {
-      providerId: fallbackProviderId,
-      modelId: match.id,
-      messages: request.messages,
+    const add = (providerId: string | undefined, modelId?: string): void => {
+      const match = this.matchFallback(request, models, providerId, modelId);
+      if (!match) return;
+      const key = `${match.providerId}:${match.id}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      const hop: GenerateRequest = {
+        providerId: match.providerId,
+        modelId: match.id,
+        messages: request.messages,
+      };
+      if (request.userId) hop.userId = request.userId;
+      if (request.abortSignal) hop.abortSignal = request.abortSignal;
+      hops.push(hop);
     };
-    if (request.userId) fallback.userId = request.userId;
-    if (request.abortSignal) fallback.abortSignal = request.abortSignal;
-    return fallback;
+
+    if (this.options.fallbackProviderId !== undefined) {
+      add(this.options.fallbackProviderId, this.options.fallbackModelId);
+      return hops;
+    }
+
+    for (const step of FREE_FALLBACK_CHAIN) {
+      add(step.providerId, step.modelId);
+    }
+    add(env.AI_FALLBACK_PROVIDER_ID, this.fallbackModelId());
+    if (hops.length === 0) {
+      logger.warn(
+        { providerId: request.providerId, modelId: request.modelId },
+        "No configured fallback provider is available; a primary failure will surface to the user",
+      );
+    }
+    return hops;
+  }
+
+  private matchFallback(
+    request: GenerateRequest,
+    models: Array<{ id: string; providerId: string }>,
+    providerId: string | undefined,
+    modelId?: string,
+  ): { id: string; providerId: string } | undefined {
+    const targetProvider = providerId?.trim();
+    if (!targetProvider) return undefined;
+    // A configured fallback may still name a retired id (Groq decommissioned
+    // llama-3.3-70b-versatile). Those ids are filtered out of the registry, so
+    // without aliasing the hop silently collapses onto the primary and the
+    // fallback never runs.
+    const desiredModelId = modelId ? resolveRetiredModelId(targetProvider, modelId) : undefined;
+    const match = pickConfiguredModel(
+      models,
+      targetProvider,
+      preferredIdsForProvider(targetProvider),
+      desiredModelId,
+    );
+    if (!match) return undefined;
+    if (match.providerId === request.providerId && match.id === request.modelId) return undefined;
+    return match;
   }
 
   async getAdapter(providerId: string, userId?: string): Promise<AIProvider> {
     const resolved = requireConfigured(await resolveCredentials(providerId, userId));
+    if (userId) {
+      consumePlatformChatQuota(userId, resolved.source);
+    }
     return createProviderAdapter({
       id: resolved.providerId,
       name: resolved.name,
@@ -172,6 +256,13 @@ export class AIProviderManager {
     const models = await modelRegistry.listPublicModels(userId);
     return [...new Set(models.map((model) => model.providerId))];
   }
+}
+
+/** Map a provider's retired model ids onto their supported replacements. */
+function resolveRetiredModelId(providerId: string, modelId: string): string {
+  if (providerId === "groq") return resolveGroqModelId(modelId);
+  if (providerId === "deepseek") return resolveDeepSeekModelId(modelId);
+  return modelId;
 }
 
 export const aiProviderManager = new AIProviderManager();

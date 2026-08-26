@@ -1,48 +1,55 @@
 import type { ModelCapability, ProviderType } from "@aether/shared";
+import {
+  CLOUDFLARE_VISION_MODEL_ID,
+  DEFAULT_CEREBRAS_MODEL_ID,
+  DEFAULT_CLOUDFLARE_MODEL_ID,
+  DEFAULT_DEEPSEEK_MODEL_ID,
+  DEFAULT_GROQ_MODEL_ID,
+  GROQ_QUALITY_MODEL_ID,
+} from "@aether/shared";
 import type { ProviderModelDescriptor } from "./AIProvider.js";
 
 export interface BuiltInProviderDefinition {
   providerId: string;
   name: string;
   type: ProviderType;
-  envKey?: "GEMINI_API_KEY" | "OPENAI_API_KEY" | "ANTHROPIC_API_KEY" | "GROQ_API_KEY" | "OPENROUTER_API_KEY";
+  envKey?: string;
   defaultBaseUrl?: string;
   capabilities: ModelCapability[];
   models: ProviderModelDescriptor[];
 }
 
 const TEXT_STREAM: ModelCapability[] = ["text", "streaming"];
-const GEMINI_CAPS: ModelCapability[] = ["text", "vision", "files", "streaming", "tools"];
 
 export const BUILT_IN_PROVIDERS: BuiltInProviderDefinition[] = [
   {
-    providerId: "gemini",
-    name: "Google Gemini",
-    type: "gemini",
-    envKey: "GEMINI_API_KEY",
-    defaultBaseUrl: "https://generativelanguage.googleapis.com/v1beta",
-    capabilities: GEMINI_CAPS,
+    providerId: "groq",
+    name: "Groq",
+    type: "groq",
+    envKey: "GROQ_API_KEY",
+    defaultBaseUrl: "https://api.groq.com/openai/v1",
+    capabilities: TEXT_STREAM,
     models: [
       {
-        id: "gemini-2.5-flash",
-        name: "Gemini 2.5 Flash",
-        description: "Fast multimodal Gemini model",
-        capabilities: GEMINI_CAPS,
-        contextWindow: 1_000_000,
+        id: DEFAULT_GROQ_MODEL_ID,
+        name: "GPT OSS 20B",
+        description: "Fast Groq default (replaces Llama 3.1 8B Instant)",
+        capabilities: TEXT_STREAM,
+        contextWindow: 131_072,
       },
       {
-        id: "gemini-2.5-pro",
-        name: "Gemini 2.5 Pro",
-        description: "Higher-quality Gemini model",
-        capabilities: [...GEMINI_CAPS, "reasoning"],
-        contextWindow: 1_000_000,
+        id: GROQ_QUALITY_MODEL_ID,
+        name: "GPT OSS 120B",
+        description: "Higher-quality Groq model. Groq retired llama-3.3-70b-versatile.",
+        capabilities: TEXT_STREAM,
+        contextWindow: 131_072,
       },
       {
-        id: "gemini-2.0-flash",
-        name: "Gemini 2.0 Flash",
-        description: "Multimodal Gemini Flash",
-        capabilities: GEMINI_CAPS,
-        contextWindow: 1_000_000,
+        id: "qwen/qwen3.6-27b",
+        name: "Qwen 3.6 27B",
+        description: "Quality alternative on Groq",
+        capabilities: TEXT_STREAM,
+        contextWindow: 131_072,
       },
     ],
   },
@@ -85,22 +92,6 @@ export const BUILT_IN_PROVIDERS: BuiltInProviderDefinition[] = [
     ],
   },
   {
-    providerId: "groq",
-    name: "Groq",
-    type: "groq",
-    envKey: "GROQ_API_KEY",
-    defaultBaseUrl: "https://api.groq.com/openai/v1",
-    capabilities: TEXT_STREAM,
-    models: [
-      {
-        id: "llama-3.3-70b-versatile",
-        name: "Llama 3.3 70B",
-        capabilities: TEXT_STREAM,
-        contextWindow: 128_000,
-      },
-    ],
-  },
-  {
     providerId: "openrouter",
     name: "OpenRouter",
     type: "openrouter",
@@ -112,6 +103,61 @@ export const BUILT_IN_PROVIDERS: BuiltInProviderDefinition[] = [
         id: "openai/gpt-4o-mini",
         name: "GPT-4o mini (OpenRouter)",
         capabilities: ["text", "streaming", "tools"],
+        contextWindow: 128_000,
+      },
+    ],
+  },
+  {
+    providerId: "cerebras",
+    name: "Cerebras",
+    type: "openai-compatible",
+    envKey: "CEREBRAS_KEYS",
+    defaultBaseUrl: "https://api.cerebras.ai/v1",
+    capabilities: TEXT_STREAM,
+    models: [
+      {
+        id: DEFAULT_CEREBRAS_MODEL_ID,
+        name: "Llama 3.3 70B (Cerebras)",
+        capabilities: TEXT_STREAM,
+        contextWindow: 128_000,
+      },
+    ],
+  },
+  {
+    providerId: "deepseek",
+    name: "DeepSeek",
+    type: "openai-compatible",
+    envKey: "DEEPSEEK_KEY",
+    defaultBaseUrl: "https://api.deepseek.com",
+    capabilities: TEXT_STREAM,
+    models: [
+      {
+        id: DEFAULT_DEEPSEEK_MODEL_ID,
+        name: "DeepSeek Chat",
+        description: "Public DeepSeek chat model. deepseek-v4-flash aliases to this id.",
+        capabilities: TEXT_STREAM,
+        contextWindow: 128_000,
+      },
+    ],
+  },
+  {
+    providerId: "cloudflare",
+    name: "Cloudflare Workers AI",
+    type: "openai-compatible",
+    envKey: "CF_TOKEN",
+    capabilities: ["text", "vision", "streaming"],
+    models: [
+      {
+        id: DEFAULT_CLOUDFLARE_MODEL_ID,
+        name: "Llama 3.2 3B (Cloudflare)",
+        capabilities: TEXT_STREAM,
+        contextWindow: 128_000,
+      },
+      {
+        id: CLOUDFLARE_VISION_MODEL_ID,
+        name: "Llama 4 Scout (Cloudflare)",
+        description: "Used for image prompts when Cloudflare is configured.",
+        capabilities: ["text", "vision", "streaming"],
         contextWindow: 128_000,
       },
     ],

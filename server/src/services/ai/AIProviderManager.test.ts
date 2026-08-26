@@ -8,9 +8,9 @@ const resolveCredentials = vi.fn();
 const listPublicModels = vi.fn();
 
 const fakeAdapter: AIProvider = {
-  id: "gemini",
-  name: "Google Gemini",
-  type: "gemini",
+  id: "groq",
+  name: "Groq",
+  type: "groq",
   generate: (request) => fakeGenerate(request),
   getModels: async () => [],
   validateCredentials: async () => ({ status: "connected", message: "ok" }),
@@ -23,6 +23,7 @@ vi.mock("./createProviderAdapter.js", () => ({
 
 vi.mock("./credentials.js", () => ({
   resolveCredentials: (...args: unknown[]) => resolveCredentials(...args),
+  envKeyCount: () => 1,
   requireConfigured: (value: unknown) => {
     if (!value || !(value as { configured?: boolean; enabled?: boolean }).configured || !(value as { enabled?: boolean }).enabled) {
       throw new AppError("No AI provider configured.", { statusCode: 503, code: "PROVIDER_NOT_CONFIGURED" });
@@ -44,15 +45,8 @@ describe("AIProviderManager", () => {
     assertModelAvailable.mockReset();
     resolveCredentials.mockReset();
     listPublicModels.mockReset();
+    delete (fakeAdapter as { stream?: AIProvider["stream"] }).stream;
     listPublicModels.mockResolvedValue([
-      {
-        id: "gemini-2.5-flash",
-        providerId: "gemini",
-        name: "Gemini 2.5 Flash",
-        capabilities: ["text"],
-        enabled: true,
-        available: true,
-      },
       {
         id: "gpt-4o-mini",
         providerId: "openai",
@@ -61,29 +55,45 @@ describe("AIProviderManager", () => {
         enabled: true,
         available: true,
       },
+      {
+        id: "openai/gpt-oss-120b",
+        providerId: "groq",
+        name: "GPT OSS 120B",
+        capabilities: ["text", "streaming"],
+        enabled: true,
+        available: true,
+      },
+      {
+        id: "openai/gpt-oss-20b",
+        providerId: "groq",
+        name: "GPT OSS 20B",
+        capabilities: ["text", "streaming"],
+        enabled: true,
+        available: true,
+      },
     ]);
     resolveCredentials.mockResolvedValue({
-      providerId: "gemini",
-      name: "Google Gemini",
-      type: "gemini",
-      apiKey: "test-gemini-key-zzzz",
+      providerId: "groq",
+      name: "Groq",
+      type: "groq",
+      apiKey: "test-groq-key-zzzz",
       enabled: true,
       configured: true,
       source: "environment",
       capabilities: ["text"],
     });
     assertModelAvailable.mockResolvedValue({
-      id: "gemini-2.5-flash",
-      providerId: "gemini",
-      name: "Gemini 2.5 Flash",
+      id: "openai/gpt-oss-20b",
+      providerId: "groq",
+      name: "GPT OSS 20B",
       capabilities: ["text"],
       enabled: true,
       available: true,
     });
     fakeGenerate.mockResolvedValue({
       content: "ok",
-      model: "gemini-2.5-flash",
-      provider: "gemini",
+      model: "openai/gpt-oss-20b",
+      provider: "groq",
       finishReason: "stop",
     });
   });
@@ -92,8 +102,8 @@ describe("AIProviderManager", () => {
     const { AIProviderManager } = await import("./AIProviderManager.js");
     const manager = new AIProviderManager();
     const result = await manager.generate({
-      providerId: "gemini",
-      modelId: "gemini-2.5-flash",
+      providerId: "groq",
+      modelId: "openai/gpt-oss-20b",
       messages: [{ role: "user", content: "Hi" }],
     });
 
@@ -110,7 +120,7 @@ describe("AIProviderManager", () => {
 
     await expect(
       manager.generate({
-        providerId: "gemini",
+        providerId: "groq",
         modelId: "missing-model",
         messages: [{ role: "user", content: "Hi" }],
       }),
@@ -153,7 +163,7 @@ describe("AIProviderManager", () => {
       capabilities: ["text"],
     }));
     fakeGenerate
-      .mockRejectedValueOnce(new AppError("Gemini request failed", { statusCode: 502, code: "PROVIDER_ERROR" }))
+      .mockRejectedValueOnce(new AppError("Groq request failed", { statusCode: 502, code: "PROVIDER_ERROR" }))
       .mockResolvedValueOnce({
         content: "fallback-ok",
         model: "gpt-4o-mini",
@@ -164,8 +174,8 @@ describe("AIProviderManager", () => {
     const { AIProviderManager } = await import("./AIProviderManager.js");
     const manager = new AIProviderManager({ fallbackProviderId: "openai" });
     const result = await manager.generate({
-      providerId: "gemini",
-      modelId: "gemini-2.5-flash",
+      providerId: "groq",
+      modelId: "openai/gpt-oss-20b",
       messages: [{ role: "user", content: "Hi" }],
     });
 
@@ -176,18 +186,180 @@ describe("AIProviderManager", () => {
 
   it("does not switch providers when no fallback is configured", async () => {
     fakeGenerate.mockRejectedValue(
-      new AppError("Gemini request failed", { statusCode: 502, code: "PROVIDER_ERROR" }),
+      new AppError("Groq request failed", { statusCode: 502, code: "PROVIDER_ERROR" }),
     );
     const { AIProviderManager } = await import("./AIProviderManager.js");
-    const manager = new AIProviderManager();
+    const manager = new AIProviderManager({ fallbackProviderId: "" });
 
     await expect(
       manager.generate({
-        providerId: "gemini",
-        modelId: "gemini-2.5-flash",
+        providerId: "groq",
+        modelId: "openai/gpt-oss-20b",
         messages: [{ role: "user", content: "Hi" }],
       }),
     ).rejects.toMatchObject({ code: "PROVIDER_ERROR" });
     expect(fakeGenerate).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes OpenAI failures to Groq openai/gpt-oss-20b when that hop is configured", async () => {
+    resolveCredentials.mockImplementation(async (providerId: string) => ({
+      providerId,
+      name: providerId,
+      type: providerId === "groq" ? "groq" : "openai",
+      apiKey: "test-fallback-key-zzzz",
+      enabled: true,
+      configured: true,
+      source: "environment",
+      capabilities: ["text"],
+    }));
+    fakeGenerate
+      .mockRejectedValueOnce(
+        new AppError("OpenAI rate limited", { statusCode: 429, code: "PROVIDER_RATE_LIMITED" }),
+      )
+      .mockResolvedValueOnce({
+        content: "hello from groq",
+        model: "openai/gpt-oss-20b",
+        provider: "groq",
+        finishReason: "stop",
+      });
+
+    const { AIProviderManager } = await import("./AIProviderManager.js");
+    const manager = new AIProviderManager({ fallbackProviderId: "groq", fallbackModelId: "openai/gpt-oss-20b" });
+    const result = await manager.generate({
+      providerId: "openai",
+      modelId: "gpt-4o-mini",
+      messages: [{ role: "user", content: "Hi" }],
+    });
+
+    expect(result.content).toBe("hello from groq");
+    expect(fakeGenerate.mock.calls[1]?.[0]).toMatchObject({
+      providerId: "groq",
+      modelId: "openai/gpt-oss-20b",
+    });
+  });
+
+  it("can hop from Groq 20B to Groq 120B on the first 429", async () => {
+    resolveCredentials.mockImplementation(async (providerId: string) => ({
+      providerId,
+      name: providerId,
+      type: "groq",
+      apiKey: "test-fallback-key-zzzz",
+      enabled: true,
+      configured: true,
+      source: "environment",
+      capabilities: ["text"],
+    }));
+    fakeGenerate
+      .mockRejectedValueOnce(
+        new AppError("Groq rate limited", { statusCode: 429, code: "PROVIDER_RATE_LIMITED" }),
+      )
+      .mockResolvedValueOnce({
+        content: "hello from groq 70b",
+        model: "openai/gpt-oss-120b",
+        provider: "groq",
+        finishReason: "stop",
+      });
+
+    const { AIProviderManager } = await import("./AIProviderManager.js");
+    const manager = new AIProviderManager({
+      fallbackProviderId: "groq",
+      fallbackModelId: "openai/gpt-oss-120b",
+    });
+    const result = await manager.generate({
+      providerId: "groq",
+      modelId: "openai/gpt-oss-20b",
+      messages: [{ role: "user", content: "Hi" }],
+    });
+
+    expect(result.content).toBe("hello from groq 70b");
+    expect(fakeGenerate.mock.calls[1]?.[0]).toMatchObject({
+      providerId: "groq",
+      modelId: "openai/gpt-oss-120b",
+    });
+  });
+
+  it("walks the free fallback chain when no explicit hop is set", async () => {
+    listPublicModels.mockResolvedValue([
+      {
+        id: "llama-3.3-70b",
+        providerId: "cerebras",
+        name: "Llama 3.3 70B",
+        capabilities: ["text", "streaming"],
+        enabled: true,
+        available: true,
+      },
+      {
+        id: "openai/gpt-oss-20b",
+        providerId: "groq",
+        name: "GPT OSS 20B",
+        capabilities: ["text", "streaming"],
+        enabled: true,
+        available: true,
+      },
+    ]);
+    resolveCredentials.mockImplementation(async (providerId: string) => ({
+      providerId,
+      name: providerId,
+      type: "openai-compatible",
+      apiKey: "test-free-key-zzzz",
+      enabled: true,
+      configured: true,
+      source: "environment",
+      capabilities: ["text"],
+    }));
+    fakeGenerate
+      .mockRejectedValueOnce(new AppError("Groq request failed", { statusCode: 502, code: "PROVIDER_ERROR" }))
+      .mockResolvedValueOnce({
+        content: "from-cerebras",
+        model: "llama-3.3-70b",
+        provider: "cerebras",
+        finishReason: "stop",
+      });
+
+    const { AIProviderManager } = await import("./AIProviderManager.js");
+    const manager = new AIProviderManager();
+    const result = await manager.generate({
+      providerId: "groq",
+      modelId: "openai/gpt-oss-20b",
+      messages: [{ role: "user", content: "Hi" }],
+    });
+
+    expect(result.content).toBe("from-cerebras");
+    expect(fakeGenerate.mock.calls[1]?.[0]).toMatchObject({
+      providerId: "cerebras",
+      modelId: "llama-3.3-70b",
+    });
+  });
+
+  it("aliases a retired fallback model id onto its supported replacement", async () => {
+    // AI_FALLBACK_MODEL_ID may still name a decommissioned Groq model. The
+    // registry filters those out, so without aliasing the hop resolves to
+    // nothing and the configured fallback silently never runs.
+    fakeGenerate
+      .mockRejectedValueOnce(new AppError("Primary failed", { statusCode: 502, code: "PROVIDER_ERROR" }))
+      .mockResolvedValueOnce({
+        content: "from-fallback",
+        model: "openai/gpt-oss-120b",
+        provider: "groq",
+        finishReason: "stop",
+      });
+
+    const { AIProviderManager } = await import("./AIProviderManager.js");
+    const manager = new AIProviderManager({
+      fallbackProviderId: "groq",
+      fallbackModelId: "llama-3.3-70b-versatile",
+    });
+
+    const result = await manager.generate({
+      providerId: "openai",
+      modelId: "gpt-4o-mini",
+      messages: [{ role: "user", content: "Hi" }],
+    });
+
+    expect(result.content).toBe("from-fallback");
+    expect(fakeGenerate.mock.calls[1]?.[0]).toMatchObject({
+      providerId: "groq",
+      modelId: "openai/gpt-oss-120b",
+    });
   });
 });

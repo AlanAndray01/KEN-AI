@@ -15,10 +15,15 @@ describe("model indexes", () => {
   it("defines the required User, Conversation, Message, CustomGPT, and Memory indexes", () => {
     expect(indexKeyList(User)).toEqual(expect.arrayContaining([{ email: 1 }]));
     expect(indexKeyList(Conversation)).toEqual(
-      expect.arrayContaining([{ userId: 1, updatedAt: -1 }, { updatedAt: -1 }]),
+      expect.arrayContaining([{ userId: 1, updatedAt: -1 }, { updatedAt: -1 }, { expiresAt: 1 }]),
     );
     expect(indexKeyList(Message)).toEqual(
-      expect.arrayContaining([{ conversationId: 1, createdAt: 1 }, { createdAt: -1 }]),
+      expect.arrayContaining([
+        { conversationId: 1, createdAt: 1 },
+        { createdAt: -1 },
+        { userId: 1, conversationId: 1 },
+        { expiresAt: 1 },
+      ]),
     );
     expect(indexKeyList(CustomGPT)).toEqual(expect.arrayContaining([{ creatorId: 1, updatedAt: -1 }]));
     expect(indexKeyList(Memory)).toEqual(expect.arrayContaining([{ userId: 1, createdAt: -1 }]));

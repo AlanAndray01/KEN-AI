@@ -27,7 +27,7 @@ function toAppError(err: unknown): AppError {
     return err;
   }
   if (err instanceof ZodError) {
-    return new AppError("Invalid request", {
+    return new AppError(err.issues[0]?.message ?? "Invalid request", {
       statusCode: 400,
       code: "VALIDATION_ERROR",
       details: validationDetails(err),
@@ -76,6 +76,7 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
       requestId?: string;
       details?: unknown;
     };
+    [key: string]: unknown;
   } = {
     error: {
       code: error.code,
@@ -87,12 +88,25 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
     payload.error.requestId = req.requestId;
   }
 
-  if (!isProduction && error.details !== undefined) {
+  if (error.details !== undefined && (!isProduction || error.code === "VALIDATION_ERROR")) {
     try {
       payload.error.details = JSON.parse(redactSensitive(JSON.stringify(error.details))) as unknown;
     } catch {
       payload.error.details = error.details;
     }
+  }
+
+  if (error.extra) {
+    for (const [key, value] of Object.entries(error.extra)) {
+      if (key !== "error") {
+        payload[key] = value;
+      }
+    }
+  }
+
+  if (res.headersSent) {
+    if (!res.writableEnded) res.end();
+    return;
   }
 
   res.status(error.statusCode).json(payload);

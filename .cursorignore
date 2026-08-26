@@ -1,0 +1,18 @@
+# Ignore dependency folders
+node_modules/
+env/
+venv/
+.venv/
+
+# Ignore build outputs and binaries
+dist/
+build/
+out/
+.next/
+.nuxt/
+
+# Ignore large media or data logs
+*.log
+*.mp4
+*.zip
+*.json

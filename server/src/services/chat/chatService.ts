@@ -1,15 +1,19 @@
 import { randomUUID } from "node:crypto";
 import mongoose from "mongoose";
 import type { ChatToolId, PublicConversation, PublicMessage } from "@aether/shared";
+import { DEFAULT_GROQ_MODEL_ID, resolveDeepSeekModelId, resolveGroqModelId } from "@aether/shared";
+import { logger } from "../../config/logger.js";
 import { AppError } from "../../utils/AppError.js";
-import { isAbortError } from "../../utils/abort.js";
+import { isAbortError, isTimeoutAbort } from "../../utils/abort.js";
+import { toSafeError } from "../../utils/redact.js";
 import type { ChatMessage, StreamEvent } from "../ai/AIProvider.js";
 import { aiProviderManager } from "../ai/AIProviderManager.js";
 import { modelRegistry } from "../ai/ModelRegistry.js";
 import { Conversation } from "../../models/Conversation.js";
 import { Message } from "../../models/Message.js";
-import { contextManager } from "./ContextManager.js";
-import { findOwnedConversation, titleFromContent } from "./conversationService.js";
+import { contextManager, estimateContextTokens, MAX_HISTORY_MESSAGES } from "./ContextManager.js";
+import { findOwnedConversation, titleFromContent, capStoredTurns, conversationExpiry } from "./conversationService.js";
+import { buildResponsePolicyMessage } from "./responsePolicy.js";
 import { generationRegistry } from "./generationRegistry.js";
 import { toPublicConversation, toPublicMessage } from "./toPublic.js";
 import { recordUsage } from "./usageService.js";
@@ -63,9 +67,9 @@ export async function prepareSend(input: {
     ? await findOwnedConversation(input.userId, input.conversationId)
     : null;
 
-  const providerId = input.providerId ?? conversation?.providerId;
-  const modelId = input.modelId ?? conversation?.modelId;
-  if (!providerId || !modelId) {
+  const requestedProviderId = input.providerId ?? conversation?.providerId;
+  const requestedModelId = input.modelId ?? conversation?.modelId;
+  if (!requestedProviderId || !requestedModelId) {
     throw new AppError("A model is required", { statusCode: 400, code: "VALIDATION_ERROR" });
   }
 
@@ -74,7 +78,11 @@ export async function prepareSend(input: {
     await getAccessibleGpt(input.userId, customGptId);
   }
 
-  const model = await modelRegistry.assertModelAvailable(providerId, modelId, input.userId);
+  const { providerId, modelId, model } = await resolveExecutionModel(
+    input.userId,
+    requestedProviderId,
+    requestedModelId,
+  );
   const toolOutcome = await aiProviderManager.applyEnabledTools({
     content: input.content,
     userId: input.userId,
@@ -88,6 +96,7 @@ export async function prepareSend(input: {
   }
 
   const titleSource = input.content.trim() || files[0]?.originalName || "New chat";
+  const expiresAt = conversationExpiry(false);
   const owned =
     conversation ??
     (await Conversation.create({
@@ -98,6 +107,7 @@ export async function prepareSend(input: {
       archived: false,
       pinned: false,
       messageCount: 0,
+      ...(expiresAt ? { expiresAt } : {}),
       ...(customGptId ? { customGptId } : {}),
     }));
 
@@ -108,6 +118,9 @@ export async function prepareSend(input: {
   if (customGptId) {
     owned.customGptId = new mongoose.Types.ObjectId(customGptId);
   }
+  if (!owned.pinned) {
+    owned.set("expiresAt", conversationExpiry(false));
+  }
 
   const generationId = randomUUID();
   const userDoc = await Message.create({
@@ -116,6 +129,7 @@ export async function prepareSend(input: {
     role: "user",
     content: input.content,
     status: "complete",
+    ...(owned.expiresAt ? { expiresAt: owned.expiresAt } : {}),
   });
   const publicAttachments =
     files.length > 0
@@ -141,6 +155,7 @@ export async function prepareSend(input: {
     status: "streaming",
     generationId,
     parentMessageId: userDoc._id,
+    ...(owned.expiresAt ? { expiresAt: owned.expiresAt } : {}),
   });
 
   owned.messageCount = (owned.messageCount ?? 0) + 2;
@@ -150,8 +165,9 @@ export async function prepareSend(input: {
     owned.title = titleFromContent(titleSource);
   }
   await owned.save();
+  await capStoredTurns(String(owned._id), input.userId);
 
-  const controller = generationRegistry.start(input.userId, String(owned._id), generationId);
+  const { signal } = generationRegistry.start(input.userId, String(owned._id), generationId);
   return {
     userId: input.userId,
     conversationId: String(owned._id),
@@ -161,7 +177,7 @@ export async function prepareSend(input: {
     userMessage: toPublicMessage(userDoc, publicAttachments),
     assistantMessage: toPublicMessage(assistantDoc),
     conversation: toPublicConversation(owned),
-    abortSignal: controller.signal,
+    abortSignal: signal,
     ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
     ...(toolOutcome.systemMessages.length > 0 ? { toolSystemMessages: toolOutcome.systemMessages } : {}),
     ...(customGptId ? { customGptId } : {}),
@@ -208,37 +224,41 @@ export async function prepareRegenerate(input: {
     await target.save();
   }
 
+  const { providerId, modelId, model } = await resolveExecutionModel(
+    input.userId,
+    conversation.providerId,
+    conversation.modelId,
+  );
+  if (providerId !== conversation.providerId || modelId !== conversation.modelId) {
+    conversation.providerId = providerId;
+    conversation.modelId = modelId;
+  }
+
   const generationId = randomUUID();
   const assistantDoc = await Message.create({
     conversationId: conversation._id,
     userId: input.userId,
     role: "assistant",
     content: "",
-    model: conversation.modelId,
-    provider: conversation.providerId,
+    model: modelId,
+    provider: providerId,
     status: "streaming",
     generationId,
     parentMessageId: userMessage._id,
   });
   conversation.messageCount = (conversation.messageCount ?? 0) + 1;
   await conversation.save();
-
-  const model = await modelRegistry.assertModelAvailable(
-    conversation.providerId,
-    conversation.modelId,
-    input.userId,
-  );
-  const controller = generationRegistry.start(input.userId, String(conversation._id), generationId);
+  const { signal } = generationRegistry.start(input.userId, String(conversation._id), generationId);
   return {
     userId: input.userId,
     conversationId: String(conversation._id),
     generationId,
-    providerId: conversation.providerId,
-    modelId: conversation.modelId,
+    providerId,
+    modelId,
     userMessage: toPublicMessage(userMessage),
     assistantMessage: toPublicMessage(assistantDoc),
     conversation: toPublicConversation(conversation),
-    abortSignal: controller.signal,
+    abortSignal: signal,
     ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
     ...(conversation.customGptId ? { customGptId: String(conversation.customGptId) } : {}),
   };
@@ -248,6 +268,7 @@ export async function runGeneration(
   prepared: PreparedGeneration,
   emit: (event: ChatStreamEvent) => void,
   route: string,
+  preloaded?: { history: ChatMessage[]; persona: ChatMessage[] },
 ): Promise<void> {
   const started = Date.now();
   emit({
@@ -264,16 +285,39 @@ export async function runGeneration(
   let finishStatus: "complete" | "aborted" | "error" = "complete";
   let errorCode: string | undefined;
   let errorMessage: string | undefined;
+  let executedProviderId = prepared.providerId;
+  let executedModelId = prepared.modelId;
 
   try {
-    const history = await loadHistory(prepared.userId, prepared.conversationId);
-    const persona = await buildPersonaMessages(prepared.userId, prepared.customGptId);
+    const [history, persona] = preloaded
+      ? [preloaded.history, preloaded.persona]
+      : await Promise.all([
+          loadHistory(prepared.userId, prepared.conversationId),
+          buildPersonaMessages(prepared.userId, prepared.customGptId),
+        ]);
     const messages = contextManager.build({
-      messages: [...persona, ...(prepared.toolSystemMessages ?? []), ...history],
+      messages: [
+        buildResponsePolicyMessage(prepared.userMessage.content, {
+          skipTutor: Boolean(prepared.customGptId),
+        }),
+        ...persona,
+        ...(prepared.toolSystemMessages ?? []),
+        ...withCurrentUser(history, prepared.userMessage),
+      ],
       modelId: prepared.modelId,
       providerId: prepared.providerId,
       ...(prepared.contextWindow ? { contextWindow: prepared.contextWindow } : {}),
     });
+    logger.info(
+      {
+        providerId: prepared.providerId,
+        modelId: prepared.modelId,
+        estimatedInputTokens: estimateContextTokens(messages),
+        historyMessages: messages.filter((message) => message.role !== "system").length,
+        systemMessages: messages.filter((message) => message.role === "system").length,
+      },
+      "chat generation context",
+    );
 
     let chunks = 0;
     for await (const event of aiProviderManager.stream({
@@ -293,12 +337,14 @@ export async function runGeneration(
       });
       chunks += 1;
       if (chunks % 12 === 0 && partial) {
-        await Message.updateOne({ _id: prepared.assistantMessage.id }, { $set: { content: partial } });
+        void Message.updateOne({ _id: prepared.assistantMessage.id }, { $set: { content: partial } });
       }
       if (event.type === "complete") {
         partial = event.response.content || partial;
         inputTokens = event.response.usage?.inputTokens;
         outputTokens = event.response.usage?.outputTokens;
+        if (event.response.provider) executedProviderId = event.response.provider;
+        if (event.response.model) executedModelId = event.response.model;
         if (event.response.metadata && event.response.metadata["aborted"] === true) {
           finishStatus = "aborted";
         }
@@ -311,7 +357,13 @@ export async function runGeneration(
     }
 
     if (prepared.abortSignal.aborted) {
-      finishStatus = "aborted";
+      if (isTimeoutAbort(prepared.abortSignal)) {
+        finishStatus = "error";
+        errorCode = "GENERATION_TIMEOUT";
+        errorMessage = "The model took too long to respond.";
+      } else {
+        finishStatus = "aborted";
+      }
     }
   } catch (error) {
     if (isAbortError(error) || prepared.abortSignal.aborted) {
@@ -320,15 +372,30 @@ export async function runGeneration(
       finishStatus = "error";
       errorCode = error instanceof AppError ? error.code : "PROVIDER_ERROR";
       errorMessage = error instanceof AppError ? error.message : "Provider request failed";
+      logger.warn(
+        {
+          providerId: prepared.providerId,
+          modelId: prepared.modelId,
+          errorCode,
+          err: toSafeError(error),
+        },
+        "chat generation failed",
+      );
     }
+  }
+
+  if (prepared.abortSignal.aborted && isTimeoutAbort(prepared.abortSignal)) {
+    finishStatus = "error";
+    errorCode = "GENERATION_TIMEOUT";
+    errorMessage = "The model took too long to respond.";
   }
 
   const assistant = await Message.findById(prepared.assistantMessage.id);
   if (assistant) {
     assistant.content = partial;
     assistant.status = finishStatus;
-    assistant.set("model", prepared.modelId);
-    assistant.set("provider", prepared.providerId);
+    assistant.set("model", executedModelId);
+    assistant.set("provider", executedProviderId);
     if (finishStatus === "error") {
       assistant.set("metadata", {
         ...(asRecord(assistant.metadata) ?? {}),
@@ -348,8 +415,8 @@ export async function runGeneration(
 
   await recordUsage({
     userId: prepared.userId,
-    providerId: prepared.providerId,
-    modelId: prepared.modelId,
+    providerId: executedProviderId,
+    modelId: executedModelId,
     conversationId: prepared.conversationId,
     ...(inputTokens !== undefined ? { inputTokens } : {}),
     ...(outputTokens !== undefined ? { outputTokens } : {}),
@@ -384,35 +451,47 @@ export function abortGeneration(userId: string, conversationId: string, generati
   return generationRegistry.abortConversation(userId, conversationId);
 }
 
-async function loadHistory(userId: string, conversationId: string): Promise<ChatMessage[]> {
-  const docs = await Message.find({
+export async function loadHistory(userId: string, conversationId: string): Promise<ChatMessage[]> {
+  const newestFirst = await Message.find({
     conversationId,
     userId,
     role: { $in: ["user", "assistant", "system"] },
     "metadata.superseded": { $ne: true },
     status: { $in: ["complete", "aborted", "streaming"] },
-  }).sort({ createdAt: 1 });
+  })
+    .sort({ createdAt: -1 })
+    .limit(MAX_HISTORY_MESSAGES);
+  const docs = [...newestFirst].reverse();
 
   const attachmentMap = await publicAttachmentsForMessages(docs.map((doc) => String(doc._id)));
-  const fileIds = [...attachmentMap.values()].flat().map((item) => item.fileId);
-  const files = fileIds.length > 0 ? await loadOwnedFiles(userId, fileIds) : [];
+  const lastUserIndex = docs.reduce((found, doc, index) => (doc.role === "user" ? index : found), -1);
+  const currentFileIds =
+    lastUserIndex >= 0
+      ? (attachmentMap.get(String(docs[lastUserIndex]?._id)) ?? []).map((item) => item.fileId)
+      : [];
+  const files = currentFileIds.length > 0 ? await loadOwnedFiles(userId, currentFileIds) : [];
   const fileMap = new Map(files.map((file) => [String(file._id), file]));
 
   const result: ChatMessage[] = [];
-  for (const doc of docs) {
+  for (const [index, doc] of docs.entries()) {
     if (!doc.content && doc.role !== "user") continue;
     const attachments = attachmentMap.get(String(doc._id)) ?? [];
-    const messageFiles = attachments
-      .map((item) => fileMap.get(item.fileId))
-      .filter((file): file is (typeof files)[number] => Boolean(file));
     let content = doc.content ?? "";
     let parts: ChatMessage["parts"];
-    if (messageFiles.length > 0) {
-      const materialized = await materializeFilesForModel(messageFiles);
-      content = [content, materialized.contentSuffix].filter(Boolean).join("\n\n");
-      if (materialized.parts.length > 0) {
-        parts = materialized.parts;
+    if (index === lastUserIndex && attachments.length > 0) {
+      const messageFiles = attachments
+        .map((item) => fileMap.get(item.fileId))
+        .filter((file): file is (typeof files)[number] => Boolean(file));
+      if (messageFiles.length > 0) {
+        const materialized = await materializeFilesForModel(messageFiles);
+        content = [content, materialized.contentSuffix].filter(Boolean).join("\n\n");
+        if (materialized.parts.length > 0) {
+          parts = materialized.parts;
+        }
       }
+    } else if (attachments.length > 0) {
+      const names = attachments.map((item) => item.originalName).join(", ");
+      content = [content, `(Previously attached: ${names})`].filter(Boolean).join("\n");
     }
     result.push({
       role: doc.role as ChatMessage["role"],
@@ -421,6 +500,37 @@ async function loadHistory(userId: string, conversationId: string): Promise<Chat
     });
   }
   return result;
+}
+
+async function resolveExecutionModel(
+  userId: string,
+  providerId: string,
+  modelId: string,
+): Promise<{ providerId: string; modelId: string; model: Awaited<ReturnType<typeof modelRegistry.assertModelAvailable>> }> {
+  const executionModelId =
+    providerId === "groq"
+      ? resolveGroqModelId(modelId)
+      : providerId === "deepseek"
+        ? resolveDeepSeekModelId(modelId)
+        : modelId;
+  try {
+    const model = await modelRegistry.assertModelAvailable(providerId, executionModelId, userId);
+    return { providerId, modelId: executionModelId, model };
+  } catch (error) {
+    if (!(error instanceof AppError) || error.code !== "MODEL_UNAVAILABLE") throw error;
+    const models = await modelRegistry.listPublicModels(userId);
+    const groq =
+      models.find((model) => model.providerId === "groq" && model.id === DEFAULT_GROQ_MODEL_ID) ??
+      models.find((model) => model.providerId === "groq");
+    if (!groq) throw error;
+    return { providerId: groq.providerId, modelId: groq.id, model: groq };
+  }
+}
+
+function withCurrentUser(history: ChatMessage[], userMessage: PublicMessage): ChatMessage[] {
+  const last = history.at(-1);
+  if (last?.role === "user" && last.content === userMessage.content) return history;
+  return [...history, { role: "user", content: userMessage.content }];
 }
 
 function applyStreamEvent(event: StreamEvent, onChunk: (text: string) => void): void {

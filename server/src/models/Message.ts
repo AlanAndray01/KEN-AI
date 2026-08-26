@@ -26,14 +26,17 @@ const messageSchema = new mongoose.Schema(
       comment: { type: String, maxlength: 2000 },
     },
     metadata: { type: mongoose.Schema.Types.Mixed },
+    expiresAt: { type: Date },
   },
   { timestamps: true },
 );
 
 messageSchema.index({ conversationId: 1, createdAt: 1 });
+messageSchema.index({ userId: 1, conversationId: 1 });
 messageSchema.index({ createdAt: -1 });
 messageSchema.index({ generationId: 1 });
 messageSchema.index({ content: "text" });
+messageSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 applyJsonTransform(messageSchema);
 

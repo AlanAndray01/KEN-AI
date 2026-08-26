@@ -24,7 +24,12 @@ vi.mock("@/services/api", () => ({
     me: {
       credentials: {
         list: vi.fn().mockResolvedValue({ credentials: [] }),
+        test: vi.fn(),
+        remove: vi.fn(),
       },
+    },
+    settings: {
+      saveKey: vi.fn(),
     },
   },
 }));
@@ -41,6 +46,8 @@ describe("SettingsModelsPage", () => {
     );
 
     expect(await screen.findByText("Gemini 2.5 Flash")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "AI models" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "API Keys & Models" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Test Connection" })).toBeInTheDocument();
+    expect(screen.getByText(/Google AI Studio \/ Gemini is not in this catalog/)).toBeInTheDocument();
   });
 });

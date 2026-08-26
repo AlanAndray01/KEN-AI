@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hashPassword, verifyPassword } from "./crypto.js";
+import { hashPassword, generateNumericCode, hashesMatch, verifyPassword } from "./crypto.js";
 import { signAccessToken, verifyAccessToken } from "./tokens.js";
 
 describe("auth crypto", () => {
@@ -8,6 +8,14 @@ describe("auth crypto", () => {
     expect(hash).not.toContain("a-very-long-password");
     expect(await verifyPassword(hash, "a-very-long-password")).toBe(true);
     expect(await verifyPassword(hash, "wrong-password")).toBe(false);
+  });
+
+  it("generates a 6-digit code and compares hashes in constant time", () => {
+    const code = generateNumericCode(6);
+    expect(code).toMatch(/^\d{6}$/);
+    expect(hashesMatch("abc", "abc")).toBe(true);
+    expect(hashesMatch("abc", "abd")).toBe(false);
+    expect(hashesMatch("ab", "abc")).toBe(false);
   });
 });
 

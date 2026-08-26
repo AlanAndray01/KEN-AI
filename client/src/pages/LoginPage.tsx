@@ -1,12 +1,17 @@
 import { useState, type FormEvent } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { CLIENT_ROUTES } from "@aether/shared";
+import { AuthField } from "@/components/AuthField";
+import { AuthModeNav } from "@/components/AuthModeNav";
+import { GoogleMark } from "@/components/GoogleMark";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError, api } from "@/services/api";
+import { emailFieldTone, filledFieldTone } from "@/utils/authFieldTone";
 
 function googleErrorMessage(code: string | null): string {
   if (code === "google_cancelled") return "Google sign-in was cancelled.";
   if (code === "google_invalid") return "Google sign-in failed. Try again.";
+  if (code === "google_state") return "Google sign-in expired or was tampered with. Start again.";
   if (code === "google_not_configured") return "Google sign-in is not configured on the server.";
   return "";
 }
@@ -25,7 +30,13 @@ export function LoginPage() {
     setError("");
     setPending(true);
     try {
-      await login(email, password);
+      const result = await login(email, password);
+      if (result?.requiresVerification) {
+        void navigate(`${CLIENT_ROUTES.verifyEmail}?email=${encodeURIComponent(result.email)}`, {
+          state: { emailSent: result.emailSent },
+        });
+        return;
+      }
       void navigate(CLIENT_ROUTES.chat);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to sign in");
@@ -36,61 +47,57 @@ export function LoginPage() {
 
   return (
     <div className="space-y-6">
-      <div className="space-y-1">
-        <h1 className="text-2xl font-semibold">Sign in</h1>
-        <p className="text-sm text-fg-muted">Use your email and password, or continue with Google.</p>
+      <AuthModeNav />
+      <div className="space-y-1 text-center">
+        <h1 className="text-2xl font-semibold tracking-tight">Welcome back</h1>
+        <p className="text-sm text-fg-muted">
+          Log in or sign up to get smarter responses, upload files and images, and more.
+        </p>
       </div>
       {error ? (
         <p className="text-sm text-danger" role="alert">
           {error}
         </p>
       ) : null}
+      <a
+        href={api.auth.googleStartUrl}
+        className="flex w-full items-center justify-center gap-3 rounded-full border border-border px-4 py-2.5 text-sm font-medium transition-colors hover:bg-surface-muted"
+      >
+        <GoogleMark />
+        Continue with Google
+      </a>
+      <div className="flex items-center gap-3 text-[11px] tracking-wide text-fg-muted uppercase">
+        <span className="h-px flex-1 bg-border" />
+        or
+        <span className="h-px flex-1 bg-border" />
+      </div>
       <form className="space-y-3" onSubmit={onSubmit} aria-label="Sign in">
-        <label className="block text-sm">
-          Email
-          <input
-            type="email"
-            autoComplete="email"
-            required
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-border bg-canvas px-3 py-2"
-          />
-        </label>
-        <label className="block text-sm">
-          Password
-          <input
-            type="password"
-            autoComplete="current-password"
-            required
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-border bg-canvas px-3 py-2"
-          />
-        </label>
+        <AuthField
+          label="Email address"
+          type="email"
+          autoComplete="email"
+          required
+          value={email}
+          tone={emailFieldTone(email)}
+          onChange={(event) => setEmail(event.target.value)}
+        />
+        <AuthField
+          label="Password"
+          type="password"
+          autoComplete="current-password"
+          required
+          value={password}
+          tone={filledFieldTone(password)}
+          onChange={(event) => setPassword(event.target.value)}
+        />
         <button
           type="submit"
           disabled={pending}
-          className="w-full rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-fg disabled:opacity-60"
+          className="w-full rounded-full bg-fg px-4 py-2.5 text-sm font-medium text-canvas disabled:opacity-60"
         >
-          {pending ? "Signing in…" : "Sign in"}
+          {pending ? "Signing in…" : "Continue"}
         </button>
       </form>
-      <a
-        href={api.auth.googleStartUrl}
-        className="block w-full rounded-lg border border-border px-4 py-2 text-center text-sm"
-      >
-        Continue with Google
-      </a>
-      <p className="text-sm text-fg-muted">
-        <Link to={CLIENT_ROUTES.forgotPassword} className="text-accent underline-offset-4 hover:underline">
-          Forgot password
-        </Link>
-        {" · "}
-        <Link to={CLIENT_ROUTES.register} className="text-accent underline-offset-4 hover:underline">
-          Create account
-        </Link>
-      </p>
     </div>
   );
 }

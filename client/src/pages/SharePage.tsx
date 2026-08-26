@@ -29,7 +29,7 @@ export function SharePage() {
         <h1 className="text-3xl font-semibold tracking-tight">Share unavailable</h1>
         <p className="text-fg-muted">{message}</p>
         <Link to={CLIENT_ROUTES.home} className="text-sm text-accent underline-offset-4 hover:underline">
-          Back to Aether
+          Back to Ken
         </Link>
       </main>
     );
@@ -56,7 +56,7 @@ export function SharePage() {
                 </div>
               ) : (
                 <div className="w-full">
-                  <div className="mb-1 text-xs font-medium tracking-wide text-fg-muted uppercase">Aether</div>
+                  <div className="mb-1 text-xs font-medium tracking-wide text-fg-muted uppercase">Ken</div>
                   <MarkdownContent>{message.content}</MarkdownContent>
                 </div>
               )}

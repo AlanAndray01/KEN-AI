@@ -7,13 +7,15 @@ import {
   sendMessageSchema,
 } from "@aether/shared";
 import { AppError } from "../utils/AppError.js";
-import { writeSseEvent, writeSseHeaders } from "../utils/sse.js";
+import { writeSseDone, writeSseEvent, writeSseHeaders } from "../utils/sse.js";
 import {
   abortGeneration,
+  loadHistory,
   prepareRegenerate,
   prepareSend,
   runGeneration,
 } from "../services/chat/chatService.js";
+import { buildPersonaMessages } from "../services/memory/persona.js";
 import {
   createConversation,
   deleteConversation,
@@ -76,43 +78,72 @@ export async function listMessagesHandler(req: Request, res: Response): Promise<
 export async function sendConversationMessageHandler(req: Request, res: Response): Promise<void> {
   const body = sendMessageSchema.parse(req.body);
   const userId = requireUserId(req);
-  const prepared = await prepareSend({
-    userId,
-    content: body.content,
-    ...(req.params.id ? { conversationId: req.params.id } : {}),
-    ...(body.providerId ? { providerId: body.providerId } : {}),
-    ...(body.modelId ? { modelId: body.modelId } : {}),
-    ...(body.attachmentIds ? { attachmentIds: body.attachmentIds } : {}),
-    ...(body.enabledTools ? { enabledTools: body.enabledTools } : {}),
-    ...(body.customGptId ? { customGptId: body.customGptId } : {}),
-  });
-  await streamPrepared(req, res, prepared, "POST /conversations/:id/messages");
+  await streamFromPrepare(
+    req,
+    res,
+    () =>
+      prepareSend({
+        userId,
+        content: body.content,
+        ...(req.params.id ? { conversationId: req.params.id } : {}),
+        ...(body.providerId ? { providerId: body.providerId } : {}),
+        ...(body.modelId ? { modelId: body.modelId } : {}),
+        ...(body.attachmentIds ? { attachmentIds: body.attachmentIds } : {}),
+        ...(body.enabledTools ? { enabledTools: body.enabledTools } : {}),
+        ...(body.customGptId ? { customGptId: body.customGptId } : {}),
+      }),
+    "POST /conversations/:id/messages",
+    {
+      userId,
+      ...(req.params.id ? { conversationId: req.params.id } : {}),
+      ...(body.customGptId ? { customGptId: body.customGptId } : {}),
+    },
+  );
 }
 
 export async function sendChatHandler(req: Request, res: Response): Promise<void> {
   const body = sendMessageSchema.parse(req.body);
   const userId = requireUserId(req);
-  const prepared = await prepareSend({
-    userId,
-    content: body.content,
-    ...(body.conversationId ? { conversationId: body.conversationId } : {}),
-    ...(body.providerId ? { providerId: body.providerId } : {}),
-    ...(body.modelId ? { modelId: body.modelId } : {}),
-    ...(body.attachmentIds ? { attachmentIds: body.attachmentIds } : {}),
-    ...(body.enabledTools ? { enabledTools: body.enabledTools } : {}),
-    ...(body.customGptId ? { customGptId: body.customGptId } : {}),
-  });
-  await streamPrepared(req, res, prepared, "POST /chat");
+  await streamFromPrepare(
+    req,
+    res,
+    () =>
+      prepareSend({
+        userId,
+        content: body.content,
+        ...(body.conversationId ? { conversationId: body.conversationId } : {}),
+        ...(body.providerId ? { providerId: body.providerId } : {}),
+        ...(body.modelId ? { modelId: body.modelId } : {}),
+        ...(body.attachmentIds ? { attachmentIds: body.attachmentIds } : {}),
+        ...(body.enabledTools ? { enabledTools: body.enabledTools } : {}),
+        ...(body.customGptId ? { customGptId: body.customGptId } : {}),
+      }),
+    "POST /chat",
+    {
+      userId,
+      ...(body.conversationId ? { conversationId: body.conversationId } : {}),
+      ...(body.customGptId ? { customGptId: body.customGptId } : {}),
+    },
+  );
 }
 
 export async function regenerateHandler(req: Request, res: Response): Promise<void> {
   const userId = requireUserId(req);
-  const prepared = await prepareRegenerate({
-    userId,
-    conversationId: req.params.id ?? "",
-    messageId: req.params.messageId ?? "",
-  });
-  await streamPrepared(req, res, prepared, "POST /conversations/:id/messages/:messageId/regenerate");
+  await streamFromPrepare(
+    req,
+    res,
+    () =>
+      prepareRegenerate({
+        userId,
+        conversationId: req.params.id ?? "",
+        messageId: req.params.messageId ?? "",
+      }),
+    "POST /conversations/:id/messages/:messageId/regenerate",
+    {
+      userId,
+      conversationId: req.params.id ?? "",
+    },
+  );
 }
 
 export async function abortHandler(req: Request, res: Response): Promise<void> {
@@ -140,13 +171,40 @@ export async function feedbackHandler(req: Request, res: Response): Promise<void
   res.status(200).json({ message });
 }
 
-async function streamPrepared(
+async function streamFromPrepare(
   req: Request,
   res: Response,
-  prepared: Awaited<ReturnType<typeof prepareSend>>,
+  prepare: () => Promise<Awaited<ReturnType<typeof prepareSend>>>,
   route: string,
+  hint?: { userId: string; conversationId?: string; customGptId?: string },
 ): Promise<void> {
   writeSseHeaders(res);
+  const persistP = prepare();
+  const contextP = (async () => {
+    if (!hint) return undefined;
+    const history = hint.conversationId ? await loadHistory(hint.userId, hint.conversationId) : [];
+    const persona = await buildPersonaMessages(hint.userId, hint.customGptId);
+    return [history, persona] as const;
+  })().catch(() => undefined);
+
+  let prepared: Awaited<ReturnType<typeof prepareSend>>;
+  try {
+    prepared = await persistP;
+  } catch (error) {
+    const failure = error instanceof AppError ? error : new AppError("Unable to start chat", { code: "INTERNAL_ERROR" });
+    if (!res.writableEnded) {
+      writeSseEvent(res, "error", {
+        type: "error",
+        message: failure.message,
+        code: failure.code,
+      });
+      writeSseDone(res);
+      res.end();
+    }
+    return;
+  }
+
+  const preloaded = await contextP;
   const onClose = (): void => {
     if (!res.writableEnded) {
       abortGeneration(prepared.userId, prepared.conversationId, prepared.generationId);
@@ -160,9 +218,22 @@ async function streamPrepared(
         if (!res.writableEnded) writeSseEvent(res, event.type, event);
       },
       route,
+      preloaded ? { history: preloaded[0], persona: preloaded[1] } : undefined,
     );
+  } catch (error) {
+    const failure = error instanceof AppError ? error : new AppError("Generation failed", { code: "PROVIDER_ERROR" });
+    if (!res.writableEnded) {
+      writeSseEvent(res, "error", {
+        type: "error",
+        message: failure.message,
+        code: failure.code,
+      });
+    }
   } finally {
     req.off("close", onClose);
-    if (!res.writableEnded) res.end();
+    if (!res.writableEnded) {
+      writeSseDone(res);
+      res.end();
+    }
   }
 }

@@ -40,6 +40,15 @@ export class MemoryRateLimitStore {
     };
   }
 
+  get(key: string, now = Date.now()): RateLimitWindow | undefined {
+    const current = this.hits.get(key);
+    if (!current || current.resetAt <= now) {
+      if (current) this.hits.delete(key);
+      return undefined;
+    }
+    return current;
+  }
+
   prune(now = Date.now()): void {
     for (const [key, window] of this.hits) {
       if (window.resetAt <= now) this.hits.delete(key);

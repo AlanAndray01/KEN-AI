@@ -39,6 +39,9 @@ describe("SettingsAccountPage", () => {
     expect(screen.getByRole("heading", { name: "Account" })).toBeInTheDocument();
     expect(screen.getByRole("form", { name: "Profile" })).toBeInTheDocument();
     expect(screen.getByRole("form", { name: "Change password" })).toBeInTheDocument();
-    expect(screen.getByDisplayValue("ada@example.com")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Security" })).toBeInTheDocument();
+    expect(
+      screen.getByText(/Two-factor authentication is not part of this release/),
+    ).toBeInTheDocument();
   });
 });

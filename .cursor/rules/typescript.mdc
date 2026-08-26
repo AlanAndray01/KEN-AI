@@ -19,4 +19,3 @@ export default function helper(data: any) {}
 export function helper(data: HealthResponse): string {
   return data.status;
 }
-```

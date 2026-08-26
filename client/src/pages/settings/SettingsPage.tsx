@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import { CLIENT_ROUTES } from "@aether/shared";
 
 const LINKS = [
-  { to: CLIENT_ROUTES.settingsAccount, title: "Account", description: "Profile and password." },
+  { to: CLIENT_ROUTES.settingsAccount, title: "Account", description: "Profile, password, and session security." },
   { to: CLIENT_ROUTES.settingsGeneral, title: "General", description: "Language and defaults." },
   { to: CLIENT_ROUTES.settingsAppearance, title: "Appearance", description: "Light, dark, and system themes." },
   { to: CLIENT_ROUTES.settingsPersonalization, title: "Personalization", description: "Custom instructions." },
@@ -10,7 +10,7 @@ const LINKS = [
   { to: CLIENT_ROUTES.settingsVoice, title: "Voice", description: "Speech input and playback." },
   { to: CLIENT_ROUTES.settingsNotifications, title: "Notifications", description: "Alerts and email." },
   { to: CLIENT_ROUTES.settingsDataControls, title: "Data controls", description: "Export and deletion." },
-  { to: CLIENT_ROUTES.settingsModels, title: "AI models", description: "Available models and your keys." },
+  { to: CLIENT_ROUTES.settingsModels, title: "API Keys & Models", description: "Bring-your-own keys, connection tests, and the model catalog." },
 ];
 
 export function SettingsPage() {

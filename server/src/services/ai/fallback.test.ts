@@ -21,4 +21,15 @@ describe("isRetryableProviderError", () => {
       isRetryableProviderError(new AppError("Invalid credentials", { statusCode: 401, code: "PROVIDER_INVALID_CREDENTIALS" })),
     ).toBe(false);
   });
+
+  it("does not retry app-level RATE_LIMITED but does retry provider quota", () => {
+    expect(
+      isRetryableProviderError(new AppError("Too many requests", { statusCode: 429, code: "RATE_LIMITED" })),
+    ).toBe(false);
+    expect(
+      isRetryableProviderError(
+        new AppError("Gemini per-minute request limit reached.", { statusCode: 429, code: "PROVIDER_RATE_LIMITED" }),
+      ),
+    ).toBe(true);
+  });
 });

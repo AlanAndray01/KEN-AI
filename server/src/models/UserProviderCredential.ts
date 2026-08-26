@@ -1,6 +1,8 @@
 import mongoose from "mongoose";
 import { applyJsonTransform } from "./applyJsonTransform.js";
 
+// AES-256-GCM ciphertext lives in encryptedApiKey as `v1:iv:tag:ciphertext`.
+// IV is not a separate column so rotation stays a single-field decrypt.
 const userProviderCredentialSchema = new mongoose.Schema(
   {
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },

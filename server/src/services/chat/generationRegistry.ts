@@ -1,13 +1,17 @@
+export const GENERATION_TIMEOUT_MS = 180_000;
+
 export class GenerationRegistry {
   private readonly controllers = new Map<string, AbortController>();
   private readonly byConversation = new Map<string, string>();
 
-  start(userId: string, conversationId: string, generationId: string): AbortController {
+  start(userId: string, conversationId: string, generationId: string): { signal: AbortSignal } {
     this.abortConversation(userId, conversationId);
     const controller = new AbortController();
     this.controllers.set(generationId, controller);
     this.byConversation.set(conversationKey(userId, conversationId), generationId);
-    return controller;
+    return {
+      signal: AbortSignal.any([controller.signal, AbortSignal.timeout(GENERATION_TIMEOUT_MS)]),
+    };
   }
 
   abort(generationId: string): boolean {

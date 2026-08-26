@@ -4,7 +4,8 @@ import { loadOwnedFiles, materializeFilesForModel } from "../storage/fileService
 import { getInstructions } from "./instructionService.js";
 import { listMemories } from "./memoryService.js";
 
-const MAX_INJECTED_MEMORIES = 20;
+const MAX_INJECTED_MEMORIES = 4;
+const MAX_BLOCK_CHARS = 1_200;
 
 export async function buildPersonaMessages(userId: string, customGptId?: string): Promise<ChatMessage[]> {
   const blocks: string[] = [];
@@ -20,7 +21,7 @@ export async function buildPersonaMessages(userId: string, customGptId?: string)
       if (files.length > 0) {
         const materialized = await materializeFilesForModel(files);
         if (materialized.contentSuffix) {
-          gptLines.push(`Knowledge files:\n${materialized.contentSuffix}`);
+          gptLines.push(`Knowledge files:\n${clip(materialized.contentSuffix, MAX_BLOCK_CHARS)}`);
         }
       }
     }
@@ -30,13 +31,13 @@ export async function buildPersonaMessages(userId: string, customGptId?: string)
   const instructions = await getInstructions(userId);
   const instructionLines: string[] = [];
   if (instructions.aboutUser.trim()) {
-    instructionLines.push(`About the user:\n${instructions.aboutUser.trim()}`);
+    instructionLines.push(`About the user:\n${clip(instructions.aboutUser.trim(), MAX_BLOCK_CHARS)}`);
   }
   if (instructions.howToRespond.trim()) {
-    instructionLines.push(`How to respond:\n${instructions.howToRespond.trim()}`);
+    instructionLines.push(`How to respond:\n${clip(instructions.howToRespond.trim(), MAX_BLOCK_CHARS)}`);
   }
   if (instructions.additional.trim()) {
-    instructionLines.push(instructions.additional.trim());
+    instructionLines.push(clip(instructions.additional.trim(), MAX_BLOCK_CHARS));
   }
   if (instructionLines.length > 0) {
     blocks.push(`Custom user instructions:\n\n${instructionLines.join("\n\n")}`);
@@ -44,11 +45,16 @@ export async function buildPersonaMessages(userId: string, customGptId?: string)
 
   const memories = await listMemories(userId, MAX_INJECTED_MEMORIES);
   if (memories.length > 0) {
-    const lines = memories.map((memory) => `- ${memory.content}`);
+    const lines = memories.map((memory) => `- ${clip(memory.content, 280)}`);
     blocks.push(
       `Known facts about the user. Use them when relevant; do not invent additional memories.\n${lines.join("\n")}`,
     );
   }
 
   return blocks.map((content) => ({ role: "system" as const, content }));
+}
+
+function clip(value: string, maxChars: number): string {
+  if (value.length <= maxChars) return value;
+  return `${value.slice(0, maxChars)}\n[truncated]`;
 }

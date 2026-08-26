@@ -2,6 +2,7 @@ export class AppError extends Error {
   readonly statusCode: number;
   readonly code: string;
   readonly details?: unknown;
+  readonly extra?: Record<string, unknown>;
   readonly expose: boolean;
 
   constructor(
@@ -10,6 +11,7 @@ export class AppError extends Error {
       statusCode?: number;
       code?: string;
       details?: unknown;
+      extra?: Record<string, unknown>;
       expose?: boolean;
       cause?: unknown;
     } = {},
@@ -21,6 +23,9 @@ export class AppError extends Error {
     this.expose = options.expose ?? this.statusCode < 500;
     if (options.details !== undefined) {
       this.details = options.details;
+    }
+    if (options.extra !== undefined) {
+      this.extra = options.extra;
     }
   }
 }

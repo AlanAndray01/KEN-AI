@@ -82,7 +82,7 @@ export function SettingsAccountPage() {
       >
         <h2 className="text-lg font-medium">Change password</h2>
         <p className="text-sm text-fg-muted">
-          Google-only accounts cannot set a password from this form until a password exists on the account.
+          New passwords need at least 6 characters. Changing the password revokes other sessions.
         </p>
         <label className="block text-sm">
           Current password
@@ -100,7 +100,7 @@ export function SettingsAccountPage() {
           <input
             type="password"
             autoComplete="new-password"
-            minLength={8}
+            minLength={6}
             required
             value={newPassword}
             onChange={(event) => setNewPassword(event.target.value)}
@@ -115,6 +115,13 @@ export function SettingsAccountPage() {
           {pendingPassword ? "Updating…" : "Update password"}
         </button>
       </form>
+      <section className="space-y-2 rounded-xl border border-border bg-surface p-4">
+        <h2 className="text-lg font-medium">Security</h2>
+        <p className="text-sm text-fg-muted">
+          Two-factor authentication is not part of this release. Sessions use HttpOnly cookies and are
+          revoked when you change your password.
+        </p>
+      </section>
       <Link to={CLIENT_ROUTES.settings} className="text-sm text-accent underline-offset-4 hover:underline">
         Back to settings
       </Link>

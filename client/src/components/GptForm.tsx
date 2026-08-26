@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { type FormEvent } from "react";
-import { GPT_CATEGORIES, GPT_VISIBILITY, type GptCategory, type GptVisibility, type ModelCapability } from "@aether/shared";
+import { DEFAULT_GROQ_MODEL_ID, GPT_CATEGORIES, GPT_VISIBILITY, type GptCategory, type GptVisibility, type ModelCapability } from "@aether/shared";
 import { api } from "@/services/api";
 import type { GptFormValue } from "@/utils/gptForm";
 
@@ -120,7 +120,7 @@ export function GptForm({
             value={value.providerId}
             onChange={(event) => onChange({ ...value, providerId: event.target.value })}
             className="mt-1 w-full rounded-lg border border-border bg-canvas px-3 py-2"
-            placeholder="gemini"
+            placeholder="groq"
           />
         </label>
         <label className="block text-sm">
@@ -129,7 +129,7 @@ export function GptForm({
             value={value.modelId}
             onChange={(event) => onChange({ ...value, modelId: event.target.value })}
             className="mt-1 w-full rounded-lg border border-border bg-canvas px-3 py-2"
-            placeholder="gemini-2.5-flash"
+            placeholder={DEFAULT_GROQ_MODEL_ID}
           />
         </label>
       </div>

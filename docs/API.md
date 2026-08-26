@@ -1,4 +1,4 @@
-# Aether API
+# Ken API
 
 Base URL in development: `http://localhost:5000`. All routes below are prefixed with `/api` unless noted.
 
@@ -52,7 +52,7 @@ Public. Never returns connection strings or keys.
 {
   "status": "ok",
   "timestamp": "2026-08-15T00:00:00.000Z",
-  "service": "aether-api",
+  "service": "ken-api",
   "database": { "status": "connected" }
 }
 ```
@@ -61,23 +61,25 @@ Public. Never returns connection strings or keys.
 
 ## Auth
 
-Rate limited (`RATE_LIMIT_AUTH`, default 10 / 60s) except logout, me, and Google callback. Password reset uses `RATE_LIMIT_PASSWORD_RESET` (default 5 / 60s).
+Rate limited (`RATE_LIMIT_AUTH`, default 10 / 60s) except logout, me, and Google callback. Password reset, email verification, and resend-code use `RATE_LIMIT_PASSWORD_RESET` (default 5 / 60s).
 
 | Method | Path | Auth | Notes |
 | --- | --- | --- | --- |
-| `POST` | `/api/auth/register` | No | Body: `{ name, email, password }`. Sets cookies. |
-| `POST` | `/api/auth/login` | No | Body: `{ email, password }`. Sets cookies. |
+| `POST` | `/api/auth/register` | No | Body: `{ name, email, password }`. Creates an unverified user, emails a hashed 6-digit code (15-minute TTL), and does **not** set cookies. Response: `{ requiresVerification: true, email, emailSent }`. In test/`ENABLE_DEV_AUTH_TOOLS` only, `verificationCode` is included. |
+| `POST` | `/api/auth/verify-email` | No | Body: `{ email, code }`. On success sets cookies and marks `isVerified: true`. |
+| `POST` | `/api/auth/resend-code` | No | Body: `{ email }`. Always `{ ok: true }` (no email enumeration). Sends a new code only if that local account is unverified. |
+| `POST` | `/api/auth/login` | No | Body: `{ email, password }`. Sets cookies when the account is verified. If credentials are valid but `isVerified` is false: `403 EMAIL_NOT_VERIFIED` with `requiresVerification: true` and a new code is sent. |
 | `POST` | `/api/auth/logout` | Cookies | Clears cookies and revokes the session. |
 | `GET` | `/api/auth/me` | Yes | Current user. Never includes `passwordHash`. |
 | `POST` | `/api/auth/refresh` | Refresh cookie | Rotates tokens. |
 | `POST` | `/api/auth/forgot-password` | No | Hashed reset token stored. Email sending is not configured. In development only, `ENABLE_DEV_AUTH_TOOLS=true` may include `resetToken` in JSON — never enable in production. |
 | `POST` | `/api/auth/reset-password` | No | Body: `{ token, password }`. |
 | `POST` | `/api/auth/change-password` | Yes | Body: `{ currentPassword, newPassword }`. |
-| `GET` | `/api/auth/google` | No | Redirects to Google. If unset, redirects to `/login?error=google_not_configured`. |
-| `GET` | `/api/auth/google/callback` | No | OAuth callback. |
+| `GET` | `/api/auth/google` | No | Redirects to Google with a random CSRF `state`, also stored in a short-lived httpOnly cookie. If unset, redirects to `/login?error=google_not_configured`. |
+| `GET` | `/api/auth/google/callback` | No | OAuth callback. The `state` must match the cookie or the request is rejected with `/login?error=google_state`. The cookie is cleared on every callback, so a `state` cannot be replayed. |
 | `POST` | `/api/auth/google` | No | Body: Google ID token (alternative to redirect). |
 
-Passwords are hashed with argon2id. `passwordHash` is `select: false` and stripped from JSON.
+Passwords are hashed with argon2id. `passwordHash` is `select: false` and stripped from JSON. Email verification codes are stored as SHA-256 hashes in `verification_tokens` with a 15-minute TTL; plaintext codes are never stored. Google sign-in marks the account verified. Existing local accounts without `isVerified: false` can still sign in. Session JWTs are HttpOnly cookies (`aether_access` / `aether_refresh`), never `localStorage`. Production rejects `ENABLE_DEV_AUTH_TOOLS` and `ENABLE_MOCK_AI`.
 
 ## Models and providers
 
@@ -94,12 +96,13 @@ All routes require auth.
 
 | Method | Path | Notes |
 | --- | --- | --- |
-| `PATCH` | `/api/me` | Name and preferences (`theme`, `language`, `sendOnEnter`). |
+| `PATCH` | `/api/me` | Name and preferences (`theme`, `language`, `sendOnEnter`, `selectedProviderId`, `selectedModelId`). |
 | `GET` | `/api/me/usage` | Token/request totals for the current user. |
 | `GET` | `/api/me/export?format=md\|json\|txt` | Download all conversations. |
 | `GET` | `/api/me/provider-credentials` | Masked BYOK status only. |
 | `PUT` | `/api/me/provider-credentials/:providerId` | Body: `{ apiKey }`. Stored encrypted. Response is masked. |
 | `DELETE` | `/api/me/provider-credentials/:providerId` | Removes the user key. |
+| `POST` | `/api/settings/keys` | Body: `{ providerId, apiKey, modelId?, label? }`. Encrypts the key in MongoDB. Never writes `.env`. Response is masked. Gemini is rejected. |
 | `GET` | `/api/me/instructions` | Custom instructions. |
 | `PUT` | `/api/me/instructions` | Body: `{ aboutUser, howToRespond, additional }`. |
 
@@ -111,11 +114,11 @@ Auth required. Chat send/regenerate are rate limited (`RATE_LIMIT_CHAT`, default
 
 | Method | Path | Notes |
 | --- | --- | --- |
-| `GET` | `/api/conversations` | List for the current user. |
+| `GET` | `/api/conversations` | Sidebar list for the current user (title/timestamps, not message bodies). |
 | `POST` | `/api/conversations` | Create. Optional `title`, `providerId`, `modelId`, `customGptId`. |
-| `GET` | `/api/conversations/:id` | One conversation. |
+| `GET` | `/api/conversations/:id` | One conversation. Ownership is `userId`. |
 | `PATCH` | `/api/conversations/:id` | Title, pin, archive. |
-| `DELETE` | `/api/conversations/:id` | Delete. |
+| `DELETE` | `/api/conversations/:id` | Delete the thread and its messages after an ownership check. |
 | `GET` | `/api/conversations/:id/messages` | Paginated messages. |
 | `POST` | `/api/conversations/:id/messages` | Send. **SSE** (`text/event-stream`). |
 | `POST` | `/api/conversations/:id/messages/:messageId/regenerate` | SSE regenerate. |
@@ -132,7 +135,7 @@ Send body (typical): `{ content, providerId, modelId, attachmentIds?, enabledToo
 
 ### SSE events
 
-Headers: `Content-Type: text/event-stream; charset=utf-8`, `Cache-Control: no-cache, no-transform`, `Connection: keep-alive`.
+Headers: `Content-Type: text/event-stream; charset=utf-8`, `Cache-Control: no-cache, no-transform`, `Connection: keep-alive`, `X-Accel-Buffering: no`.
 
 Each frame is `event: <type>` plus `data: <json>`. Types:
 
@@ -142,9 +145,9 @@ Each frame is `event: <type>` plus `data: <json>`. Types:
 | `chunk` | `text` (delta) |
 | `complete` | Final `assistantMessage` |
 | `aborted` | Partial `assistantMessage` |
-| `error` | `message`, optional `code` |
+| `error` | `message`, optional `code` (`GENERATION_TIMEOUT` after 180s) |
 
-The manager does not silently switch models. If `AI_FALLBACK_PROVIDER_ID` is set and the selected provider fails at runtime, the server retries that configured fallback once.
+The stream ends with `data: [DONE]`. User and assistant messages are persisted in MongoDB; the assistant document is finalized after the stream completes. The manager does not silently switch models. If `AI_FALLBACK_PROVIDER_ID` is set and the selected provider fails at runtime, the server retries that configured fallback once.
 
 ## Files
 

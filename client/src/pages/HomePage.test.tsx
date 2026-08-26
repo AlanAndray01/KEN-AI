@@ -10,7 +10,7 @@ vi.mock("@/services/api", () => ({
       get: vi.fn().mockResolvedValue({
         status: "ok",
         timestamp: "2026-08-15T00:00:00.000Z",
-        service: "aether-api",
+        service: "ken-api",
         database: { status: "not_configured" },
       }),
     },
@@ -32,7 +32,7 @@ function renderHome(): void {
 }
 
 describe("HomePage", () => {
-  it("renders the Aether product name", () => {
+  it("renders the Ken product name", () => {
     renderHome();
     expect(screen.getByRole("heading", { name: /private AI workspace/i })).toBeInTheDocument();
   });

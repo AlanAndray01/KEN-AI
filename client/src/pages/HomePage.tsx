@@ -16,7 +16,7 @@ export function HomePage() {
         <p className="text-sm font-medium tracking-wide text-accent uppercase">{APP_NAME}</p>
         <h1 className="text-4xl font-semibold tracking-tight">A private AI workspace.</h1>
         <p className="max-w-xl text-fg-muted">
-          Aether is a MERN assistant platform. Sign in to chat with configured AI providers.
+          Ken is a MERN assistant platform. Sign in to chat with configured AI providers.
         </p>
       </div>
 

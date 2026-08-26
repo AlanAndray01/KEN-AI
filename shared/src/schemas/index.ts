@@ -1,5 +1,15 @@
 import { z } from "zod";
-import { GPT_CATEGORIES, GPT_VISIBILITY, MODEL_CAPABILITIES, PROVIDER_TYPES } from "../constants/index.js";
+import {
+  GPT_CATEGORIES,
+  GPT_VISIBILITY,
+  MAX_MESSAGE_CONTENT_CHARS,
+  MODEL_CAPABILITIES,
+  PROVIDER_TYPES,
+} from "../constants/index.js";
+
+export const PASSWORD_POLICY_MESSAGE = "Password must be at least 6 characters";
+
+export const passwordSchema = z.string().min(6, PASSWORD_POLICY_MESSAGE).max(128);
 
 export const healthStatusSchema = z.enum(["ok", "degraded", "error"]);
 
@@ -21,7 +31,7 @@ export const healthResponseSchema = z.object({
 export const registerSchema = z.object({
   name: z.string().trim().min(1).max(120),
   email: z.string().trim().email().max(320),
-  password: z.string().min(8).max(128),
+  password: passwordSchema,
 });
 
 export const loginSchema = z.object({
@@ -33,14 +43,30 @@ export const forgotPasswordSchema = z.object({
   email: z.string().trim().email().max(320),
 });
 
-export const resetPasswordSchema = z.object({
-  token: z.string().min(1).max(512),
-  password: z.string().min(8).max(128),
-});
+export const resetPasswordSchema = z
+  .object({
+    email: z.string().trim().email().max(320),
+    password: passwordSchema,
+    token: z.string().trim().min(1).max(512).optional(),
+    code: z.string().trim().regex(/^\d{6}$/).optional(),
+  })
+  .refine((value) => Boolean(value.token || value.code), {
+    message: "Enter the 6-digit reset code",
+    path: ["code"],
+  });
 
 export const changePasswordSchema = z.object({
   currentPassword: z.string().min(1).max(128),
-  newPassword: z.string().min(8).max(128),
+  newPassword: passwordSchema,
+});
+
+export const verifyEmailSchema = z.object({
+  email: z.string().trim().email().max(320),
+  code: z.string().trim().regex(/^\d{6}$/, "Enter the 6-digit code"),
+});
+
+export const resendVerificationSchema = z.object({
+  email: z.string().trim().email().max(320),
 });
 
 export const googleAuthSchema = z.object({
@@ -80,6 +106,35 @@ export const upsertUserCredentialSchema = z.object({
   enabled: z.boolean().optional(),
 });
 
+const providerIdSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .min(1)
+  .max(64)
+  .regex(/^[a-z][a-z0-9_-]*$/, "Invalid provider id");
+
+export const saveProviderKeySchema = z.object({
+  providerId: providerIdSchema,
+  apiKey: z
+    .string()
+    .trim()
+    .min(8)
+    .max(4096)
+    // Matching control characters is the point: a key carrying CR/LF or a NUL
+    // byte must be rejected before it can reach an outbound request header.
+    // eslint-disable-next-line no-control-regex
+    .refine((value) => !/[\u0000-\u001f]/.test(value), "Invalid API key"),
+  modelId: z
+    .string()
+    .trim()
+    .min(1)
+    .max(160)
+    .regex(/^[a-zA-Z0-9._:/-]+$/, "Invalid model id")
+    .optional(),
+  label: z.string().trim().min(1).max(160).optional(),
+});
+
 export const patchModelSchema = z.object({
   enabled: z.boolean().optional(),
   name: z.string().trim().min(1).max(160).optional(),
@@ -112,7 +167,7 @@ export const patchConversationSchema = z.object({
 
 export const sendMessageSchema = z
   .object({
-    content: z.string().trim().max(32_000).default(""),
+    content: z.string().trim().max(MAX_MESSAGE_CONTENT_CHARS).default(""),
     conversationId: z.string().trim().min(1).max(64).optional(),
     modelId: z.string().trim().min(1).max(160).optional(),
     providerId: z.string().trim().min(1).max(64).optional(),
@@ -193,6 +248,8 @@ export const patchMeSchema = z
         theme: z.enum(["light", "dark", "system"]).optional(),
         language: z.string().trim().min(2).max(16).optional(),
         sendOnEnter: z.boolean().optional(),
+        selectedProviderId: z.string().trim().min(1).max(64).optional(),
+        selectedModelId: z.string().trim().min(1).max(160).optional(),
       })
       .optional(),
   })

@@ -18,4 +18,3 @@ await fetch('/api/conversations');
 
 // ✅ GOOD
 await api.conversations.list();
-```

@@ -11,7 +11,7 @@ const passwordResetSchema = new mongoose.Schema(
   { timestamps: true, collection: "password_resets" },
 );
 
-passwordResetSchema.index({ tokenHash: 1 }, { unique: true });
+passwordResetSchema.index({ userId: 1, tokenHash: 1 }, { unique: true });
 passwordResetSchema.index({ userId: 1, createdAt: -1 });
 passwordResetSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 

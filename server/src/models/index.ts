@@ -14,6 +14,7 @@ import { SharedConversation } from "./SharedConversation.js";
 import { UsageRecord } from "./UsageRecord.js";
 import { User } from "./User.js";
 import { UserProviderCredential } from "./UserProviderCredential.js";
+import { VerificationToken } from "./VerificationToken.js";
 
 export function registerModels(): string[] {
   return [
@@ -33,6 +34,7 @@ export function registerModels(): string[] {
     UsageRecord.modelName,
     User.modelName,
     UserProviderCredential.modelName,
+    VerificationToken.modelName,
   ];
 }
 
@@ -53,4 +55,5 @@ export {
   UsageRecord,
   User,
   UserProviderCredential,
+  VerificationToken,
 };

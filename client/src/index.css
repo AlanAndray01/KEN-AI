@@ -2,32 +2,38 @@
 
 :root {
   color-scheme: light;
-  --canvas: #f6f5f2;
+  --canvas: #ffffff;
   --surface: #ffffff;
-  --surface-muted: #eeece7;
-  --border: #e2dfd8;
-  --fg: #1c1b19;
-  --fg-muted: #5c5a55;
-  --accent: #2f5d50;
-  --accent-fg: #f6f5f2;
-  --danger: #9b2c2c;
-  --ring: #2f5d50;
-  --sidebar: #efece6;
+  --surface-muted: #f4f4f4;
+  --border: #e5e5e5;
+  --fg: #0d0d0d;
+  --fg-muted: #6e6e6e;
+  --accent: #2563eb;
+  --accent-fg: #ffffff;
+  --danger: #c81e1e;
+  --ring: #2563eb;
+  --sidebar: #f9f9f9;
+  --user-bubble: #e8f0fe;
+  --table-line: #c8ccd4;
+  --table-head: rgba(0, 0, 0, 0.04);
 }
 
 html.dark {
   color-scheme: dark;
-  --canvas: #121311;
-  --surface: #1b1c19;
-  --surface-muted: #232422;
-  --border: #2e302c;
-  --fg: #f3f1ec;
-  --fg-muted: #a8a69e;
-  --accent: #8fbfb0;
-  --accent-fg: #121311;
-  --danger: #f0a3a3;
-  --ring: #8fbfb0;
-  --sidebar: #161714;
+  --canvas: #0d0d0d;
+  --surface: #161616;
+  --surface-muted: #1f1f1f;
+  --border: #2a2a2a;
+  --fg: #f5f5f5;
+  --fg-muted: #a3a3a3;
+  --accent: #3b82f6;
+  --accent-fg: #ffffff;
+  --danger: #ef4444;
+  --ring: #3b82f6;
+  --sidebar: #0a0a0a;
+  --user-bubble: #1a1a1a;
+  --table-line: #3d3d3d;
+  --table-head: rgba(255, 255, 255, 0.05);
 }
 
 @theme inline {
@@ -42,7 +48,31 @@ html.dark {
   --color-danger: var(--danger);
   --color-ring: var(--ring);
   --color-sidebar: var(--sidebar);
-  --font-sans: "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  --color-user-bubble: var(--user-bubble);
+  --font-sans: ui-sans-serif, system-ui, "Segoe UI", Helvetica, Arial, sans-serif;
+}
+
+.auth-glass {
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+  backdrop-filter: blur(22px);
+  box-shadow: 0 24px 80px rgb(15 23 42 / 0.14);
+}
+
+html.dark .auth-glass {
+  background: rgb(22 22 22 / 0.86);
+  backdrop-filter: blur(16px);
+  border-color: var(--border);
+  box-shadow: 0 24px 80px rgb(0 0 0 / 0.45);
+}
+
+.auth-field-error {
+  border-color: var(--danger) !important;
+  box-shadow: 0 0 0 1px var(--danger);
+}
+
+.auth-field-ok {
+  border-color: var(--fg) !important;
+  box-shadow: 0 0 0 1px var(--fg);
 }
 
 html,
@@ -58,7 +88,7 @@ body {
   font-family: var(--font-sans);
 }
 
-*:focus-visible {
+*:focus-visible:not(.composer-input) {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
@@ -146,22 +176,71 @@ body {
 }
 
 .markdown blockquote {
-  border-left: 3px solid var(--border);
-  padding-left: 0.85rem;
-  color: var(--fg-muted);
+  margin: 0.85rem 0;
+  border-left: 3px solid var(--accent);
+  padding: 0.35rem 0 0.35rem 0.9rem;
+  color: var(--fg);
+}
+
+.markdown .katex-display {
+  margin: 0.85rem 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.markdown .katex {
+  font-size: 1.05em;
+}
+
+/* Tables need their own border token: --border is tuned for large
+   surfaces and disappears against the user bubble, which made cells read as one
+   run-on string. --table-line stays visible on every background we render on. */
+.markdown-table-wrap {
+  margin: 0.75rem 0;
+  overflow-x: auto;
+  border: 1px solid var(--table-line);
+  border-radius: 0.6rem;
+}
+
+.markdown-table-wrap > table {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
 }
 
 .markdown table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.9rem;
+  /* Stops long cells collapsing to unreadable widths inside a narrow bubble. */
+  min-width: max-content;
+}
+
+.markdown thead {
+  background: var(--table-head);
+}
+
+.markdown th {
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .markdown th,
 .markdown td {
-  border: 1px solid var(--border);
-  padding: 0.4rem 0.6rem;
+  border-right: 1px solid var(--table-line);
+  border-bottom: 1px solid var(--table-line);
+  padding: 0.5rem 0.75rem;
   text-align: left;
+  vertical-align: top;
+}
+
+.markdown th:last-child,
+.markdown td:last-child {
+  border-right: 0;
+}
+
+.markdown tbody tr:last-child td {
+  border-bottom: 0;
 }
 
 .markdown hr {
@@ -246,4 +325,149 @@ html.dark .hljs-type {
 .hljs-symbol,
 .hljs-bullet {
   color: var(--fg-muted);
+}
+
+.streaming-cursor {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  height: 1.15rem;
+}
+
+.streaming-cursor span {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 999px;
+  background: var(--fg-muted);
+  animation: streaming-pulse 1s ease-in-out infinite;
+}
+
+.streaming-cursor span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.streaming-cursor span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+.streaming-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 0.15rem;
+  vertical-align: text-bottom;
+  background: var(--fg);
+  animation: streaming-caret 1s step-end infinite;
+}
+
+.rich-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 220ms ease;
+}
+
+.rich-collapse[data-open="true"] {
+  grid-template-rows: 1fr;
+}
+
+.rich-collapse > div {
+  overflow: hidden;
+}
+
+.thinking-pipeline {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  min-height: 2.75rem;
+}
+
+.thinking-shimmer {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.thinking-dot {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 999px;
+  background: var(--fg-muted);
+  animation: thinking-bounce 1.2s ease-in-out infinite;
+}
+
+.thinking-dot:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.thinking-dot:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+.thinking-elapsed {
+  font-size: 0.75rem;
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes thinking-bounce {
+  0%,
+  60%,
+  100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-0.18rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thinking-dot {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
+@keyframes streaming-pulse {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-1px);
+  }
+}
+
+@keyframes streaming-caret {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+.chat-message,
+.chat-history-item {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 4.5rem;
+}
+
+/* Long user turns collapse so a pasted log cannot push the reply off screen.
+   The fade signals there is more text without needing a second label. */
+.user-message-clamped {
+  mask-image: linear-gradient(to bottom, #000 60%, transparent 100%);
+}
+
+.user-message-fade {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  height: 3rem;
+  pointer-events: none;
 }

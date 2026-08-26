@@ -23,6 +23,9 @@ describe("ChatComposer", () => {
     expect(onSubmit).toHaveBeenCalledTimes(1);
     expect(screen.getByRole("button", { name: "Attach files" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Web search" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Message")).not.toHaveAttribute("maxLength");
+    expect(screen.getByLabelText("Message").tagName).toBe("TEXTAREA");
+    expect(screen.getByText(/~2 tokens/)).toBeInTheDocument();
   });
 
   it("disables tool controls with the provided reason", () => {

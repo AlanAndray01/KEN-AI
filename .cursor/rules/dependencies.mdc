@@ -1,6 +1,7 @@
 ---
 description: Prefer existing components; avoid unnecessary dependencies
-alwaysApply: true
+globs: ""
+alwaysApply: false
 ---
 
 # Dependencies and reuse

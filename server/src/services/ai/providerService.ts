@@ -1,5 +1,6 @@
 import type {
   PublicAIProvider,
+  PublicCredentialTest,
   PublicUserCredential,
   ProviderType,
 } from "@aether/shared";
@@ -196,6 +197,47 @@ export async function testProviderConnection(
   return toPublicFromRecord(doc.providerId);
 }
 
+export async function testUserCredential(
+  userId: string,
+  providerId: string,
+  input: TestProviderInput = {},
+): Promise<PublicCredentialTest> {
+  if (providerId === "gemini") {
+    throw new AppError("Gemini is no longer supported. Use Groq or an OpenAI-compatible provider.", {
+      statusCode: 400,
+      code: "PROVIDER_REMOVED",
+    });
+  }
+
+  const builtIn = getBuiltInProvider(providerId);
+  const stored = await loadGlobalProvider(providerId);
+  if (!builtIn && !stored) {
+    throw new AppError("Provider not found", { statusCode: 404, code: "PROVIDER_NOT_FOUND" });
+  }
+
+  const name = stored?.name ?? builtIn?.name ?? providerId;
+  const type = stored?.type ?? builtIn?.type ?? "custom";
+  const resolved = await resolveCredentials(providerId, userId);
+  const apiKey = input.apiKey ?? resolved?.apiKey;
+  const baseUrl = input.baseUrl || resolved?.baseUrl || builtIn?.defaultBaseUrl;
+  const adapter = createProviderAdapter({
+    id: providerId,
+    name,
+    type,
+    credentials: {
+      ...(apiKey ? { apiKey } : {}),
+      ...(baseUrl ? { baseUrl } : {}),
+    },
+  });
+
+  const result = await adapter.validateCredentials({
+    ...(apiKey ? { apiKey } : {}),
+    ...(baseUrl ? { baseUrl } : {}),
+  });
+
+  return { status: result.status, message: result.message };
+}
+
 export async function patchModel(providerId: string, modelId: string, input: PatchModelInput) {
   let doc = await AIModel.findOne({ providerId, modelId });
   if (!doc) {
@@ -248,6 +290,12 @@ export async function upsertUserCredential(
   providerId: string,
   input: UpsertUserCredentialInput,
 ): Promise<PublicUserCredential> {
+  if (providerId === "gemini") {
+    throw new AppError("Gemini is no longer supported. Use Groq or an OpenAI-compatible provider.", {
+      statusCode: 400,
+      code: "PROVIDER_REMOVED",
+    });
+  }
   const known = getBuiltInProvider(providerId) ?? (await loadGlobalProvider(providerId));
   if (!known) {
     throw new AppError("Provider not found", { statusCode: 404, code: "PROVIDER_NOT_FOUND" });
@@ -263,7 +311,7 @@ export async function upsertUserCredential(
         enabled: input.enabled ?? true,
       },
     },
-    { upsert: true, new: true, setDefaultsOnInsert: true },
+    { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
   );
 
   if (!doc) {

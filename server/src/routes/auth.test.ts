@@ -10,6 +10,7 @@ type UserDoc = {
   googleId?: string;
   avatar?: string;
   role: "user" | "admin";
+  isVerified: boolean;
   preferences: { theme: "system"; language: "en"; sendOnEnter: true };
   createdAt: Date;
   updatedAt: Date;
@@ -33,9 +34,17 @@ type ResetDoc = {
   save: () => Promise<ResetDoc>;
 };
 
+type VerificationDoc = {
+  _id: Types.ObjectId;
+  userId: Types.ObjectId;
+  codeHash: string;
+  expiresAt: Date;
+};
+
 const users = new Map<string, UserDoc>();
 const sessions = new Map<string, SessionDoc>();
 const resets = new Map<string, ResetDoc>();
+const verificationTokens = new Map<string, VerificationDoc>();
 
 function withSave<T extends { _id: Types.ObjectId }>(doc: T): T & { save: () => Promise<T> } {
   const savable = doc as T & { save: () => Promise<T> };
@@ -65,6 +74,7 @@ vi.mock("../models/User.js", () => ({
         name: input.name,
         email: input.email,
         role: input.role ?? "user",
+        isVerified: input.isVerified ?? true,
         preferences: { theme: "system", language: "en", sendOnEnter: true },
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -127,6 +137,31 @@ vi.mock("../models/Session.js", () => ({
   },
 }));
 
+vi.mock("../models/VerificationToken.js", () => ({
+  VerificationToken: {
+    create: vi.fn(async (input: Omit<VerificationDoc, "_id">) => {
+      const created: VerificationDoc = { _id: new Types.ObjectId(), ...input };
+      verificationTokens.set(String(created._id), created);
+      return created;
+    }),
+    findOne: vi.fn((query: { userId?: Types.ObjectId; expiresAt?: { $gt: Date } }) => {
+      const found = [...verificationTokens.values()].find((token) => {
+        if (query.userId && String(token.userId) !== String(query.userId)) return false;
+        if (query.expiresAt?.$gt && token.expiresAt <= query.expiresAt.$gt) return false;
+        return true;
+      });
+      return thenable(found ?? null);
+    }),
+    deleteMany: vi.fn(async (query: { userId: Types.ObjectId | string }) => {
+      for (const [id, token] of verificationTokens) {
+        if (String(token.userId) === String(query.userId)) {
+          verificationTokens.delete(id);
+        }
+      }
+    }),
+  },
+}));
+
 vi.mock("../models/PasswordReset.js", () => ({
   PasswordReset: {
     create: vi.fn(async (input: Omit<ResetDoc, "_id" | "save">) => {
@@ -138,8 +173,19 @@ vi.mock("../models/PasswordReset.js", () => ({
       resets.set(created.tokenHash, created);
       return created;
     }),
-    findOne: vi.fn((query: { tokenHash: string }) => {
-      const found = resets.get(query.tokenHash);
+    deleteMany: vi.fn(async (query: { userId: Types.ObjectId | string }) => {
+      for (const [hash, reset] of resets) {
+        if (String(reset.userId) === String(query.userId) && !reset.usedAt) {
+          resets.delete(hash);
+        }
+      }
+    }),
+    findOne: vi.fn((query: { tokenHash: string; userId?: Types.ObjectId | string }) => {
+      const found = [...resets.values()].find((reset) => {
+        if (reset.tokenHash !== query.tokenHash) return false;
+        if (query.userId && String(reset.userId) !== String(query.userId)) return false;
+        return true;
+      });
       if (!found || found.usedAt || found.expiresAt <= new Date()) {
         return thenable(null);
       }
@@ -148,30 +194,54 @@ vi.mock("../models/PasswordReset.js", () => ({
   },
 }));
 
+vi.mock("../services/auth/config.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../services/auth/config.js")>();
+  return { ...actual, isGoogleOAuthConfigured: () => false };
+});
+
 const { app } = await import("../app.js");
 const { hasLeakedSecret } = await import("../utils/redact.js");
 
-const password = "correct-horse-battery";
+const password = "Correct-horse-battery1!";
 
 describe("auth API", () => {
   beforeEach(() => {
     users.clear();
     sessions.clear();
     resets.clear();
+    verificationTokens.clear();
   });
 
-  it("registers, logs in, reads the current user, and never returns passwordHash", async () => {
+  async function registerAndVerify(
+    agent: ReturnType<typeof request.agent>,
+    input: { name: string; email: string; password: string },
+  ) {
+    const register = await agent.post("/api/auth/register").send(input);
+    expect(register.status).toBe(201);
+    expect(register.body.requiresVerification).toBe(true);
+    expect(register.body.user).toBeUndefined();
+    const verified = await agent.post("/api/auth/verify-email").send({
+      email: input.email,
+      code: register.body.verificationCode,
+    });
+    expect(verified.status).toBe(200);
+    return { register, verified };
+  }
+
+  it("registers, verifies email, reads the current user, and never returns passwordHash", async () => {
     const agent = request.agent(app);
-    const register = await agent.post("/api/auth/register").send({
+    const { register, verified } = await registerAndVerify(agent, {
       name: "Ada Lovelace",
       email: "ada@example.com",
       password,
     });
 
-    expect(register.status).toBe(201);
-    expect(register.body.user.email).toBe("ada@example.com");
-    expect(register.body.user.role).toBe("user");
-    expect(register.body.user).not.toHaveProperty("passwordHash");
+    expect(register.body.requiresVerification).toBe(true);
+    expect(register.body.email).toBe("ada@example.com");
+    expect(typeof register.body.verificationCode).toBe("string");
+    expect(verified.body.user.email).toBe("ada@example.com");
+    expect(verified.body.user.role).toBe("user");
+    expect(verified.body.user).not.toHaveProperty("passwordHash");
     expect(JSON.stringify(register.body)).not.toContain(password);
     expect(hasLeakedSecret(JSON.stringify(register.body))).toBe(false);
 
@@ -196,9 +266,41 @@ describe("auth API", () => {
     expect(me.body.user).not.toHaveProperty("passwordHash");
   });
 
+  it("does not issue a session until the email code is verified", async () => {
+    const agent = request.agent(app);
+    const register = await agent.post("/api/auth/register").send({
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      password,
+    });
+    expect(register.status).toBe(201);
+
+    const me = await agent.get("/api/auth/me");
+    expect(me.status).toBe(401);
+
+    const login = await agent.post("/api/auth/login").send({
+      email: "ada@example.com",
+      password,
+    });
+    expect(login.status).toBe(403);
+    expect(login.body.error.code).toBe("EMAIL_NOT_VERIFIED");
+    expect(login.body.requiresVerification).toBe(true);
+    expect(typeof login.body.verificationCode).toBe("string");
+
+    const stillMe = await agent.get("/api/auth/me");
+    expect(stillMe.status).toBe(401);
+
+    const verified = await agent.post("/api/auth/verify-email").send({
+      email: "ada@example.com",
+      code: login.body.verificationCode,
+    });
+    expect(verified.status).toBe(200);
+    expect((await agent.get("/api/auth/me")).status).toBe(200);
+  });
+
   it("rejects unauthenticated /me and revoked sessions after logout", async () => {
     const agent = request.agent(app);
-    await agent.post("/api/auth/register").send({
+    await registerAndVerify(agent, {
       name: "Grace Hopper",
       email: "grace@example.com",
       password,
@@ -213,7 +315,7 @@ describe("auth API", () => {
 
   it("issues a password reset token in test mode", async () => {
     const agent = request.agent(app);
-    await agent.post("/api/auth/register").send({
+    await registerAndVerify(agent, {
       name: "Alan Turing",
       email: "alan@example.com",
       password,
@@ -231,10 +333,12 @@ describe("auth API", () => {
       .send({ email: "alan@example.com" });
     expect(forgot.status).toBe(200);
     expect(typeof forgot.body.resetToken).toBe("string");
+    expect(forgot.body.resetToken).toMatch(/^\d{6}$/);
 
     const reset = await request(app).post("/api/auth/reset-password").send({
+      email: "alan@example.com",
       token: forgot.body.resetToken,
-      password: "new-password-123",
+      password: "New-password-123!",
     });
     expect(reset.status).toBe(200);
 
@@ -246,10 +350,55 @@ describe("auth API", () => {
 
     const newLogin = await request(app).post("/api/auth/login").send({
       email: "alan@example.com",
-      password: "new-password-123",
+      password: "New-password-123!",
     });
     expect(newLogin.status).toBe(200);
     expect(newLogin.body.user).not.toHaveProperty("passwordHash");
+  });
+
+  it("resends a verification code without revealing whether the email exists", async () => {
+    const agent = request.agent(app);
+    await agent.post("/api/auth/register").send({
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      password,
+    });
+
+    const missing = await request(app).post("/api/auth/resend-code").send({ email: "missing@example.com" });
+    expect(missing.status).toBe(200);
+    expect(missing.body).toEqual({ ok: true });
+
+    const resend = await request(app).post("/api/auth/resend-code").send({ email: "ada@example.com" });
+    expect(resend.status).toBe(200);
+    expect(resend.body).toEqual({ ok: true });
+
+    const bad = await request(app)
+      .post("/api/auth/verify-email")
+      .send({ email: "ada@example.com", code: "000000" });
+    expect(bad.status).toBe(400);
+    expect(bad.body.error.code).toBe("INVALID_VERIFICATION_CODE");
+  });
+
+  it("returns a clear JSON error when login validation fails", async () => {
+    const response = await request(app).post("/api/auth/login").send({
+      email: "not-an-email",
+      password: "whatever",
+    });
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe("VALIDATION_ERROR");
+    expect(typeof response.body.error.message).toBe("string");
+    expect(response.body.error.message.length).toBeGreaterThan(0);
+  });
+
+  it("rejects passwords shorter than 6 characters with a clear JSON error", async () => {
+    const response = await request(app).post("/api/auth/register").send({
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      password: "short",
+    });
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe("VALIDATION_ERROR");
+    expect(response.body.error.message).toBe("Password must be at least 6 characters");
   });
 
   it("returns a clear Google configuration error instead of faking login", async () => {

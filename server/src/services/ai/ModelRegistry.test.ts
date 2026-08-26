@@ -4,9 +4,9 @@ vi.mock("../../models/AIModel.js", () => ({
   AIModel: {
     find: vi.fn(async () => [
       {
-        modelId: "gemini-2.5-flash",
-        providerId: "gemini",
-        name: "Gemini 2.5 Flash",
+        modelId: "openai/gpt-oss-20b",
+        providerId: "groq",
+        name: "GPT OSS 20B",
         capabilities: ["text", "streaming"],
         enabled: true,
       },
@@ -24,17 +24,17 @@ vi.mock("../../models/AIModel.js", () => ({
 vi.mock("./credentials.js", () => ({
   loadGlobalProviders: vi.fn(async () => [
     {
-      id: "gemini",
-      providerId: "gemini",
-      name: "Google Gemini",
-      type: "gemini",
+      id: "groq",
+      providerId: "groq",
+      name: "Groq",
+      type: "groq",
       enabled: true,
       capabilities: ["text"],
       hasStoredKey: false,
     },
   ]),
   describeConfiguredSecret: vi.fn(async (providerId: string) => {
-    if (providerId === "gemini") {
+    if (providerId === "groq") {
       return { configured: true, source: "environment", keyLastFour: "zzzz", hasUserKey: false };
     }
     return { configured: false, source: "environment", hasUserKey: false };
@@ -52,7 +52,8 @@ describe("ModelRegistry", () => {
     const publicModels = await registry.listPublicModels();
 
     expect(publicModels.every((model) => model.available)).toBe(true);
-    expect(publicModels.some((model) => model.providerId === "gemini")).toBe(true);
+    expect(publicModels.some((model) => model.providerId === "groq")).toBe(true);
+    expect(publicModels.find((model) => model.providerId === "groq")?.id).toBe("openai/gpt-oss-20b");
     expect(publicModels.some((model) => model.providerId === "openai")).toBe(false);
     expect(JSON.stringify(publicModels)).not.toContain("encryptedApiKey");
     expect(JSON.stringify(publicModels)).not.toMatch(/"apiKey"/);

@@ -1,22 +1,39 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Menu, RotateCw, ThumbsDown, ThumbsUp, Volume2 } from "lucide-react";
+import { Copy, Menu, RotateCw, ThumbsDown, ThumbsUp, Volume2 } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import type { PublicConversation, PublicFile, PublicMessage } from "@aether/shared";
+import {
+  DEFAULT_GROQ_MODEL_ID,
+  type PublicConversation,
+  type PublicFile,
+  type PublicMessage,
+  type PublicMessageFeedback,
+} from "@aether/shared";
+import { AddModelKeysDialog } from "@/components/AddModelKeysDialog";
 import { MessageAttachments } from "@/components/AttachmentChips";
 import { ChatComposer } from "@/components/ChatComposer";
-import { MarkdownContent } from "@/components/MarkdownContent";
+import { LazyMarkdown } from "@/components/LazyMarkdown";
+import { AssistantRichBody } from "@/components/RichContent";
 import { ModelSelector } from "@/components/ModelSelector";
 import { ShareExportMenu } from "@/components/ShareExportMenu";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { ThinkingPipeline } from "@/components/ThinkingPipeline";
+import { UserMessageBubble } from "@/components/UserMessageBubble";
 import { useAuth } from "@/hooks/useAuth";
+import { useStickToBottom } from "@/hooks/useStickToBottom";
+import { useStreamBuffer } from "@/hooks/useStreamBuffer";
+import { CONVERSATION_STALE_MS, MESSAGE_STALE_MS, QUERY_STALE_MS } from "@/query";
 import { ApiError, api } from "@/services/api";
 import { draftKey, useDraftStore } from "@/stores/draftStore";
 import { useModelStore } from "@/stores/modelStore";
 import { toast } from "@/stores/toastStore";
 import { useUiStore } from "@/stores/uiStore";
 import { attachmentRejection } from "@/utils/attachmentGate";
-import { appendChunk, dedupeMessages, upsertMessage } from "@/utils/chatMessages";
+import { describeApiError, logApiError } from "@/utils/apiErrors";
+import { canUseBrowserStt, canUseBrowserTts, getSpeechRecognition, speakWithBrowser } from "@/utils/browserSpeech";
+import { appendChunk, applyFeedback, CHAT_MESSAGE_WINDOW, dedupeMessages, markLastAssistant, optimisticTurn, upsertMessage } from "@/utils/chatMessages";
+import { pickDefaultModel, shouldReplaceStoredModel } from "@/utils/defaultModel";
+import { cn } from "@/utils/cn";
 import type { MentionCandidate } from "@/utils/mentions";
 
 export function ChatPage() {
@@ -26,6 +43,8 @@ export function ChatPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const setMobileOpen = useUiStore((state) => state.setMobileOpen);
+  const keysPanelOpen = useUiStore((state) => state.keysPanelOpen);
+  const setKeysPanelOpen = useUiStore((state) => state.setKeysPanelOpen);
   const storedProviderId = useModelStore((state) => state.providerId);
   const storedModelId = useModelStore((state) => state.modelId);
   const setSelection = useModelStore((state) => state.setSelection);
@@ -45,45 +64,60 @@ export function ChatPage() {
   const abortRef = useRef<AbortController | null>(null);
   const streamConversationRef = useRef<string | undefined>(undefined);
   const appliedConversationRef = useRef<string | undefined>(undefined);
-  const bottomRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recognitionRef = useRef<{ stop: () => void } | null>(null);
   const mediaChunksRef = useRef<Blob[]>([]);
+  const messagesRef = useRef<PublicMessage[]>([]);
+  const {
+    containerRef: scrollRef,
+    pinned,
+    stickToBottom,
+    pin,
+  } = useStickToBottom<HTMLElement>();
+  const [, startTransition] = useTransition();
+  const [showAllMessages, setShowAllMessages] = useState(false);
 
   const conversationsQuery = useQuery({
     queryKey: ["conversations"],
     queryFn: () => api.conversations.list(),
+    staleTime: CONVERSATION_STALE_MS,
   });
   const modelsQuery = useQuery({
     queryKey: ["models"],
     queryFn: () => api.models.list(),
+    staleTime: QUERY_STALE_MS,
   });
   const messagesQuery = useQuery({
     queryKey: ["messages", conversationId],
     queryFn: () => api.conversations.messages(conversationId ?? ""),
     enabled: Boolean(conversationId),
+    staleTime: MESSAGE_STALE_MS,
   });
 
   const models = useMemo(() => modelsQuery.data?.models ?? [], [modelsQuery.data?.models]);
-  const defaultModel = models[0];
+  const defaultModel = useMemo(() => pickDefaultModel(models), [models]);
   const conversations = conversationsQuery.data?.conversations ?? [];
   const currentConversation = conversations.find((conversation) => conversation.id === conversationId);
 
-  const providerId = storedProviderId || defaultModel?.providerId || "gemini";
-  const modelId = storedModelId || defaultModel?.id || "gemini-2.5-flash";
+  const providerId = storedProviderId || defaultModel?.providerId || "groq";
+  const modelId = storedModelId || defaultModel?.id || DEFAULT_GROQ_MODEL_ID;
   const selectedModel = models.find((model) => model.providerId === providerId && model.id === modelId) ?? defaultModel;
   const capabilities = selectedModel?.capabilities ?? [];
 
   const toolsQuery = useQuery({
     queryKey: ["tools", providerId, modelId],
     queryFn: () => api.tools.list(providerId, modelId),
+    staleTime: QUERY_STALE_MS,
   });
   const voiceQuery = useQuery({
     queryKey: ["voice-status"],
     queryFn: () => api.voice.status(),
+    staleTime: QUERY_STALE_MS,
   });
   const gptsQuery = useQuery({
     queryKey: ["gpts", "usable"],
     queryFn: () => api.gpts.list({ scope: "usable" }),
+    staleTime: QUERY_STALE_MS,
   });
 
   const searchTool = toolsQuery.data?.tools.find((tool) => tool.id === "web_search");
@@ -97,16 +131,17 @@ export function ChatPage() {
   const imageDisabledReason = imageTool?.configured
     ? undefined
     : (imageTool?.unavailableReason ?? "Image generation is not configured.");
-  const voiceDisabledReason = voiceQuery.data?.sttConfigured
+  const voiceDisabledReason = voiceQuery.data?.sttConfigured || canUseBrowserStt()
     ? undefined
     : (voiceQuery.data?.message ?? "Voice input is not configured.");
-  const ttsConfigured = Boolean(voiceQuery.data?.ttsConfigured);
+  const ttsConfigured = Boolean(voiceQuery.data?.ttsConfigured) || canUseBrowserTts();
   const gptParam = searchParams.get("gpt");
   const activeGptId = mentionedGpt?.id ?? currentConversation?.customGptId ?? gptParam ?? undefined;
   const gptQuery = useQuery({
     queryKey: ["gpts", activeGptId],
     queryFn: () => api.gpts.get(activeGptId ?? ""),
     enabled: Boolean(activeGptId),
+    staleTime: QUERY_STALE_MS,
   });
   const activeGpt = gptQuery.data?.gpt;
   const mentionCandidates = (gptsQuery.data?.gpts ?? []).map((gpt) => ({
@@ -141,17 +176,29 @@ export function ChatPage() {
   }, [gptParam, setSearchParams, setSelection]);
 
   useEffect(() => {
-    if (defaultModel && !models.some((model) => model.providerId === providerId && model.id === modelId)) {
-      setSelection(defaultModel.providerId, defaultModel.id);
-    }
-  }, [defaultModel, modelId, models, providerId, setSelection]);
+    if (!defaultModel || models.length === 0 || currentConversation) return;
+    if (!shouldReplaceStoredModel({ providerId, modelId }, defaultModel, models)) return;
+    if (defaultModel.providerId === providerId && defaultModel.id === modelId) return;
+    setSelection(defaultModel.providerId, defaultModel.id);
+  }, [currentConversation, defaultModel, modelId, models, providerId, setSelection]);
 
   useEffect(() => {
     if (!currentConversation) return;
     if (appliedConversationRef.current === currentConversation.id) return;
     appliedConversationRef.current = currentConversation.id;
+    if (
+      defaultModel &&
+      shouldReplaceStoredModel(
+        { providerId: currentConversation.providerId, modelId: currentConversation.modelId },
+        defaultModel,
+        models,
+      )
+    ) {
+      setSelection(defaultModel.providerId, defaultModel.id);
+      return;
+    }
     setSelection(currentConversation.providerId, currentConversation.modelId);
-  }, [currentConversation, setSelection]);
+  }, [currentConversation, defaultModel, models, setSelection]);
 
   useEffect(() => {
     if (streamConversationRef.current === conversationId) return;
@@ -162,10 +209,33 @@ export function ChatPage() {
     () => liveMessages ?? messagesQuery.data?.messages ?? [],
     [liveMessages, messagesQuery.data?.messages],
   );
+  messagesRef.current = messages;
+
+  const { push: pushChunk, flush: flushChunks, reset: resetChunks } = useStreamBuffer((text) => {
+    startTransition(() => {
+      setLiveMessages((current) => appendChunk(current ?? messagesRef.current, text));
+    });
+  });
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: "end" });
-  }, [messages]);
+    resetChunks();
+    setShowAllMessages(false);
+  }, [conversationId, resetChunks]);
+
+  const hiddenCount =
+    showAllMessages || messages.length <= CHAT_MESSAGE_WINDOW ? 0 : messages.length - CHAT_MESSAGE_WINDOW;
+  const visibleMessages = hiddenCount > 0 ? messages.slice(-CHAT_MESSAGE_WINDOW) : messages;
+
+  // Follow the newest tokens only while the reader is already at the bottom, so
+  // scrolling up mid-stream to re-read something is not yanked back every frame.
+  useEffect(() => {
+    stickToBottom();
+  }, [messages, stickToBottom]);
+
+  // A new conversation always starts pinned to its latest turn.
+  useEffect(() => {
+    pin();
+  }, [conversationId, pin]);
 
   async function consumeStream(
     iterator: AsyncGenerator<{
@@ -189,22 +259,36 @@ export function ChatPage() {
               void navigate(`/chat/${event.conversation.id}`);
             }
           }
-          const next = [
-            ...(event.conversation?.id === conversationId || !conversationId
-              ? (messagesQuery.data?.messages ?? liveMessages ?? [])
-              : []),
-          ];
-          if (event.userMessage) next.push(event.userMessage);
-          if (event.assistantMessage) next.push(event.assistantMessage);
-          setLiveMessages(dedupeMessages(next));
-          await queryClient.invalidateQueries({ queryKey: ["conversations"] });
+          setLiveMessages((current) => {
+            const history =
+              event.conversation?.id === conversationId || !conversationId
+                ? (messagesQuery.data?.messages ?? [])
+                : [];
+            const next = [...history];
+            if (event.userMessage) next.push(event.userMessage);
+            if (event.assistantMessage) {
+              const streamed = [...(current ?? [])].reverse().find((message) => message.role === "assistant");
+              next.push(
+                streamed?.content && !event.assistantMessage.content
+                  ? { ...event.assistantMessage, content: streamed.content, status: "streaming" }
+                  : event.assistantMessage,
+              );
+            }
+            return dedupeMessages(next);
+          });
+          void queryClient.invalidateQueries({ queryKey: ["conversations"] });
         }
         if (event.type === "chunk" && event.text) {
-          setLiveMessages((current) => appendChunk(current ?? messages, event.text ?? ""));
+          pushChunk(event.text);
         }
         if (event.type === "complete" || event.type === "aborted" || event.type === "error") {
+          flushChunks();
           if (event.assistantMessage) {
             setLiveMessages((current) => upsertMessage(current ?? messages, event.assistantMessage!));
+          } else if (event.type === "error") {
+            setLiveMessages((current) => markLastAssistant(current ?? messages, "error"));
+          } else if (event.type === "aborted") {
+            setLiveMessages((current) => markLastAssistant(current ?? messages, "aborted"));
           }
           if (event.type === "error") {
             toast(event.message ?? "Generation failed", "error");
@@ -215,15 +299,24 @@ export function ChatPage() {
         }
       }
     } catch (err) {
-      if ((err as { name?: string }).name === "AbortError") return;
-      toast(err instanceof ApiError ? err.message : "Unable to send message", "error");
+      flushChunks();
+      if ((err as { name?: string }).name === "AbortError") {
+        if (abortRef.current?.signal.aborted) return;
+        setLiveMessages((current) => markLastAssistant(current ?? messages, "error"));
+        toast("The model took too long to respond.", "error");
+        return;
+      }
+      setLiveMessages((current) => markLastAssistant(current ?? messages, "error"));
+      logApiError("chat.send", err);
+      toast(describeApiError(err, "Unable to send message"), "error");
     } finally {
       setStreaming(false);
       setGenerationId(undefined);
       abortRef.current = null;
       await queryClient.invalidateQueries({ queryKey: ["conversations"] });
-      if (conversationId) {
-        await queryClient.invalidateQueries({ queryKey: ["messages", conversationId] });
+      const activeId = streamConversationRef.current ?? conversationId;
+      if (activeId) {
+        await queryClient.invalidateQueries({ queryKey: ["messages", activeId] });
       }
     }
   }
@@ -236,9 +329,23 @@ export function ChatPage() {
       return;
     }
     const attachmentIds = attachments.map((item) => item.id);
+    const publicAttachments = attachments.map((item) => ({
+      id: item.id,
+      fileId: item.id,
+      originalName: item.originalName,
+      mimeType: item.mimeType,
+      size: item.size,
+      kind: item.kind,
+    }));
     setDraft("");
     clearStoredDraft(currentDraftKey);
     setAttachments([]);
+    setStreaming(true);
+    const pending = optimisticTurn(content, conversationId ?? "pending", publicAttachments);
+    setLiveMessages((current) => [...(current ?? messagesQuery.data?.messages ?? []), pending.user, pending.assistant]);
+    // Sending is an explicit intent to watch the reply, so re-attach to the bottom
+    // even if the reader had scrolled up before submitting.
+    pin();
     const controller = new AbortController();
     abortRef.current = controller;
     const body = {
@@ -298,14 +405,44 @@ export function ChatPage() {
   }
 
   async function onVoiceInput(): Promise<void> {
-    if (voiceDisabledReason) {
-      toast(voiceDisabledReason, "error");
-      return;
-    }
     if (recording) {
       mediaRecorderRef.current?.stop();
+      recognitionRef.current?.stop();
       return;
     }
+    if (voiceQuery.data?.sttConfigured) {
+      await startServerVoice();
+      return;
+    }
+    const Recognition = getSpeechRecognition();
+    if (!Recognition) {
+      toast(voiceDisabledReason ?? "Voice input is not configured.", "error");
+      return;
+    }
+    const recognition = new Recognition();
+    recognition.lang = "en-US";
+    recognition.interimResults = false;
+    recognition.continuous = false;
+    recognition.onresult = (event) => {
+      const transcript = event.results[0]?.[0]?.transcript?.trim();
+      if (transcript) {
+        setDraft((current) => (current.trim() ? `${current.trim()} ${transcript}` : transcript));
+      }
+    };
+    recognition.onerror = () => {
+      setRecording(false);
+      toast("Unable to capture speech in this browser.", "error");
+    };
+    recognition.onend = () => {
+      setRecording(false);
+      recognitionRef.current = null;
+    };
+    recognitionRef.current = recognition;
+    recognition.start();
+    setRecording(true);
+  }
+
+  async function startServerVoice(): Promise<void> {
     if (typeof MediaRecorder === "undefined" || !navigator.mediaDevices?.getUserMedia) {
       toast("Voice recording is not supported in this browser.", "error");
       return;
@@ -341,16 +478,34 @@ export function ChatPage() {
     }
   }
 
-  async function onSpeak(text: string): Promise<void> {
-    if (!ttsConfigured || !text.trim()) return;
+  async function copyAssistantText(text: string): Promise<void> {
+    if (!text) return;
     try {
-      const blob = await api.voice.speak(text);
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      audio.onended = () => URL.revokeObjectURL(url);
-      await audio.play();
-    } catch (err) {
-      toast(err instanceof ApiError ? err.message : "Voice playback is not configured.", "error");
+      await navigator.clipboard.writeText(text);
+      toast("Copied", "success");
+    } catch {
+      toast("Unable to copy", "error");
+    }
+  }
+
+  async function onSpeak(text: string): Promise<void> {
+    if (!text.trim()) return;
+    if (voiceQuery.data?.ttsConfigured) {
+      try {
+        const blob = await api.voice.speak(text);
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        audio.onended = () => URL.revokeObjectURL(url);
+        await audio.play();
+        return;
+      } catch (err) {
+        if (speakWithBrowser(text)) return;
+        toast(err instanceof ApiError ? err.message : "Voice playback is not configured.", "error");
+        return;
+      }
+    }
+    if (!speakWithBrowser(text)) {
+      toast("Voice playback is not configured.", "error");
     }
   }
 
@@ -368,22 +523,52 @@ export function ChatPage() {
 
   async function onRegenerate(messageId: string): Promise<void> {
     if (!conversationId || streaming) return;
+    setStreaming(true);
     const controller = new AbortController();
     abortRef.current = controller;
     await consumeStream(api.conversations.regenerate(conversationId, messageId, controller.signal));
   }
 
   const feedbackMutation = useMutation({
-    mutationFn: (input: { messageId: string; rating: "up" | "down" }) =>
-      api.conversations.feedback(conversationId ?? "", input.messageId, { rating: input.rating }),
-    onSuccess: async () => {
-      toast("Thanks for the feedback", "success");
-      if (conversationId) await queryClient.invalidateQueries({ queryKey: ["messages", conversationId] });
+    mutationFn: (input: { message: PublicMessage; rating: "up" | "down" }) =>
+      // The message carries its own conversation id, so feedback never depends
+      // on the route param being settled (it is undefined while a new chat
+      // is still navigating to /chat/:conversationId).
+      api.conversations.feedback(input.message.conversationId, input.message.id, {
+        rating: input.rating,
+      }),
+    onMutate: (input) => {
+      const previous = input.message.feedback;
+      patchMessageFeedback(input.message, { rating: input.rating });
+      return { previous, message: input.message };
     },
-    onError: (err: unknown) => {
-      toast(err instanceof ApiError ? err.message : "Unable to save feedback", "error");
+    onError: (err: unknown, _input, context) => {
+      if (context) patchMessageFeedback(context.message, context.previous);
+      logApiError("conversations.feedback", err);
+      toast(describeApiError(err, "Unable to save feedback"), "error");
+    },
+    onSuccess: async (data) => {
+      // The server response is authoritative for what was stored.
+      setLiveMessages((current) => (current ? upsertMessage(current, data.message) : current));
+      queryClient.setQueryData<{ messages: PublicMessage[] }>(
+        ["messages", data.message.conversationId],
+        (cached) => (cached ? { messages: upsertMessage(cached.messages, data.message) } : cached),
+      );
+      toast("Thanks for the feedback", "success");
+      await queryClient.invalidateQueries({ queryKey: ["messages", data.message.conversationId] });
     },
   });
+
+  function patchMessageFeedback(
+    message: PublicMessage,
+    feedback: PublicMessageFeedback | undefined,
+  ): void {
+    setLiveMessages((current) => (current ? applyFeedback(current, message.id, feedback) : current));
+    queryClient.setQueryData<{ messages: PublicMessage[] }>(
+      ["messages", message.conversationId],
+      (cached) => (cached ? { messages: applyFeedback(cached.messages, message.id, feedback) } : cached),
+    );
+  }
 
   const lastAssistant = useMemo(
     () => [...messages].reverse().find((message) => message.role === "assistant"),
@@ -423,21 +608,23 @@ export function ChatPage() {
             modelId={modelId}
             disabled={streaming}
             onChange={(nextProvider, nextModel) => setSelection(nextProvider, nextModel)}
+            onAddModel={() => setKeysPanelOpen(true)}
           />
           {conversationId ? <ShareExportMenu conversationId={conversationId} /> : null}
           <ThemeToggle compact />
         </div>
       </header>
       <section
-        className="flex-1 overflow-y-auto px-4 py-6"
+        ref={scrollRef}
+        className="relative flex-1 overflow-y-auto px-4 py-6"
         aria-label="Messages"
         aria-live="polite"
         aria-busy={streaming}
       >
         {messages.length === 0 ? (
           <div className="mx-auto flex h-full max-w-2xl flex-col items-center justify-center gap-2 text-center">
-            <p className="text-2xl font-semibold tracking-tight">
-              {activeGpt ? `Chat with ${activeGpt.name}` : "How can I help you today?"}
+            <p className="text-3xl font-semibold tracking-tight">
+              {activeGpt ? `Chat with ${activeGpt.name}` : "Where should we begin?"}
             </p>
             <p className="text-sm text-fg-muted">
               {activeGpt?.description ?? "Send a message to start a conversation. Type @ to mention a GPT."}
@@ -455,25 +642,90 @@ export function ChatPage() {
                   </button>
                 ))}
               </div>
-            ) : null}
+            ) : (
+              <div className="mt-4 flex flex-wrap justify-center gap-2">
+                <button
+                  type="button"
+                  className="rounded-full border border-border px-3 py-1.5 text-sm text-fg-muted hover:bg-surface-muted"
+                  onClick={() => setDraft("Create an image of ")}
+                >
+                  Create an image
+                </button>
+                <button
+                  type="button"
+                  className="rounded-full border border-border px-3 py-1.5 text-sm text-fg-muted hover:bg-surface-muted"
+                  onClick={() => setDraft("Write or edit ")}
+                >
+                  Write or edit
+                </button>
+                <button
+                  type="button"
+                  className="rounded-full border border-border px-3 py-1.5 text-sm text-fg-muted hover:bg-surface-muted"
+                  onClick={() => {
+                    setWebSearch(true);
+                    document.getElementById("composer-input")?.focus();
+                  }}
+                >
+                  Search the web
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
-            {messages.map((message) => (
-              <article key={message.id} className={message.role === "user" ? "flex justify-end" : undefined}>
+            {hiddenCount > 0 ? (
+              <button
+                type="button"
+                className="self-center rounded-full border border-border px-3 py-1.5 text-sm text-fg-muted hover:bg-surface-muted"
+                onClick={() => setShowAllMessages(true)}
+              >
+                Show {hiddenCount} earlier messages
+              </button>
+            ) : null}
+            {visibleMessages.map((message) => (
+              <article
+                key={message.id}
+                className={message.role === "user" ? "chat-message flex justify-end" : "chat-message"}
+              >
                 {message.role === "user" ? (
-                  <div className="max-w-[85%] rounded-3xl bg-surface-muted px-4 py-3">
-                    {message.content ? <MarkdownContent>{message.content}</MarkdownContent> : null}
+                  <UserMessageBubble content={message.content}>
                     {message.attachments?.length ? <MessageAttachments attachments={message.attachments} /> : null}
-                  </div>
+                  </UserMessageBubble>
                 ) : (
-                  <div className="w-full">
-                    <div className="mb-1 text-xs font-medium tracking-wide text-fg-muted uppercase">
-                      Aether
-                    </div>
-                    <MarkdownContent>
-                      {message.content || (message.status === "streaming" ? "" : "")}
-                    </MarkdownContent>
+                  <div className="w-full rounded-2xl px-4 py-3 text-fg">
+                    {message.content ? (
+                      <>
+                        {message.status === "streaming" ? (
+                          <LazyMarkdown>{message.content}</LazyMarkdown>
+                        ) : (
+                          <AssistantRichBody content={message.content} />
+                        )}
+                        {message.status === "streaming" ? <span className="streaming-caret" aria-hidden="true" /> : null}
+                      </>
+                    ) : message.status === "streaming" ? (
+                      <ThinkingPipeline />
+                    ) : message.status === "error" ? (
+                      <div role="alert" className="rounded-xl border border-danger/40 bg-surface px-4 py-3">
+                        <p className="font-medium">Generation failed</p>
+                        <p className="mt-1 text-sm text-fg-muted">
+                          The model dropped or returned an error. You can retry this turn.
+                        </p>
+                        {message.id === lastAssistant?.id ? (
+                          <button
+                            type="button"
+                            className="mt-3 rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-surface-muted disabled:opacity-50"
+                            disabled={streaming}
+                            onClick={() => void onRegenerate(message.id)}
+                          >
+                            Retry
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : message.status === "aborted" ? (
+                      <p className="text-sm text-fg-muted">Generation stopped.</p>
+                    ) : (
+                      <p className="text-sm text-fg-muted">No reply was generated. Try sending again.</p>
+                    )}
                     {message.role === "assistant" && message.id === lastAssistant?.id ? (
                       <div className="mt-2 flex gap-1">
                         <button
@@ -484,6 +736,15 @@ export function ChatPage() {
                           onClick={() => void onRegenerate(message.id)}
                         >
                           <RotateCw className="size-4" />
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-lg p-1.5 text-fg-muted hover:bg-surface-muted hover:text-fg disabled:opacity-50"
+                          disabled={!message.content}
+                          aria-label="Copy"
+                          onClick={() => void copyAssistantText(message.content)}
+                        >
+                          <Copy className="size-4" />
                         </button>
                         {ttsConfigured ? (
                           <button
@@ -498,17 +759,27 @@ export function ChatPage() {
                         ) : null}
                         <button
                           type="button"
-                          className="rounded-lg p-1.5 text-fg-muted hover:bg-surface-muted hover:text-fg"
+                          className={cn(
+                            "rounded-lg p-1.5 hover:bg-surface-muted hover:text-fg disabled:opacity-50",
+                            message.feedback?.rating === "up" ? "text-accent" : "text-fg-muted",
+                          )}
                           aria-label="Good response"
-                          onClick={() => feedbackMutation.mutate({ messageId: message.id, rating: "up" })}
+                          aria-pressed={message.feedback?.rating === "up"}
+                          disabled={feedbackMutation.isPending}
+                          onClick={() => feedbackMutation.mutate({ message, rating: "up" })}
                         >
                           <ThumbsUp className="size-4" />
                         </button>
                         <button
                           type="button"
-                          className="rounded-lg p-1.5 text-fg-muted hover:bg-surface-muted hover:text-fg"
+                          className={cn(
+                            "rounded-lg p-1.5 hover:bg-surface-muted hover:text-fg disabled:opacity-50",
+                            message.feedback?.rating === "down" ? "text-accent" : "text-fg-muted",
+                          )}
                           aria-label="Bad response"
-                          onClick={() => feedbackMutation.mutate({ messageId: message.id, rating: "down" })}
+                          aria-pressed={message.feedback?.rating === "down"}
+                          disabled={feedbackMutation.isPending}
+                          onClick={() => feedbackMutation.mutate({ message, rating: "down" })}
                         >
                           <ThumbsDown className="size-4" />
                         </button>
@@ -518,9 +789,19 @@ export function ChatPage() {
                 )}
               </article>
             ))}
-            <div ref={bottomRef} />
           </div>
         )}
+        {!pinned && messages.length > 0 ? (
+          <div className="sticky bottom-2 flex justify-center">
+            <button
+              type="button"
+              className="rounded-full border border-border bg-surface px-3 py-1.5 text-sm text-fg-muted shadow-sm hover:bg-surface-muted"
+              onClick={() => pin()}
+            >
+              {streaming ? "Jump to latest" : "Scroll to bottom"}
+            </button>
+          </div>
+        ) : null}
       </section>
       <ChatComposer
         value={draft}
@@ -547,6 +828,7 @@ export function ChatPage() {
         {...(mentioned ? { mentioned } : {})}
         onMention={setMentionedGpt}
       />
+      <AddModelKeysDialog open={keysPanelOpen} onClose={() => setKeysPanelOpen(false)} />
     </div>
   );
 }

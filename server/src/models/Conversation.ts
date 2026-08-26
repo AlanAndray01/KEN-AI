@@ -13,6 +13,7 @@ const conversationSchema = new mongoose.Schema(
     lastMessageAt: { type: Date },
     lastMessagePreview: { type: String, maxlength: 280 },
     messageCount: { type: Number, default: 0, min: 0 },
+    expiresAt: { type: Date },
   },
   { timestamps: true },
 );
@@ -20,6 +21,7 @@ const conversationSchema = new mongoose.Schema(
 conversationSchema.index({ userId: 1, updatedAt: -1 });
 conversationSchema.index({ updatedAt: -1 });
 conversationSchema.index({ title: "text" });
+conversationSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 applyJsonTransform(conversationSchema);
 

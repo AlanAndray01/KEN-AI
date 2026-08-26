@@ -52,7 +52,7 @@ export function SettingsPersonalizationPage() {
         }}
       >
         <label className="block text-sm">
-          What should Aether know about you?
+          What should Ken know about you?
           <textarea
             value={aboutUser}
             onChange={(event) => setAboutUser(event.target.value)}
@@ -61,7 +61,7 @@ export function SettingsPersonalizationPage() {
           />
         </label>
         <label className="block text-sm">
-          How should Aether respond?
+          How should Ken respond?
           <textarea
             value={howToRespond}
             onChange={(event) => setHowToRespond(event.target.value)}

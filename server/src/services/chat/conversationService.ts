@@ -1,6 +1,11 @@
 import mongoose from "mongoose";
 import type { z } from "zod";
-import type { createConversationSchema, patchConversationSchema } from "@aether/shared";
+import {
+  CONVERSATION_TTL_SECONDS,
+  MAX_STORED_MESSAGE_TURNS,
+  type createConversationSchema,
+  type patchConversationSchema,
+} from "@aether/shared";
 import { Conversation } from "../../models/Conversation.js";
 import { Message } from "../../models/Message.js";
 import { AppError } from "../../utils/AppError.js";
@@ -12,6 +17,24 @@ import { toPublicConversation, toPublicMessage } from "./toPublic.js";
 type CreateConversationInput = z.infer<typeof createConversationSchema>;
 type PatchConversationInput = z.infer<typeof patchConversationSchema>;
 
+export function conversationExpiry(pinned: boolean): Date | undefined {
+  if (pinned) return undefined;
+  return new Date(Date.now() + CONVERSATION_TTL_SECONDS * 1000);
+}
+
+export async function capStoredTurns(conversationId: string, userId: string): Promise<void> {
+  const maxDocs = MAX_STORED_MESSAGE_TURNS * 2;
+  const count = await Message.countDocuments({ conversationId, userId });
+  if (count <= maxDocs) return;
+  const extra = count - maxDocs;
+  const oldest = await Message.find({ conversationId, userId })
+    .sort({ createdAt: 1 })
+    .limit(extra)
+    .select("_id");
+  if (oldest.length === 0) return;
+  await Message.deleteMany({ _id: { $in: oldest.map((doc) => doc._id) } });
+}
+
 export async function listConversations(
   userId: string,
   options: { archived?: boolean; limit?: number } = {},
@@ -19,6 +42,7 @@ export async function listConversations(
   const limit = Math.min(Math.max(options.limit ?? 40, 1), 100);
   const archived = options.archived ?? false;
   const docs = await Conversation.find({ userId, archived })
+    .select("title modelId providerId archived pinned lastMessageAt lastMessagePreview messageCount customGptId createdAt updatedAt")
     .sort({ pinned: -1, updatedAt: -1 })
     .limit(limit);
   return docs.map((doc) => toPublicConversation(doc));
@@ -31,6 +55,7 @@ export async function createConversation(userId: string, input: CreateConversati
     await getAccessibleGpt(userId, input.customGptId);
     customGptId = input.customGptId;
   }
+  const expiresAt = conversationExpiry(false);
   const created = await Conversation.create({
     userId,
     title: input.title ?? "New chat",
@@ -39,6 +64,7 @@ export async function createConversation(userId: string, input: CreateConversati
     archived: false,
     pinned: false,
     messageCount: 0,
+    ...(expiresAt ? { expiresAt } : {}),
     ...(customGptId ? { customGptId } : {}),
   });
   return toPublicConversation(created);
@@ -57,7 +83,10 @@ export async function updateConversation(
   const doc = await findOwnedConversation(userId, conversationId);
   if (input.title) doc.title = input.title;
   if (input.archived !== undefined) doc.archived = input.archived;
-  if (input.pinned !== undefined) doc.pinned = input.pinned;
+  if (input.pinned !== undefined) {
+    doc.pinned = input.pinned;
+    doc.set("expiresAt", conversationExpiry(input.pinned) ?? null);
+  }
   if (input.modelId) doc.modelId = input.modelId;
   if (input.providerId) doc.providerId = input.providerId;
   if (input.modelId || input.providerId) {
@@ -135,8 +164,4 @@ export async function findOwnedConversation(userId: string, conversationId: stri
   return doc;
 }
 
-export function titleFromContent(content: string): string {
-  const compact = content.replace(/\s+/g, " ").trim();
-  if (compact.length <= 60) return compact || "New chat";
-  return `${compact.slice(0, 57).trimEnd()}…`;
-}
+export { titleFromContent } from "./chatTitle.js";

@@ -11,11 +11,21 @@ const NON_RETRYABLE_CODES = new Set([
   "RATE_LIMITED",
 ]);
 
+export function isProviderQuotaError(error: unknown): boolean {
+  return error instanceof AppError && error.code === "PROVIDER_RATE_LIMITED";
+}
+
 export function isRetryableProviderError(error: unknown): boolean {
   if (isAbortError(error)) return false;
   if (error instanceof AppError) {
     if (NON_RETRYABLE_CODES.has(error.code)) return false;
-    return error.statusCode >= 500 || error.statusCode === 429 || error.code === "PROVIDER_ERROR";
+    return (
+      error.statusCode >= 500 ||
+      error.statusCode === 429 ||
+      error.code === "PROVIDER_ERROR" ||
+      error.code === "PROVIDER_RATE_LIMITED" ||
+      error.code === "PROVIDER_UNAVAILABLE"
+    );
   }
   return true;
 }

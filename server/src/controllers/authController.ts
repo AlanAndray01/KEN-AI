@@ -1,15 +1,24 @@
 import type { Request, Response } from "express";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import {
   changePasswordSchema,
   forgotPasswordSchema,
   googleAuthSchema,
   loginSchema,
   registerSchema,
+  resendVerificationSchema,
   resetPasswordSchema,
+  verifyEmailSchema,
 } from "@aether/shared";
 import { AppError } from "../utils/AppError.js";
-import { REFRESH_COOKIE, isGoogleOAuthConfigured } from "../services/auth/config.js";
-import { clearAuthCookies, clientOrigin, setAuthCookies } from "../services/auth/cookies.js";
+import { OAUTH_STATE_COOKIE, REFRESH_COOKIE, isGoogleOAuthConfigured } from "../services/auth/config.js";
+import {
+  clearAuthCookies,
+  clearOAuthStateCookie,
+  clientOrigin,
+  setAuthCookies,
+  setOAuthStateCookie,
+} from "../services/auth/cookies.js";
 import {
   changePassword,
   forgotPassword,
@@ -18,7 +27,9 @@ import {
   logoutUser,
   refreshAuth,
   registerUser,
+  resendVerificationCode,
   resetPassword,
+  verifyEmailCode,
 } from "../services/auth/authService.js";
 import { exchangeGoogleCode, getGoogleAuthUrl, verifyGoogleIdToken } from "../services/auth/googleAuthService.js";
 
@@ -33,12 +44,22 @@ function sendUser(
 
 export async function register(req: Request, res: Response): Promise<void> {
   const body = registerSchema.parse(req.body);
-  sendUser(res, 201, await registerUser(body, req));
+  res.status(201).json(await registerUser(body));
 }
 
 export async function login(req: Request, res: Response): Promise<void> {
   const body = loginSchema.parse(req.body);
   sendUser(res, 200, await loginUser(body, req));
+}
+
+export async function verifyEmail(req: Request, res: Response): Promise<void> {
+  const body = verifyEmailSchema.parse(req.body);
+  sendUser(res, 200, await verifyEmailCode(body, req));
+}
+
+export async function resendCode(req: Request, res: Response): Promise<void> {
+  const body = resendVerificationSchema.parse(req.body);
+  res.status(200).json(await resendVerificationCode(body.email));
 }
 
 export async function logout(req: Request, res: Response): Promise<void> {
@@ -87,7 +108,12 @@ export async function forgotPasswordHandler(req: Request, res: Response): Promis
 
 export async function resetPasswordHandler(req: Request, res: Response): Promise<void> {
   const body = resetPasswordSchema.parse(req.body);
-  await resetPassword(body.token, body.password);
+  await resetPassword({
+    email: body.email,
+    password: body.password,
+    ...(body.token ? { token: body.token } : {}),
+    ...(body.code ? { code: body.code } : {}),
+  });
   clearAuthCookies(res);
   res.status(200).json({ ok: true });
 }
@@ -98,13 +124,31 @@ export async function googleStart(_req: Request, res: Response): Promise<void> {
     return;
   }
 
-  res.redirect(getGoogleAuthUrl());
+  // Bind this authorization request to the browser that started it, so a
+  // callback forged by another site cannot sign the victim into an account.
+  const state = randomBytes(32).toString("base64url");
+  setOAuthStateCookie(res, state);
+  res.redirect(getGoogleAuthUrl(state));
+}
+
+function statesMatch(received: unknown, expected: unknown): boolean {
+  if (typeof received !== "string" || typeof expected !== "string") return false;
+  if (received.length === 0 || received.length !== expected.length) return false;
+  return timingSafeEqual(Buffer.from(received), Buffer.from(expected));
 }
 
 export async function googleCallback(req: Request, res: Response): Promise<void> {
+  const expectedState = req.cookies?.[OAUTH_STATE_COOKIE] as unknown;
+  clearOAuthStateCookie(res);
+
   const error = typeof req.query.error === "string" ? req.query.error : undefined;
   if (error === "access_denied") {
     res.redirect(`${clientOrigin()}/login?error=google_cancelled`);
+    return;
+  }
+
+  if (!statesMatch(req.query.state, expectedState)) {
+    res.redirect(`${clientOrigin()}/login?error=google_state`);
     return;
   }
 

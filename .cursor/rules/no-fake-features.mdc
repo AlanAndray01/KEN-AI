@@ -1,6 +1,7 @@
 ---
 description: No fake production behavior; mark missing infrastructure honestly
-alwaysApply: true
+globs: ""
+alwaysApply: false
 ---
 
 # Honest capability

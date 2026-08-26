@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   deleteMyCredential,
   listMyCredentials,
+  testMyCredential,
   upsertMyCredential,
 } from "../controllers/providerController.js";
 import { exportAllConversationsHandler } from "../controllers/exportController.js";
@@ -19,6 +20,7 @@ meRouter.get("/usage", asyncHandler(myUsageHandler));
 meRouter.get("/export", asyncHandler(exportAllConversationsHandler));
 meRouter.get("/provider-credentials", asyncHandler(listMyCredentials));
 meRouter.put("/provider-credentials/:providerId", asyncHandler(upsertMyCredential));
+meRouter.post("/provider-credentials/:providerId/test", asyncHandler(testMyCredential));
 meRouter.delete("/provider-credentials/:providerId", asyncHandler(deleteMyCredential));
 meRouter.get("/instructions", asyncHandler(getInstructionsHandler));
 meRouter.put("/instructions", asyncHandler(upsertInstructionsHandler));

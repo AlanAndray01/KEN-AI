@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
-import { Globe, Image as ImageIcon, Mic, Paperclip, Send, Square, X } from "lucide-react";
-import type { ModelCapability, PublicFile } from "@aether/shared";
+import { Globe, Image as ImageIcon, Mic, Plus, Send, Square, X } from "lucide-react";
+import { estimatePromptTokens, type ModelCapability, type PublicFile } from "@aether/shared";
 import { AttachmentChips } from "@/components/AttachmentChips";
 import { cn } from "@/utils/cn";
 import { composerAccept } from "@/utils/attachmentGate";
@@ -34,6 +34,9 @@ interface ChatComposerProps {
   onMention?: (item: MentionCandidate | undefined) => void;
 }
 
+const COMPOSER_MIN_PX = 48;
+const COMPOSER_MAX_PX = COMPOSER_MIN_PX * 2;
+
 export function ChatComposer({
   value,
   onChange,
@@ -42,7 +45,7 @@ export function ChatComposer({
   streaming,
   sendOnEnter = true,
   disabled = false,
-  placeholder = "Message Aether",
+  placeholder = "Ask anything",
   attachments = [],
   capabilities = [],
   uploading = false,
@@ -78,7 +81,7 @@ export function ChatComposer({
     const element = textareaRef.current;
     if (!element) return;
     element.style.height = "auto";
-    element.style.height = `${Math.min(element.scrollHeight, 200)}px`;
+    element.style.height = `${Math.min(element.scrollHeight, COMPOSER_MAX_PX)}px`;
   }, [value]);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>): void {
@@ -169,9 +172,9 @@ export function ChatComposer({
       }}
       onDrop={onDrop}
     >
-      <div className={cn("relative rounded-3xl border bg-surface shadow-sm", dragging ? "border-accent" : "border-border")}>
+      <div className={cn("relative rounded-[1.75rem] border bg-surface shadow-sm", dragging ? "border-accent" : "border-border")}>
         {dragging ? (
-          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-3xl bg-surface/90 text-sm font-medium">
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-[1.75rem] bg-surface/90 text-sm font-medium">
             Drop files to attach
           </div>
         ) : null}
@@ -205,7 +208,7 @@ export function ChatComposer({
           aria-label="Message"
           aria-autocomplete="list"
           aria-expanded={mentionOpen}
-          className="max-h-[200px] min-h-[48px] w-full resize-none bg-transparent px-4 pt-3 pb-2 text-sm outline-none"
+          className="composer-input max-h-[96px] min-h-[48px] w-full resize-none overflow-y-auto bg-transparent px-4 pt-3 pb-2 text-sm outline-none ring-0 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
           id="composer-input"
           onChange={(event) => {
             onChange(event.target.value);
@@ -268,7 +271,7 @@ export function ChatComposer({
               disabled={streaming || disabled || !onAddFiles}
               onClick={() => fileInputRef.current?.click()}
             >
-              <Paperclip className="size-4" />
+              <Plus className="size-4" />
             </button>
             <button
               type="button"
@@ -309,6 +312,7 @@ export function ChatComposer({
             </button>
             <p className="px-1 text-[11px] text-fg-muted">
               {sendOnEnter ? "Enter to send · Shift+Enter for a new line" : "⌘ Enter to send"}
+              {value.trim() ? ` · ~${estimatePromptTokens(value)} tokens` : ""}
             </p>
           </div>
           {streaming ? (

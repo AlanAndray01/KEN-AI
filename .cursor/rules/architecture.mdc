@@ -1,6 +1,7 @@
 ---
 description: Core Aether architecture, layers, and phase discipline
-alwaysApply: true
+globs: ""
+alwaysApply: false
 ---
 
 # Architecture

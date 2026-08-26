@@ -7,6 +7,7 @@ const listPublicProviders = vi.fn();
 const listAdminProviders = vi.fn();
 const createProvider = vi.fn();
 const testProviderConnection = vi.fn();
+const testUserCredential = vi.fn();
 const listAdminModels = vi.fn();
 
 let authRole: "admin" | "user" | null = "admin";
@@ -60,6 +61,7 @@ vi.mock("../services/ai/providerService.js", () => ({
   listUserCredentials: vi.fn(async () => []),
   patchModel: vi.fn(),
   testProviderConnection: (...args: unknown[]) => testProviderConnection(...args),
+  testUserCredential: (...args: unknown[]) => testUserCredential(...args),
   updateProvider: vi.fn(),
   upsertUserCredential: vi.fn(),
 }));
@@ -92,6 +94,7 @@ describe("provider configuration APIs", () => {
     listAdminProviders.mockReset();
     createProvider.mockReset();
     testProviderConnection.mockReset();
+    testUserCredential.mockReset();
     listAdminModels.mockReset();
     listPublicModels.mockResolvedValue([
       {
@@ -175,6 +178,24 @@ describe("provider configuration APIs", () => {
     const response = await request(app).get("/api/admin/providers");
     expect(response.status).toBe(200);
     expect(response.body.providers[0].configured).toBe(true);
+    assertNoRawApiKeys(response.body);
+  });
+
+  it("tests a user-supplied key without echoing it", async () => {
+    authRole = "user";
+    testUserCredential.mockResolvedValue({ status: "connected", message: "Connected" });
+    const { app } = await import("../app.js");
+    const response = await request(app)
+      .post("/api/me/provider-credentials/groq/test")
+      .send({ apiKey: "test-secret-key-abcd" });
+
+    expect(response.status).toBe(200);
+    expect(response.body.status).toBe("connected");
+    expect(testUserCredential).toHaveBeenCalledWith(
+      "000000000000000000000001",
+      "groq",
+      expect.objectContaining({ apiKey: "test-secret-key-abcd" }),
+    );
     assertNoRawApiKeys(response.body);
   });
 });

@@ -1,6 +1,6 @@
+import { AppError } from "../../utils/AppError.js";
 import type { AIProvider, ProviderRuntimeConfig } from "./AIProvider.js";
 import { AnthropicProvider } from "./providers/AnthropicProvider.js";
-import { GeminiProvider } from "./providers/GeminiProvider.js";
 import { isMockAiAllowed, MockProvider } from "./providers/MockProvider.js";
 import { OpenAICompatibleProvider } from "./providers/OpenAICompatibleProvider.js";
 
@@ -13,7 +13,10 @@ export function createProviderAdapter(config: ProviderRuntimeConfig): AIProvider
   }
 
   if (config.type === "gemini") {
-    return new GeminiProvider(config);
+    throw new AppError("Gemini is no longer supported. Choose a Groq or OpenAI-compatible model.", {
+      statusCode: 410,
+      code: "PROVIDER_REMOVED",
+    });
   }
 
   if (config.type === "anthropic") {

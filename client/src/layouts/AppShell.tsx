@@ -1,5 +1,7 @@
 import { Outlet } from "react-router-dom";
+import { Suspense } from "react";
 import { Toaster } from "@/components/Toaster";
+import { PageFallback } from "@/components/PageFallback";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 export function AppShell() {
@@ -10,7 +12,9 @@ export function AppShell() {
       <a href="#main-content" className="skip-link">
         Skip to content
       </a>
-      <Outlet />
+      <Suspense fallback={<PageFallback />}>
+        <Outlet />
+      </Suspense>
       <Toaster />
     </div>
   );

@@ -44,7 +44,7 @@ export async function upsertInstructions(
       },
       $setOnInsert: { userId },
     },
-    { new: true, upsert: true },
+    { returnDocument: "after", upsert: true },
   );
   return doc ? toPublicInstruction(doc) : emptyInstructions();
 }

@@ -1,24 +1,25 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import { env, isProduction } from "../../config/env.js";
+import { localDevSecret } from "../../config/devSecrets.js";
 import { AppError } from "../../utils/AppError.js";
 
+/** Payload format: `v1:{iv}:{authTag}:{ciphertext}` (AES-256-GCM, 12-byte IV). */
 const PREFIX = "v1";
 
 function encryptionSecret(): string {
   if (env.ENCRYPTION_KEY) {
     return env.ENCRYPTION_KEY;
   }
-  if (!isProduction && env.JWT_SECRET) {
-    return env.JWT_SECRET;
+  if (isProduction) {
+    throw new AppError("ENCRYPTION_KEY is required to store provider credentials", {
+      statusCode: 500,
+      code: "ENCRYPTION_NOT_CONFIGURED",
+      expose: false,
+    });
   }
-  if (!isProduction) {
-    return "aether-dev-encryption-key-not-for-production";
-  }
-  throw new AppError("ENCRYPTION_KEY is required to store provider credentials", {
-    statusCode: 500,
-    code: "ENCRYPTION_NOT_CONFIGURED",
-    expose: false,
-  });
+  // Dev only. JWT_SECRET is preferred here purely so credentials encrypted by
+  // earlier builds stay readable; a generated local secret is used otherwise.
+  return env.JWT_SECRET ?? localDevSecret("encryption");
 }
 
 function keyMaterial(): Buffer {

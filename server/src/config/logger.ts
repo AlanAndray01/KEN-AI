@@ -15,6 +15,11 @@ const redactPaths = [
   "*.api_key",
   "encryptedApiKey",
   "GEMINI_API_KEY",
+  "RESEND_API_KEY",
+  "RESEND_FROM_EMAIL",
+  "EMAIL_FROM",
+  "SMTP_PASS",
+  "SMTP_USER",
   "OPENAI_API_KEY",
   "ANTHROPIC_API_KEY",
   "GROQ_API_KEY",
@@ -31,6 +36,9 @@ const redactPaths = [
   "req.body.currentPassword",
   "req.body.newPassword",
   "req.body.apiKey",
+  "req.body.code",
+  "verificationCode",
+  "codeHash",
 ];
 
 const prettyLogs = !isProduction && env.NODE_ENV !== "test";

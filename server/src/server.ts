@@ -1,3 +1,4 @@
+import { APP_NAME } from "@aether/shared";
 import { env } from "./config/env.js";
 import { logger } from "./config/logger.js";
 import { connectDatabase, disconnectDatabase } from "./config/database.js";
@@ -27,7 +28,7 @@ async function start(): Promise<void> {
         clientUrl: env.CLIENT_URL,
         database: "connected",
       },
-      "Aether API listening",
+      `${APP_NAME} API listening`,
     );
   });
 

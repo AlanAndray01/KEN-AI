@@ -11,7 +11,8 @@
     "lint": "eslint .",
     "test": "vitest run",
     "verify:db": "tsx src/scripts/verify-mongo.ts",
-    "verify:health": "tsx src/scripts/verify-health.ts"
+    "verify:health": "tsx src/scripts/verify-health.ts",
+    "clear:dummy": "tsx src/scripts/clearDummyData.ts"
   },
   "dependencies": {
     "@aether/shared": "*",
@@ -27,6 +28,7 @@
     "multer": "^2.2.0",
     "pino": "^9.9.0",
     "pino-http": "^10.5.0",
+    "resend": "^6.20.0",
     "zod": "^4.0.17"
   },
   "devDependencies": {
@@ -38,6 +40,7 @@
     "@types/node": "^24.3.0",
     "@types/supertest": "^6.0.3",
     "eslint": "^9.33.0",
+    "mongodb-memory-server": "^11.2.0",
     "pino-pretty": "^13.1.1",
     "supertest": "^7.1.4",
     "tsx": "^4.20.4",

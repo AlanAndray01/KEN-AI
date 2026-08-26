@@ -1,8 +1,9 @@
-import { useEffect } from "react";
+import { Suspense, useEffect } from "react";
 import { Menu } from "lucide-react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { CLIENT_ROUTES } from "@aether/shared";
 import { ConversationSidebar } from "@/components/ConversationSidebar";
+import { PageFallback } from "@/components/PageFallback";
 import { ShortcutsModal } from "@/components/ShortcutsModal";
 import { useAuth } from "@/hooks/useAuth";
 import { useUiStore } from "@/stores/uiStore";
@@ -89,7 +90,9 @@ export function WorkspaceLayout() {
               : "min-h-0 min-w-0 flex-1 overflow-y-auto outline-none"
           }
         >
-          <Outlet />
+          <Suspense fallback={<PageFallback />}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
       <ShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} sendOnEnter={sendOnEnter} />

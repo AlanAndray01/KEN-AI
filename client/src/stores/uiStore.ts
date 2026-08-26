@@ -13,15 +13,21 @@ interface UiState {
   mobileOpen: boolean;
   collapsed: boolean;
   shortcutsOpen: boolean;
+  keysPanelOpen: boolean;
+  chatFilter: string;
   setMobileOpen: (open: boolean) => void;
   toggleCollapsed: () => void;
   setShortcutsOpen: (open: boolean) => void;
+  setKeysPanelOpen: (open: boolean) => void;
+  setChatFilter: (value: string) => void;
 }
 
 export const useUiStore = create<UiState>((set, get) => ({
   mobileOpen: false,
   collapsed: readCollapsed(),
   shortcutsOpen: false,
+  keysPanelOpen: false,
+  chatFilter: "",
   setMobileOpen: (open) => set({ mobileOpen: open }),
   toggleCollapsed: () => {
     const collapsed = !get().collapsed;
@@ -29,4 +35,6 @@ export const useUiStore = create<UiState>((set, get) => ({
     set({ collapsed });
   },
   setShortcutsOpen: (open) => set({ shortcutsOpen: open }),
+  setKeysPanelOpen: (open) => set({ keysPanelOpen: open }),
+  setChatFilter: (value) => set({ chatFilter: value }),
 }));

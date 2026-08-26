@@ -36,16 +36,24 @@ export default defineConfig({
             id.includes("react-markdown") ||
             id.includes("rehype") ||
             id.includes("remark") ||
+            id.includes("katex") ||
             id.includes("unified") ||
             id.includes("mdast") ||
             id.includes("hast") ||
             id.includes("micromark") ||
-            id.includes("unist")
+            id.includes("unist") ||
+            id.includes("vfile") ||
+            id.includes("character-entities") ||
+            id.includes("comma-separated-tokens") ||
+            id.includes("space-separated-tokens") ||
+            id.includes("property-information")
           ) {
             return "markdown";
           }
           if (id.includes("@tanstack")) return "react";
-          if (id.includes("lucide-react")) return "icons";
+          if (id.includes("zustand") || id.includes("clsx") || id.includes("tailwind-merge")) {
+            return "vendor";
+          }
           return;
         },
       },

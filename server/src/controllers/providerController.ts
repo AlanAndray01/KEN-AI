@@ -5,6 +5,7 @@ import {
   patchProviderSchema,
   testProviderSchema,
   upsertProviderSchema,
+  saveProviderKeySchema,
   upsertUserCredentialSchema,
 } from "@aether/shared";
 import { AppError } from "../utils/AppError.js";
@@ -19,6 +20,7 @@ import {
   listUserCredentials,
   patchModel,
   testProviderConnection,
+  testUserCredential,
   updateProvider,
   upsertUserCredential,
 } from "../services/ai/providerService.js";
@@ -97,6 +99,28 @@ export async function upsertMyCredential(req: Request, res: Response): Promise<v
     (req.params.providerId ?? "").toLowerCase(),
     body,
   );
+  res.status(200).json({ credential });
+}
+
+export async function testMyCredential(req: Request, res: Response): Promise<void> {
+  const body = testProviderSchema.parse(req.body ?? {});
+  const result = await testUserCredential(
+    requireUserId(req),
+    (req.params.providerId ?? "").toLowerCase(),
+    body,
+  );
+  res.status(200).json(result);
+}
+
+export async function saveSettingsKey(req: Request, res: Response): Promise<void> {
+  const body = saveProviderKeySchema.parse(req.body);
+  if (body.providerId === "gemini") {
+    throw new AppError("Gemini is no longer supported. Use Groq or an OpenAI-compatible provider.", {
+      statusCode: 400,
+      code: "PROVIDER_REMOVED",
+    });
+  }
+  const credential = await upsertUserCredential(requireUserId(req), body.providerId, { apiKey: body.apiKey });
   res.status(200).json({ credential });
 }
 

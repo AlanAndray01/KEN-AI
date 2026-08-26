@@ -6,7 +6,8 @@
   "workspaces": [
     "shared",
     "server",
-    "client"
+    "client",
+    "Multi-Agents"
   ],
   "scripts": {
     "predev": "npm run build -w @aether/shared",
@@ -16,7 +17,10 @@
     "build": "npm run build -w @aether/shared && npm run build -w @aether/server && npm run build -w @aether/client",
     "test": "npm run build -w @aether/shared && npm run test -w @aether/shared && npm run test -w @aether/server && npm run test -w @aether/client",
     "lint": "npm run lint -w @aether/shared && npm run lint -w @aether/server && npm run lint -w @aether/client",
-    "typecheck": "npm run typecheck -w @aether/shared && npm run build -w @aether/shared && npm run typecheck -w @aether/server && npm run typecheck -w @aether/client"
+    "typecheck": "npm run typecheck -w @aether/shared && npm run build -w @aether/shared && npm run typecheck -w @aether/server && npm run typecheck -w @aether/client",
+    "agents": "npm run agents -w @aether/multi-agents --",
+    "agents:audit": "npm run agents -w @aether/multi-agents -- run audit",
+    "agents:verify": "npm run agents -w @aether/multi-agents -- verify"
   },
   "engines": {
     "node": ">=20"

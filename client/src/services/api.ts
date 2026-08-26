@@ -22,6 +22,7 @@ import type {
   PublicUsageSummary,
   PublicUser,
   PublicUserCredential,
+  PublicCredentialTest,
   PublicVoiceStatus,
 } from "@aether/shared";
 
@@ -29,8 +30,21 @@ export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
   readonly requestId?: string;
+  readonly emailSent?: boolean;
+  readonly requiresVerification?: boolean;
+  readonly email?: string;
 
-  constructor(message: string, options: { status: number; code: string; requestId?: string }) {
+  constructor(
+    message: string,
+    options: {
+      status: number;
+      code: string;
+      requestId?: string;
+      emailSent?: boolean;
+      requiresVerification?: boolean;
+      email?: string;
+    },
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = options.status;
@@ -38,11 +52,29 @@ export class ApiError extends Error {
     if (options.requestId !== undefined) {
       this.requestId = options.requestId;
     }
+    if (options.emailSent !== undefined) {
+      this.emailSent = options.emailSent;
+    }
+    if (options.requiresVerification !== undefined) {
+      this.requiresVerification = options.requiresVerification;
+    }
+    if (options.email !== undefined) {
+      this.email = options.email;
+    }
   }
 }
 
 export interface AuthResponse {
   user: PublicUser;
+}
+
+export interface VerificationRequiredResponse {
+  success?: true;
+  message?: string;
+  requiresVerification: true;
+  email: string;
+  emailSent: boolean;
+  verificationCode?: string;
 }
 
 export interface OkResponse {
@@ -62,17 +94,17 @@ export interface ChatStreamEvent {
 }
 
 async function* streamRequest(path: string, body: unknown, signal?: AbortSignal): AsyncGenerator<ChatStreamEvent> {
+  const idle = createIdleWatchdog(180_000, signal);
   const init: RequestInit = {
     method: "POST",
-    credentials: "include",
     headers: {
       Accept: "text/event-stream",
       "Content-Type": "application/json",
     },
     body: JSON.stringify(body),
   };
-  if (signal) init.signal = signal;
-  const response = await fetch(`${API_BASE_URL}${path}`, init);
+  init.signal = idle.signal;
+  const response = await authedFetch(path, init);
 
   const requestId = response.headers.get("x-request-id") ?? undefined;
   const contentType = response.headers.get("content-type") ?? "";
@@ -102,6 +134,7 @@ async function* streamRequest(path: string, body: unknown, signal?: AbortSignal)
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
+      idle.ping();
       buffer += decoder.decode(value, { stream: true });
       const parts = buffer.split("\n\n");
       buffer = parts.pop() ?? "";
@@ -113,6 +146,7 @@ async function* streamRequest(path: string, body: unknown, signal?: AbortSignal)
     const tail = parseSseBlock(buffer);
     if (tail) yield tail;
   } finally {
+    idle.stop();
     reader.releaseLock();
   }
 }
@@ -136,12 +170,130 @@ function parseSseBlock(block: string): ChatStreamEvent | undefined {
   }
 }
 
+function createIdleWatchdog(
+  idleMs: number,
+  parent?: AbortSignal,
+): { signal: AbortSignal; ping: () => void; stop: () => void } {
+  const controller = new AbortController();
+  let timer: number | undefined;
+
+  const arm = (): void => {
+    if (timer) window.clearTimeout(timer);
+    timer = window.setTimeout(() => {
+      controller.abort();
+    }, idleMs);
+  };
+
+  const onParentAbort = (): void => controller.abort();
+  parent?.addEventListener("abort", onParentAbort, { once: true });
+  arm();
+
+  const signals = parent ? [parent, controller.signal] : [controller.signal];
+  return {
+    signal: typeof AbortSignal.any === "function" ? AbortSignal.any(signals) : controller.signal,
+    ping: arm,
+    stop: () => {
+      if (timer) window.clearTimeout(timer);
+      parent?.removeEventListener("abort", onParentAbort);
+    },
+  };
+}
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:5000/api";
 
+/**
+ * Endpoints that establish or clear a session. A 401 from these is a real
+ * credential failure, so retrying them after a refresh would loop forever.
+ */
+const SESSION_ENDPOINTS = new Set([
+  "/auth/login",
+  "/auth/register",
+  "/auth/refresh",
+  "/auth/logout",
+  "/auth/verify-email",
+  "/auth/resend-code",
+]);
+
+let refreshInFlight: Promise<boolean> | null = null;
+const unauthorizedListeners = new Set<() => void>();
+
+/** Notified when the session cannot be recovered and the user must sign in again. */
+export function onUnauthorized(listener: () => void): () => void {
+  unauthorizedListeners.add(listener);
+  return () => {
+    unauthorizedListeners.delete(listener);
+  };
+}
+
+async function performRefresh(): Promise<boolean> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+      method: "POST",
+      credentials: "include",
+      headers: { Accept: "application/json" },
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** Concurrent 401s share one refresh so the refresh token rotates only once. */
+function refreshSession(): Promise<boolean> {
+  if (!refreshInFlight) {
+    refreshInFlight = performRefresh().finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  return refreshInFlight;
+}
+
+/**
+ * The access cookie is short lived while the refresh cookie outlives it. On a
+ * 401 we rotate the session once and replay the request, so an expired access
+ * token never surfaces to the user as a failed action.
+ */
+async function authedFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const requestInit: RequestInit = { ...init, credentials: "include" };
+  const response = await fetch(`${API_BASE_URL}${path}`, requestInit);
+
+  if (response.status !== 401 || SESSION_ENDPOINTS.has(path)) {
+    return response;
+  }
+
+  if (!(await refreshSession())) {
+    for (const listener of unauthorizedListeners) listener();
+    return response;
+  }
+
+  return fetch(`${API_BASE_URL}${path}`, requestInit);
+}
+
+function apiErrorFromBody(
+  status: number,
+  requestId: string | undefined,
+  body: {
+    error?: { code?: string; message?: string };
+    emailSent?: boolean;
+    requiresVerification?: boolean;
+    email?: string;
+  },
+  fallbackCode: string,
+  fallbackMessage: string,
+): ApiError {
+  return new ApiError(body.error?.message ?? fallbackMessage, {
+    status,
+    code: body.error?.code ?? fallbackCode,
+    ...(requestId ? { requestId } : {}),
+    ...(typeof body.emailSent === "boolean" ? { emailSent: body.emailSent } : {}),
+    ...(body.requiresVerification === true ? { requiresVerification: true } : {}),
+    ...(typeof body.email === "string" ? { email: body.email } : {}),
+  });
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await authedFetch(path, {
     ...init,
-    credentials: "include",
     headers: {
       Accept: "application/json",
       ...(init?.body ? { "Content-Type": "application/json" } : {}),
@@ -152,22 +304,24 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const requestId = response.headers.get("x-request-id") ?? undefined;
 
   if (!response.ok) {
-    let code = "REQUEST_FAILED";
-    let message = `Request failed (${response.status})`;
-
+    let body: {
+      error?: { code?: string; message?: string };
+      emailSent?: boolean;
+      requiresVerification?: boolean;
+      email?: string;
+    } = {};
     try {
-      const body = (await response.json()) as { error?: { code?: string; message?: string } };
-      code = body.error?.code ?? code;
-      message = body.error?.message ?? message;
+      body = (await response.json()) as typeof body;
     } catch {
       // Non-JSON error bodies are treated as generic failures.
     }
-
-    throw new ApiError(message, {
-      status: response.status,
-      code,
-      ...(requestId ? { requestId } : {}),
-    });
+    throw apiErrorFromBody(
+      response.status,
+      requestId,
+      body,
+      "REQUEST_FAILED",
+      `Request failed (${response.status})`,
+    );
   }
 
   if (response.status === 204) {
@@ -213,7 +367,7 @@ function filenameFromDisposition(header: string | null, fallback: string): strin
 }
 
 async function downloadRequest(path: string, fallback: string): Promise<{ blob: Blob; filename: string }> {
-  const response = await fetch(`${API_BASE_URL}${path}`, { credentials: "include" });
+  const response = await authedFetch(path);
   await failIfNotOk(response);
   return {
     blob: await response.blob(),
@@ -227,14 +381,19 @@ export const api = {
   },
   auth: {
     register: (body: { name: string; email: string; password: string }) =>
-      request<AuthResponse>("/auth/register", { method: "POST", body: JSON.stringify(body) }),
+      request<VerificationRequiredResponse>("/auth/register", { method: "POST", body: JSON.stringify(body) }),
     login: (body: { email: string; password: string }) =>
       request<AuthResponse>("/auth/login", { method: "POST", body: JSON.stringify(body) }),
+    verifyEmail: (body: { email: string; code: string }) =>
+      request<AuthResponse>("/auth/verify-email", { method: "POST", body: JSON.stringify(body) }),
+    resendCode: (body: { email: string }) =>
+      request<OkResponse>("/auth/resend-code", { method: "POST", body: JSON.stringify(body) }),
     logout: () => request<OkResponse>("/auth/logout", { method: "POST" }),
+    refresh: () => request<AuthResponse>("/auth/refresh", { method: "POST" }),
     me: () => request<AuthResponse>("/auth/me"),
     forgotPassword: (body: { email: string }) =>
       request<OkResponse>("/auth/forgot-password", { method: "POST", body: JSON.stringify(body) }),
-    resetPassword: (body: { token: string; password: string }) =>
+    resetPassword: (body: { email: string; password: string; token?: string; code?: string }) =>
       request<OkResponse>("/auth/reset-password", { method: "POST", body: JSON.stringify(body) }),
     changePassword: (body: { currentPassword: string; newPassword: string }) =>
       request<OkResponse>("/auth/change-password", { method: "POST", body: JSON.stringify(body) }),
@@ -247,8 +406,16 @@ export const api = {
     list: () => request<{ providers: PublicAIProvider[] }>("/providers"),
   },
   me: {
-    update: (body: { name?: string; preferences?: { theme?: "light" | "dark" | "system"; language?: string; sendOnEnter?: boolean } }) =>
-      request<{ user: PublicUser }>("/me", { method: "PATCH", body: JSON.stringify(body) }),
+    update: (body: {
+      name?: string;
+      preferences?: {
+        theme?: "light" | "dark" | "system";
+        language?: string;
+        sendOnEnter?: boolean;
+        selectedProviderId?: string;
+        selectedModelId?: string;
+      };
+    }) => request<{ user: PublicUser }>("/me", { method: "PATCH", body: JSON.stringify(body) }),
     usage: () => request<{ usage: PublicUsageSummary }>("/me/usage"),
     exportChats: (format: ExportFormat) =>
       downloadRequest(`/me/export?format=${format}`, `aether-chats.${format}`),
@@ -259,9 +426,21 @@ export const api = {
           method: "PUT",
           body: JSON.stringify(body),
         }),
+      test: (providerId: string, body?: { apiKey?: string; baseUrl?: string }) =>
+        request<PublicCredentialTest>(`/me/provider-credentials/${providerId}/test`, {
+          method: "POST",
+          body: JSON.stringify(body ?? {}),
+        }),
       remove: (providerId: string) =>
         request<{ ok: true }>(`/me/provider-credentials/${providerId}`, { method: "DELETE" }),
     },
+  },
+  settings: {
+    saveKey: (body: { providerId: string; apiKey: string; modelId?: string; label?: string }) =>
+      request<{ credential: PublicUserCredential }>("/settings/keys", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
   },
   admin: {
     providers: {
@@ -359,9 +538,8 @@ export const api = {
     upload: async (file: File) => {
       const body = new FormData();
       body.append("file", file);
-      const response = await fetch(`${API_BASE_URL}/files`, {
+      const response = await authedFetch("/files", {
         method: "POST",
-        credentials: "include",
         body,
       });
       await failIfNotOk(response);
@@ -369,7 +547,7 @@ export const api = {
     },
     get: (id: string) => request<{ file: PublicFile }>(`/files/${id}`),
     content: async (id: string) => {
-      const response = await fetch(`${API_BASE_URL}/files/${id}/content`, { credentials: "include" });
+      const response = await authedFetch(`/files/${id}/content`);
       await failIfNotOk(response);
       return response.blob();
     },
@@ -393,18 +571,16 @@ export const api = {
     transcribe: async (file: Blob) => {
       const body = new FormData();
       body.append("audio", file, "recording.webm");
-      const response = await fetch(`${API_BASE_URL}/voice/transcribe`, {
+      const response = await authedFetch("/voice/transcribe", {
         method: "POST",
-        credentials: "include",
         body,
       });
       await failIfNotOk(response);
       return (await response.json()) as { text: string };
     },
     speak: async (text: string) => {
-      const response = await fetch(`${API_BASE_URL}/voice/speak`, {
+      const response = await authedFetch("/voice/speak", {
         method: "POST",
-        credentials: "include",
         headers: { Accept: "audio/mpeg", "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
       });

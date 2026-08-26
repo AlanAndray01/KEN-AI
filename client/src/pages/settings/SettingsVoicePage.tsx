@@ -16,7 +16,8 @@ export function SettingsVoicePage() {
         <p className="text-sm text-fg-muted">Settings</p>
         <h1 className="text-3xl font-semibold tracking-tight">Voice</h1>
         <p className="text-fg-muted">
-          Speech-to-text and text-to-speech use a server-side voice provider. Realtime voice is not enabled.
+          Server speech providers are optional. When they are not configured, the browser can still
+          dictate with Speech Recognition and play replies with Speech Synthesis.
         </p>
       </div>
       <div className="rounded-xl border border-border bg-surface px-4 py-4">

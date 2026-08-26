@@ -6,6 +6,8 @@ node_modules/
 .env.*
 !.env.example
 !**/.env.example
+.dev-secrets.json
+**/.dev-secrets.json
 *.pem
 *.key
 *.p12

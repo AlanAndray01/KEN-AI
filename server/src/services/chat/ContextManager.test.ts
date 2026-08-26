@@ -24,4 +24,48 @@ describe("ContextManager", () => {
     const tokens = result.reduce((sum, message) => sum + estimateTokens(message.content), 0);
     expect(tokens).toBeLessThan(120);
   });
+
+  it("keeps at most the last 6 non-system messages even when the model window is huge", () => {
+    const manager = new ContextManager();
+    const messages = [
+      { role: "system" as const, content: "Stay brief" },
+      ...Array.from({ length: 20 }, (_, index) => ({
+        role: (index % 2 === 0 ? "user" : "assistant") as "user" | "assistant",
+        content: `turn-${index}`,
+      })),
+    ];
+
+    const result = manager.build({
+      messages,
+      modelId: "gemini-flash-latest",
+      providerId: "gemini",
+      contextWindow: 1_000_000,
+    });
+
+    const history = result.filter((message) => message.role !== "system");
+    expect(history).toHaveLength(6);
+    expect(history[0]?.content).toBe("turn-14");
+    expect(history.at(-1)?.content).toBe("turn-19");
+  });
+
+  it("keeps estimated input tokens at or below the 12k budget", () => {
+    const manager = new ContextManager();
+    const messages = [
+      { role: "system" as const, content: "sys" },
+      ...Array.from({ length: 6 }, (_, index) => ({
+        role: (index % 2 === 0 ? "user" : "assistant") as "user" | "assistant",
+        content: "x".repeat(20_000),
+      })),
+    ];
+
+    const result = manager.build({
+      messages,
+      modelId: "gemini-flash-latest",
+      providerId: "gemini",
+      contextWindow: 1_000_000,
+    });
+    const tokens = result.reduce((sum, message) => sum + estimateTokens(message.content) + 4, 0);
+    expect(tokens).toBeLessThanOrEqual(12_000);
+    expect(result.filter((message) => message.role !== "system").length).toBeLessThanOrEqual(6);
+  });
 });

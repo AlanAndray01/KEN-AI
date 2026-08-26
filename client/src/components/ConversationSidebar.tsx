@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, NavLink, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
+  CircleUser,
   Download,
   Keyboard,
   Library,
@@ -23,6 +24,7 @@ import {
 import { APP_NAME, CLIENT_ROUTES, type PublicConversation } from "@aether/shared";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError, api } from "@/services/api";
+import { CONVERSATION_STALE_MS } from "@/query";
 import { toast } from "@/stores/toastStore";
 import { useUiStore } from "@/stores/uiStore";
 import { downloadBlob } from "@/utils/download";
@@ -40,7 +42,8 @@ export function ConversationSidebar() {
   const setMobileOpen = useUiStore((state) => state.setMobileOpen);
   const toggleCollapsed = useUiStore((state) => state.toggleCollapsed);
   const setShortcutsOpen = useUiStore((state) => state.setShortcutsOpen);
-  const [filter, setFilter] = useState("");
+  const filter = useUiStore((state) => state.chatFilter);
+  const setFilter = useUiStore((state) => state.setChatFilter);
   const [menuId, setMenuId] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -50,6 +53,7 @@ export function ConversationSidebar() {
   const conversationsQuery = useQuery({
     queryKey: ["conversations"],
     queryFn: () => api.conversations.list(),
+    staleTime: CONVERSATION_STALE_MS,
   });
 
   const conversations = useMemo(
@@ -178,11 +182,21 @@ export function ConversationSidebar() {
           narrow ? "w-72 md:w-[4.5rem]" : "w-72",
         )}
       >
-        <div className={cn("flex items-center gap-2 px-3 py-3", narrow && "md:justify-center md:px-2")}>
+        <div className={cn("flex items-center gap-1 px-3 py-3", narrow && "md:justify-center md:px-2")}>
           {!narrow ? (
             <Link to={CLIENT_ROUTES.chat} className="flex-1 truncate px-1 text-sm font-semibold">
               {APP_NAME}
             </Link>
+          ) : null}
+          {!narrow ? (
+            <button
+              type="button"
+              className="rounded-lg p-2 text-fg-muted hover:bg-surface-muted hover:text-fg"
+              aria-label="Search chats"
+              onClick={() => void navigate(CLIENT_ROUTES.search)}
+            >
+              <Search className="size-4" />
+            </button>
           ) : null}
           <button
             type="button"
@@ -201,8 +215,9 @@ export function ConversationSidebar() {
             label="New chat"
             collapsed={narrow}
             end
+            prominent
           />
-          <SidebarLink to={CLIENT_ROUTES.search} icon={Search} label="Search" collapsed={narrow} />
+          <SidebarLink to={CLIENT_ROUTES.search} icon={Search} label="History" collapsed={narrow} />
           <SidebarLink to={CLIENT_ROUTES.library} icon={Library} label="Library" collapsed={narrow} />
           <SidebarLink to={CLIENT_ROUTES.gpts} icon={Sparkles} label="GPTs" collapsed={narrow} />
         </div>
@@ -375,6 +390,24 @@ export function ConversationSidebar() {
             >
               <Link
                 role="menuitem"
+                to={CLIENT_ROUTES.settingsAccount}
+                className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-surface-muted"
+                onClick={() => setAccountOpen(false)}
+              >
+                <CircleUser className="size-4" />
+                Profile
+              </Link>
+              <Link
+                role="menuitem"
+                to={CLIENT_ROUTES.settingsPersonalization}
+                className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-surface-muted"
+                onClick={() => setAccountOpen(false)}
+              >
+                <Sparkles className="size-4" />
+                Personalization
+              </Link>
+              <Link
+                role="menuitem"
                 to={CLIENT_ROUTES.settings}
                 className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-surface-muted"
                 onClick={() => setAccountOpen(false)}
@@ -440,12 +473,14 @@ function SidebarLink({
   label,
   collapsed,
   end = false,
+  prominent = false,
 }: {
   to: string;
   icon: typeof Plus;
   label: string;
   collapsed: boolean;
   end?: boolean;
+  prominent?: boolean;
 }) {
   return (
     <NavLink
@@ -454,9 +489,10 @@ function SidebarLink({
       title={label}
       className={({ isActive }) =>
         cn(
-          "flex items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-surface-muted",
+          "flex items-center gap-2 rounded-full px-3 py-2 text-sm hover:bg-surface-muted",
           collapsed && "md:justify-center md:px-2",
-          isActive && "bg-surface",
+          prominent && "bg-surface-muted",
+          isActive && !prominent && "bg-surface",
         )
       }
     >

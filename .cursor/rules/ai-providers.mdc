@@ -1,5 +1,5 @@
 ---
-description: AI provider abstraction — never hardcode Gemini as the architecture
+description: AI provider abstraction rule ensuring Gemini is not hardcoded.
 globs: server/src/services/ai/**/*.ts
 alwaysApply: false
 ---
@@ -20,4 +20,3 @@ await gemini.generate(prompt);
 
 // ✅ GOOD
 await aiProviderManager.generate({ providerId, modelId, messages });
-```

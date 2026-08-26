@@ -1,7 +1,8 @@
 import type { ProviderType } from "@aether/shared";
+import { logger } from "../../../config/logger.js";
 import { AppError } from "../../../utils/AppError.js";
 import { isAbortError } from "../../../utils/abort.js";
-import { toSafeError } from "../../../utils/redact.js";
+import { redactSensitive, toSafeError } from "../../../utils/redact.js";
 import { iterateSseData } from "../../../utils/sse.js";
 import type {
   AIProvider,
@@ -14,6 +15,7 @@ import type {
 } from "../AIProvider.js";
 import { getBuiltInProvider } from "../catalog.js";
 import { normalizeAIResponse, compactUsage, toOpenAIMessages } from "../normalizers/normalize.js";
+import { createReasoningFilter, stripReasoning } from "@aether/shared";
 
 export class OpenAICompatibleProvider implements AIProvider {
   readonly id: string;
@@ -82,10 +84,7 @@ export class OpenAICompatibleProvider implements AIProvider {
       const response = await fetch(`${baseUrl}/chat/completions`, init);
 
       if (!response.ok) {
-        if (response.status === 401 || response.status === 403) {
-          throw new AppError("Invalid credentials", { statusCode: 401, code: "PROVIDER_INVALID_CREDENTIALS" });
-        }
-        throw new AppError("Provider request failed", { statusCode: 502, code: "PROVIDER_ERROR" });
+        await throwProviderHttpError(response, this.id);
       }
 
       const body = (await response.json()) as {
@@ -93,8 +92,11 @@ export class OpenAICompatibleProvider implements AIProvider {
         usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
       };
 
+      // Non-streaming replies carry the same inline `<think>` blocks.
+      const stripped = stripReasoning(body.choices?.[0]?.message?.content ?? "");
+
       return normalizeAIResponse({
-        content: body.choices?.[0]?.message?.content ?? "",
+        content: stripped.visible,
         model: request.modelId,
         provider: this.id,
         finishReason: body.choices?.[0]?.finish_reason ?? "stop",
@@ -118,6 +120,8 @@ export class OpenAICompatibleProvider implements AIProvider {
     }
     const baseUrl = this.requireBaseUrl();
     let content = "";
+    let reasoning = "";
+    const reasoningFilter = createReasoningFilter();
     let finishReason = "stop";
     let usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | undefined;
 
@@ -126,6 +130,7 @@ export class OpenAICompatibleProvider implements AIProvider {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Accept: "text/event-stream",
           ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
         },
         body: JSON.stringify({
@@ -137,23 +142,35 @@ export class OpenAICompatibleProvider implements AIProvider {
       if (request.abortSignal) init.signal = request.abortSignal;
       const response = await fetch(`${baseUrl}/chat/completions`, init);
       if (!response.ok) {
-        if (response.status === 401 || response.status === 403) {
-          throw new AppError("Invalid credentials", { statusCode: 401, code: "PROVIDER_INVALID_CREDENTIALS" });
-        }
-        throw new AppError("Provider request failed", { statusCode: 502, code: "PROVIDER_ERROR" });
+        await throwProviderHttpError(response, this.id);
       }
 
       for await (const payload of iterateSseData(response, request.abortSignal)) {
         if (request.abortSignal?.aborted) break;
         try {
           const body = JSON.parse(payload) as {
-            choices?: Array<{ delta?: { content?: string }; finish_reason?: string | null }>;
+            choices?: Array<{
+              delta?: { content?: string; reasoning_content?: string; reasoning?: string };
+              finish_reason?: string | null;
+            }>;
             usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
           };
-          const text = body.choices?.[0]?.delta?.content ?? "";
+          const delta = body.choices?.[0]?.delta;
+          // Reasoning models expose the chain of thought on a side channel. It is
+          // counted but never streamed to the user.
+          const sideChannel = delta?.reasoning_content ?? delta?.reasoning ?? "";
+          if (sideChannel) reasoning += sideChannel;
+
+          const text = delta?.content ?? "";
           if (text) {
-            content += text;
-            yield { type: "chunk", text };
+            // The same models also inline `<think>` blocks in `content`, and a tag
+            // can straddle two frames, so filtering is stateful across chunks.
+            const filtered = reasoningFilter.push(text);
+            if (filtered.reasoning) reasoning += filtered.reasoning;
+            if (filtered.visible) {
+              content += filtered.visible;
+              yield { type: "chunk", text: filtered.visible };
+            }
           }
           if (body.choices?.[0]?.finish_reason) finishReason = body.choices[0].finish_reason;
           if (body.usage) {
@@ -174,6 +191,15 @@ export class OpenAICompatibleProvider implements AIProvider {
       }
     }
 
+    // Release anything the filter was holding back as a possible partial tag,
+    // otherwise a reply ending mid-tag would lose its final characters.
+    const tail = reasoningFilter.flush();
+    if (tail.reasoning) reasoning += tail.reasoning;
+    if (tail.visible) {
+      content += tail.visible;
+      yield { type: "chunk", text: tail.visible };
+    }
+
     yield {
       type: "complete",
       response: normalizeAIResponse({
@@ -182,7 +208,14 @@ export class OpenAICompatibleProvider implements AIProvider {
         provider: this.id,
         finishReason: request.abortSignal?.aborted ? "unknown" : finishReason,
         ...(usage ? { usage } : {}),
-        ...(request.abortSignal?.aborted ? { metadata: { aborted: true } } : {}),
+        ...(request.abortSignal?.aborted || reasoning
+          ? {
+              metadata: {
+                ...(request.abortSignal?.aborted ? { aborted: true } : {}),
+                ...(reasoning ? { reasoningChars: reasoning.length } : {}),
+              },
+            }
+          : {}),
       }),
     };
   }
@@ -197,4 +230,47 @@ export class OpenAICompatibleProvider implements AIProvider {
     }
     return base;
   }
+}
+
+export function parseProviderHttpError(status: number, bodyText: string, providerId: string): AppError {
+  let providerMessage: string | undefined;
+  let providerCode: string | undefined;
+  try {
+    const parsed = JSON.parse(bodyText) as {
+      error?: { message?: string; code?: string; type?: string };
+    };
+    providerMessage = parsed.error?.message;
+    providerCode = parsed.error?.code ?? parsed.error?.type;
+  } catch {
+    if (bodyText.trim()) providerMessage = bodyText.slice(0, 500);
+  }
+
+  logger.warn(
+    {
+      providerId,
+      status,
+      providerCode,
+      providerMessage: providerMessage ? redactSensitive(providerMessage) : undefined,
+    },
+    "Provider HTTP error",
+  );
+
+  if (status === 401 || status === 403) {
+    return new AppError("Invalid credentials", { statusCode: 401, code: "PROVIDER_INVALID_CREDENTIALS" });
+  }
+  if (status === 429) {
+    return new AppError("Provider rate limit reached.", { statusCode: 429, code: "PROVIDER_RATE_LIMITED" });
+  }
+  const retired =
+    Boolean(providerMessage) &&
+    /decommissioned|does not exist|unknown model|not found|model_decommissioned/i.test(providerMessage ?? "");
+  if (retired) {
+    return new AppError(providerMessage ?? "Model unavailable", { statusCode: 404, code: "MODEL_UNAVAILABLE" });
+  }
+  return new AppError(providerMessage || "Provider request failed", { statusCode: 502, code: "PROVIDER_ERROR" });
+}
+
+async function throwProviderHttpError(response: Response, providerId: string): Promise<never> {
+  const bodyText = await response.text();
+  throw parseProviderHttpError(response.status, bodyText, providerId);
 }

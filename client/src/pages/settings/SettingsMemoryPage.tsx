@@ -56,7 +56,7 @@ export function SettingsMemoryPage() {
         <p className="text-sm text-fg-muted">Settings</p>
         <h1 className="text-3xl font-semibold tracking-tight">Memory</h1>
         <p className="text-fg-muted">
-          Saved facts are injected into the model context. Aether does not invent memories.
+          Saved facts are injected into the model context. Ken does not invent memories.
         </p>
       </div>
       <form

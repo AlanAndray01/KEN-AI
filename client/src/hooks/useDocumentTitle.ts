@@ -8,8 +8,9 @@ function titleForPath(pathname: string): string {
   if (pathname.startsWith("/register")) return `Create account · ${APP_NAME}`;
   if (pathname.startsWith("/forgot-password")) return `Forgot password · ${APP_NAME}`;
   if (pathname.startsWith("/reset-password")) return `Reset password · ${APP_NAME}`;
+  if (pathname.startsWith("/verify-email")) return `Verify email · ${APP_NAME}`;
   if (pathname.startsWith("/chat")) return `Chat · ${APP_NAME}`;
-  if (pathname.startsWith("/search")) return `Search · ${APP_NAME}`;
+  if (pathname.startsWith("/search") || pathname.startsWith("/history")) return `History · ${APP_NAME}`;
   if (pathname.startsWith("/library")) return `Library · ${APP_NAME}`;
   if (pathname.startsWith("/gpts/create")) return `Create GPT · ${APP_NAME}`;
   if (pathname.startsWith("/gpts/")) return `GPT · ${APP_NAME}`;

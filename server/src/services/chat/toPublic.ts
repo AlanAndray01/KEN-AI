@@ -28,7 +28,7 @@ export function toPublicConversation(doc: {
     modelId: doc.modelId,
     providerId: doc.providerId,
     ...(doc.customGptId ? { customGptId: String(doc.customGptId) } : {}),
-    archived: doc.archived,
+    archived: Boolean(doc.archived),
     pinned: Boolean(doc.pinned),
     ...(doc.lastMessageAt ? { lastMessageAt: iso(doc.lastMessageAt) } : {}),
     ...(doc.lastMessagePreview ? { lastMessagePreview: doc.lastMessagePreview } : {}),

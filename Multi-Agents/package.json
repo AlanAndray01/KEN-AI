@@ -1,0 +1,34 @@
+{
+  "name": "@aether/multi-agents",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Autonomous multi-agent engineering swarm for the KEN AI monorepo",
+  "scripts": {
+    "agents": "tsx src/cli.ts",
+    "audit": "tsx src/cli.ts run audit",
+    "security": "tsx src/cli.ts run security",
+    "ui": "tsx src/cli.ts run ui",
+    "qa": "tsx src/cli.ts run qa",
+    "perf": "tsx src/cli.ts run perf",
+    "fix": "tsx src/cli.ts run audit --apply",
+    "verify": "tsx src/cli.ts verify",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.246",
+    "dotenv": "^17.2.1",
+    "zod": "^4.0.17"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.4",
+    "typescript": "^5.9.2",
+    "@eslint/js": "^9.33.0",
+    "eslint": "^9.33.0",
+    "typescript-eslint": "^8.39.1"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

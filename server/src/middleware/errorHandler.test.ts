@@ -30,6 +30,7 @@ describe("errorHandler", () => {
     expect(state.statusCode).toBe(400);
     const body = JSON.stringify(state.body);
     expect(body).toContain("VALIDATION_ERROR");
+    expect((state.body as { error: { message: string } }).error.message).toMatch(/invalid|email/i);
     expect(hasLeakedSecret(body)).toBe(false);
   });
 

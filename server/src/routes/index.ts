@@ -16,6 +16,7 @@ import { gptsRouter } from "./gpts.js";
 import { memoriesRouter } from "./memories.js";
 import { notificationsRouter } from "./notifications.js";
 import { shareRouter } from "./share.js";
+import { settingsRouter } from "./settings.js";
 
 export const apiRouter = Router();
 
@@ -34,4 +35,5 @@ apiRouter.use(API_ROUTES.memories, memoriesRouter);
 apiRouter.use(API_ROUTES.gpts, gptsRouter);
 apiRouter.use(API_ROUTES.notifications, notificationsRouter);
 apiRouter.use(API_ROUTES.share, shareRouter);
+apiRouter.use("/settings", settingsRouter);
 apiRouter.use("/admin", adminRouter);

@@ -8,6 +8,7 @@ import { File as StoredFile } from "../../models/File.js";
 import { AppError } from "../../utils/AppError.js";
 import type { ChatContentPart } from "../ai/AIProvider.js";
 import { storageService } from "./index.js";
+import { S3CompatibleStorage } from "./S3CompatibleStorage.js";
 import {
   extractTextDocument,
   isImageMime,
@@ -58,6 +59,7 @@ export async function uploadUserFile(input: {
     buffer: input.buffer,
     mimeType: validated.mimeType,
   });
+  const cdnUrl = storageService instanceof S3CompatibleStorage ? storageService.publicUrlFor(stored.key) : undefined;
   const doc = await StoredFile.create({
     userId: input.userId,
     originalName: input.originalName.slice(0, 512),
@@ -68,6 +70,7 @@ export async function uploadUserFile(input: {
     checksum,
     kind: validated.kind,
     status: "ready",
+    ...(cdnUrl ? { metadata: { cdnUrl } } : {}),
   });
   return toPublicFile(doc);
 }

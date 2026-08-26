@@ -48,6 +48,8 @@ export interface UserPreferences {
   theme: ThemePreference;
   language: string;
   sendOnEnter: boolean;
+  selectedProviderId?: string;
+  selectedModelId?: string;
 }
 
 export interface PublicUser {
@@ -102,6 +104,11 @@ export interface PublicUserCredential {
   enabled: boolean;
   keyLastFour?: string;
   baseUrl?: string;
+}
+
+export interface PublicCredentialTest {
+  status: ProviderTestStatus;
+  message: string;
 }
 
 export type MessageStatus = "streaming" | "complete" | "aborted" | "error";

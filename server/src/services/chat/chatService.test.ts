@@ -33,7 +33,9 @@ vi.mock("../../models/Message.js", () => ({
         return true;
       });
       return {
-        sort: () => Promise.resolve(docs),
+        sort: () => ({
+          limit: async (count: number) => [...docs].slice(-count).reverse(),
+        }),
       };
     }),
     findById: vi.fn(async (id: string) => messages.get(String(id)) ?? null),
@@ -60,6 +62,8 @@ vi.mock("../../models/Conversation.js", () => ({
 
 vi.mock("./conversationService.js", () => ({
   titleFromContent: (value: string) => value.slice(0, 60) || "New chat",
+  capStoredTurns: vi.fn(async () => undefined),
+  conversationExpiry: () => new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
   findOwnedConversation: async (_userId: string, conversationId: string) => {
     const found = conversations.get(conversationId);
     if (!found) {
@@ -71,6 +75,7 @@ vi.mock("./conversationService.js", () => ({
 
 vi.mock("../ai/ModelRegistry.js", () => ({
   modelRegistry: {
+    listPublicModels: vi.fn(async () => []),
     assertModelAvailable: vi.fn(async () => ({
       id: "mock-text",
       providerId: "mock",
@@ -143,5 +148,7 @@ describe("chatService abort", () => {
     const aborted = events.find((event) => event.type === "aborted");
     expect(aborted?.assistantMessage?.content).toBe("Hello partial");
     expect(aborted?.assistantMessage?.status).toBe("aborted");
+    const input = stream.mock.calls[0]?.[0] as { messages: Array<{ role: string; content: string }> };
+    expect(input.messages[0]?.content).toContain("Ken reply policy");
   });
 });

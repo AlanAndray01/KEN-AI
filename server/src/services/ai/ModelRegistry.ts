@@ -1,4 +1,4 @@
-import type { PublicAIModel } from "@aether/shared";
+import { GROQ_MODEL_ALIASES, type PublicAIModel } from "@aether/shared";
 import { AppError } from "../../utils/AppError.js";
 import { AIModel } from "../../models/AIModel.js";
 import { BUILT_IN_PROVIDERS, getBuiltInProvider } from "./catalog.js";
@@ -64,11 +64,16 @@ export class ModelRegistry {
     }
 
     for (const model of stored) {
+      if (isRetiredGroqModel(model.providerId, model.modelId)) continue;
       const availability = providers.get(model.providerId) ?? { enabled: false, configured: false };
       merged.set(key(model.providerId, model.modelId), toPublicModel(model, availability));
     }
 
-    return [...merged.values()].sort((a, b) => a.providerId.localeCompare(b.providerId) || a.id.localeCompare(b.id));
+    return [...merged.values()].sort((a, b) => {
+      const byRank = providerRank(a.providerId) - providerRank(b.providerId);
+      if (byRank !== 0) return byRank;
+      return catalogIndex(a.providerId, a.id) - catalogIndex(b.providerId, b.id);
+    });
   }
 
   async assertModelAvailable(providerId: string, modelId: string, userId?: string): Promise<PublicAIModel> {
@@ -118,8 +123,26 @@ export class ModelRegistry {
   }
 }
 
+function isRetiredGroqModel(providerId: string, modelId: string): boolean {
+  return providerId === "groq" && modelId in GROQ_MODEL_ALIASES;
+}
+
 function key(providerId: string, modelId: string): string {
   return `${providerId}:${modelId}`;
+}
+
+function catalogIndex(providerId: string, modelId: string): number {
+  const index = getBuiltInProvider(providerId)?.models.findIndex((model) => model.id === modelId) ?? -1;
+  return index === -1 ? 10_000 : index;
+}
+
+function providerRank(providerId: string): number {
+  if (providerId === "groq") return 0;
+  if (providerId === "cerebras") return 1;
+  if (providerId === "deepseek") return 2;
+  if (providerId === "cloudflare") return 3;
+  if (providerId === "openai") return 4;
+  return 5;
 }
 
 function toPublicModel(

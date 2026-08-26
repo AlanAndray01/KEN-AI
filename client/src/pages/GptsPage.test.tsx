@@ -43,5 +43,8 @@ describe("GptsPage", () => {
     expect(await screen.findByRole("heading", { name: "GPTs" })).toBeInTheDocument();
     expect(await screen.findByText("Writer")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Create a GPT" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Explore" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "My GPTs" })).toBeInTheDocument();
+    expect(screen.getByRole("searchbox", { name: "Search GPTs" })).toBeInTheDocument();
   });
 });

@@ -46,4 +46,11 @@ describe("buildPersonaMessages", () => {
     expect(combined).toContain("Uses Vite");
     expect(combined).toMatch(/do not invent additional memories/i);
   });
+
+  it("loads at most 4 memories for the system prompt", async () => {
+    const { listMemories } = await import("./memoryService.js");
+    const { buildPersonaMessages } = await import("./persona.js");
+    await buildPersonaMessages("u1");
+    expect(listMemories).toHaveBeenCalledWith("u1", 4);
+  });
 });

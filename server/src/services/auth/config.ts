@@ -1,13 +1,14 @@
-import { env, isProduction, isTest } from "../../config/env.js";
+import { env, isProduction } from "../../config/env.js";
+import { localDevSecret } from "../../config/devSecrets.js";
 import { AppError } from "../../utils/AppError.js";
-
-const DEV_FALLBACK_SECRET = "aether-dev-only-jwt-secret-change-me";
 
 export function getJwtSecret(): string {
   if (env.JWT_SECRET) {
     return env.JWT_SECRET;
   }
 
+  // Defence in depth: env validation already refuses to boot production
+  // without JWT_SECRET, so this can only trigger if that guard is bypassed.
   if (isProduction) {
     throw new AppError("JWT_SECRET is not configured", {
       statusCode: 500,
@@ -16,7 +17,7 @@ export function getJwtSecret(): string {
     });
   }
 
-  return isTest ? `${DEV_FALLBACK_SECRET}-test` : DEV_FALLBACK_SECRET;
+  return localDevSecret("jwt");
 }
 
 export function isGoogleOAuthConfigured(): boolean {
@@ -25,3 +26,4 @@ export function isGoogleOAuthConfigured(): boolean {
 
 export const ACCESS_COOKIE = "aether_access";
 export const REFRESH_COOKIE = "aether_refresh";
+export const OAUTH_STATE_COOKIE = "aether_oauth_state";

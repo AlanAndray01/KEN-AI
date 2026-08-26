@@ -1,4 +1,4 @@
-import type { ExportFormat } from "@aether/shared";
+import { APP_NAME, type ExportFormat } from "@aether/shared";
 
 export interface ExportMessage {
   role: string;
@@ -47,7 +47,7 @@ export function formatExport(conversations: ExportConversation[], format: Export
     const heading = format === "md" ? `# ${conversation.title}` : conversation.title;
     const body = conversation.messages
       .map((message) => {
-        const speaker = message.role === "assistant" ? "Aether" : "User";
+        const speaker = message.role === "assistant" ? APP_NAME : "User";
         if (format === "md") {
           return `**${speaker}** (${message.createdAt})\n\n${message.content || "_(empty)_"}`;
         }

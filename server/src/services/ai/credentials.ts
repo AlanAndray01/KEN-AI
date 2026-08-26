@@ -36,20 +36,47 @@ export interface ResolvedCredentials {
   capabilities: ModelCapability[];
 }
 
-function envKeyName(
-  providerId: string,
-): "GEMINI_API_KEY" | "OPENAI_API_KEY" | "ANTHROPIC_API_KEY" | "GROQ_API_KEY" | "OPENROUTER_API_KEY" | undefined {
-  return getBuiltInProvider(providerId)?.envKey;
+import { nextPoolKey, parseKeyPool } from "./keyPool.js";
+
+function envKeysFor(providerId: string): string[] {
+  switch (providerId) {
+    case "groq":
+      return parseKeyPool(env.GROQ_KEYS, env.GROQ_API_KEY);
+    case "cerebras":
+      return parseKeyPool(env.CEREBRAS_KEYS, env.CEREBRAS_API_KEY);
+    case "deepseek":
+      return parseKeyPool(env.DEEPSEEK_KEY, env.DEEPSEEK_API_KEY);
+    case "cloudflare":
+      return parseKeyPool(env.CF_TOKEN);
+    case "openai":
+      return parseKeyPool(env.OPENAI_API_KEY);
+    case "anthropic":
+      return parseKeyPool(env.ANTHROPIC_API_KEY);
+    case "openrouter":
+      return parseKeyPool(env.OPENROUTER_API_KEY);
+    default:
+      return [];
+  }
 }
 
 export function getEnvApiKey(providerId: string): string | undefined {
-  const keyName = envKeyName(providerId);
-  if (!keyName) return undefined;
-  return env[keyName];
+  if (providerId === "cloudflare" && !env.CF_ACCOUNT_ID) return undefined;
+  return nextPoolKey(providerId, envKeysFor(providerId));
+}
+
+export function cloudflareBaseUrl(): string | undefined {
+  if (!env.CF_ACCOUNT_ID) return undefined;
+  return `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/ai/v1`;
 }
 
 export function hasEnvApiKey(providerId: string): boolean {
-  return Boolean(getEnvApiKey(providerId));
+  if (providerId === "cloudflare" && !env.CF_ACCOUNT_ID) return false;
+  return envKeysFor(providerId).length > 0;
+}
+
+export function envKeyCount(providerId: string): number {
+  if (providerId === "cloudflare" && !env.CF_ACCOUNT_ID) return 0;
+  return envKeysFor(providerId).length;
 }
 
 function asProviderType(value: string): ProviderType {
@@ -146,7 +173,10 @@ export async function resolveCredentials(
   const enabled = stored?.enabled ?? true;
   const name = stored?.name ?? builtIn?.name ?? providerId;
   const type = stored?.type ?? builtIn?.type ?? "custom";
-  const baseUrl = stored?.baseUrl ?? builtIn?.defaultBaseUrl;
+  const baseUrl =
+    providerId === "cloudflare"
+      ? (stored?.baseUrl ?? cloudflareBaseUrl() ?? builtIn?.defaultBaseUrl)
+      : (stored?.baseUrl ?? builtIn?.defaultBaseUrl);
   const capabilities = stored?.capabilities.length ? stored.capabilities : (builtIn?.capabilities ?? []);
 
   if (userId) {

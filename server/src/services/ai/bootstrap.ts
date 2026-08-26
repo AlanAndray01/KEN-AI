@@ -1,3 +1,4 @@
+import { GROQ_MODEL_ALIASES } from "@aether/shared";
 import { logger } from "../../config/logger.js";
 import { AIModel } from "../../models/AIModel.js";
 import { AIProvider } from "../../models/AIProvider.js";
@@ -6,6 +7,14 @@ import { BUILT_IN_PROVIDERS } from "./catalog.js";
 
 export async function bootstrapProviders(): Promise<void> {
   try {
+    const retiredGroqIds = Object.keys(GROQ_MODEL_ALIASES);
+    if (retiredGroqIds.length > 0) {
+      await AIModel.updateMany(
+        { providerId: "groq", modelId: { $in: retiredGroqIds } },
+        { $set: { enabled: false } },
+      );
+    }
+
     for (const definition of BUILT_IN_PROVIDERS) {
       const existing = await AIProvider.findOne({ providerId: definition.providerId });
       if (!existing) {

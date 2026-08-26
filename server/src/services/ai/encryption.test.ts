@@ -7,6 +7,7 @@ describe("provider secret encryption", () => {
     const encrypted = encryptSecret(secret);
 
     expect(encrypted.startsWith("v1:")).toBe(true);
+    expect(encrypted.split(":")).toHaveLength(4);
     expect(encrypted).not.toContain(secret);
     expect(decryptSecret(encrypted)).toBe(secret);
     expect(maskSecret(secret)).toBe("••••zzzz");

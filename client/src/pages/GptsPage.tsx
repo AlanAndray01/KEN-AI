@@ -33,27 +33,30 @@ export function GptsPage() {
           Create a GPT
         </Link>
       </div>
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          className={`rounded-lg px-3 py-1.5 text-sm ${scope === "explore" ? "bg-surface" : "text-fg-muted"}`}
-          onClick={() => setScope("explore")}
-        >
-          Explore
-        </button>
-        <button
-          type="button"
-          className={`rounded-lg px-3 py-1.5 text-sm ${scope === "mine" ? "bg-surface" : "text-fg-muted"}`}
-          onClick={() => setScope("mine")}
-        >
-          My GPTs
-        </button>
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-end gap-4">
+          <button
+            type="button"
+            className={`border-b-2 pb-1 text-sm ${scope === "explore" ? "border-fg font-medium" : "border-transparent text-fg-muted"}`}
+            onClick={() => setScope("explore")}
+          >
+            Explore
+          </button>
+          <button
+            type="button"
+            className={`border-b-2 pb-1 text-sm ${scope === "mine" ? "border-fg font-medium" : "border-transparent text-fg-muted"}`}
+            onClick={() => setScope("mine")}
+          >
+            My GPTs
+          </button>
+        </div>
         <input
+          type="search"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Search GPTs"
           aria-label="Search GPTs"
-          className="rounded-lg border border-border bg-canvas px-3 py-1.5 text-sm"
+          className="min-w-[12rem] flex-1 rounded-lg border border-border bg-canvas px-3 py-1.5 text-sm"
         />
         <select
           value={category}
