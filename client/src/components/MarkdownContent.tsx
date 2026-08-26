@@ -7,12 +7,24 @@ import rehypeKatex from "rehype-katex";
 import type { Components } from "react-markdown";
 import { stripReasoning } from "@Ken/shared";
 import { CodeBlock } from "@/components/CodeBlock";
+import { MathBlock } from "@/components/MathBlock";
 import { normalizeLatex } from "@/utils/latexNormalize";
+import { rehypeMathBlock } from "@/utils/rehypeMathBlock";
 import "katex/dist/katex.min.css";
 
 const components: Components = {
   pre({ children }) {
     return <CodeBlock>{children}</CodeBlock>;
+  },
+  div({ className, children, node }) {
+    // rehypeMathBlock wraps each display equation and parks its source LaTeX on
+    // the wrapper; everything else passes through untouched.
+    if (className?.includes("math-block")) {
+      const properties = node?.properties ?? {};
+      const tex = properties["dataTex"] ?? properties["data-tex"];
+      return <MathBlock tex={typeof tex === "string" ? tex : ""}>{children}</MathBlock>;
+    }
+    return <div className={className}>{children}</div>;
   },
   table({ children }) {
     // A wide table must scroll inside its own box; without this it either
@@ -75,7 +87,7 @@ export const MarkdownContent = memo(function MarkdownContent({ children }: Markd
     <div className="markdown">
       <Markdown
         remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeKatex, rehypeHighlight]}
+        rehypePlugins={[rehypeKatex, rehypeMathBlock, rehypeHighlight]}
         components={components}
       >
         {source}

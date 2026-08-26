@@ -14,6 +14,8 @@
   --ring: #2563eb;
   --sidebar: #f9f9f9;
   --user-bubble: #e8f0fe;
+  --thinking-idle: #9aa0a6;
+  --thinking-active: #2563eb;
   --table-line: #c8ccd4;
   --table-head: rgba(0, 0, 0, 0.04);
 }
@@ -32,6 +34,8 @@ html.dark {
   --ring: #3b82f6;
   --sidebar: #0a0a0a;
   --user-bubble: #1a1a1a;
+  --thinking-idle: #8b8b8b;
+  --thinking-active: #60a5fa;
   --table-line: #3d3d3d;
   --table-head: rgba(255, 255, 255, 0.05);
 }
@@ -183,13 +187,64 @@ body {
 }
 
 .markdown .katex-display {
-  margin: 0.85rem 0;
+  margin: 0.9rem 0;
+  /* `overflow-x: auto` forces overflow-y to compute to a non-visible value, so
+     this box clips anything rising above its line box — the numerator and bar of
+     a \frac, a \sum's upper limit, a superscript. That is what sliced the top off
+     the fractions in mole-conversion answers. Clipping happens at the padding
+     edge, so vertical padding is what gives the overshoot room to paint. */
+  padding: 0.6em 0;
   overflow-x: auto;
   overflow-y: hidden;
 }
 
+/* Inline math is not in a scroll container, so it is never clipped — but a
+   \frac set inline still overlaps the line above at this line-height. The extra
+   leading keeps a mid-sentence fraction legible. */
 .markdown .katex {
   font-size: 1.05em;
+}
+
+.markdown p:has(.katex) {
+  line-height: 1.9;
+}
+
+.markdown .math-block {
+  position: relative;
+}
+
+/* Hidden until the block is hovered or the control is keyboard-focused, so a
+   run of equations stays clean to read. */
+.markdown .math-block-copy {
+  position: absolute;
+  top: 0.15rem;
+  right: 0.15rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  background: var(--surface);
+  color: var(--fg-muted);
+  opacity: 0;
+  transition: opacity 120ms ease-in-out;
+}
+
+.markdown .math-block:hover .math-block-copy,
+.markdown .math-block-copy:focus-visible {
+  opacity: 1;
+}
+
+.markdown .math-block-copy:hover {
+  color: var(--fg);
+}
+
+@media (hover: none) {
+  /* No hover on touch, so the control has to stay visible to be reachable. */
+  .markdown .math-block-copy {
+    opacity: 0.65;
+  }
 }
 
 /* Tables need their own border token: --border is tuned for large
@@ -377,55 +432,132 @@ html.dark .hljs-type {
 .thinking-pipeline {
   display: flex;
   align-items: center;
-  gap: 0.85rem;
+  gap: 0.45rem;
   min-height: 2.75rem;
 }
 
-.thinking-shimmer {
+/*
+ * The word stays a flat, quiet grey: the dots carry the colour, and two things
+ * shifting hue at once reads as noise. Each word remounts, so the fade plays on
+ * every change rather than only on the first paint.
+ */
+.thinking-word {
+  font-size: 0.9375rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--thinking-idle);
+  animation: thinking-word-in 300ms ease-out both;
+}
+
+@keyframes thinking-word-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.15rem);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/*
+ * The dots sit on one baseline via inline-flex with centred alignment, so the
+ * wave reads as a straight horizontal line beside the word.
+ */
+.thinking-dots {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
 }
 
+/*
+ * A single keyframe carries both halves of the effect: the dot lifts from a
+ * muted grey resting state to full blue at its peak, then settles back. Staggered
+ * delays send that peak left to right, which is what makes it read as fluid
+ * motion rather than three dots blinking on their own clocks.
+ */
 .thinking-dot {
   width: 0.4rem;
   height: 0.4rem;
   border-radius: 999px;
-  background: var(--fg-muted);
-  animation: thinking-bounce 1.2s ease-in-out infinite;
+  background-color: var(--thinking-idle);
+  animation: thinking-wave 1.4s ease-in-out infinite;
 }
 
 .thinking-dot:nth-child(2) {
-  animation-delay: 0.15s;
+  animation-delay: 0.18s;
 }
 
 .thinking-dot:nth-child(3) {
-  animation-delay: 0.3s;
+  animation-delay: 0.36s;
 }
 
-.thinking-elapsed {
-  font-size: 0.75rem;
-  color: var(--fg-muted);
-  font-variant-numeric: tabular-nums;
-}
-
-@keyframes thinking-bounce {
+@keyframes thinking-wave {
   0%,
-  60%,
+  70%,
   100% {
-    opacity: 0.3;
-    transform: translateY(0);
+    background-color: var(--thinking-idle);
+    opacity: 0.45;
+    transform: scale(0.85);
   }
-  30% {
+  35% {
+    background-color: var(--thinking-active);
     opacity: 1;
-    transform: translateY(-0.18rem);
+    transform: scale(1);
   }
 }
 
+/*
+ * "Reduce", not "remove".
+ *
+ * The blanket rule near the top of this file clamps every animation on the page
+ * to 0.01ms for a reader who asked for less motion. For most of the UI that is
+ * right, but it froze this indicator solid — and a progress indicator that never
+ * moves reads as a hung request, which is worse than the motion it avoided.
+ *
+ * These rules re-enable only the parts that carry no movement: opacity and
+ * colour cross-fades, with no scaling and no travel. Nothing here shifts
+ * position, which is the property that actually triggers vestibular symptoms.
+ * They need !important to outrank the blanket clamp, and win it on specificity.
+ */
 @media (prefers-reduced-motion: reduce) {
+  .thinking-word {
+    animation: thinking-word-fade 300ms ease-out both !important;
+  }
+
   .thinking-dot {
-    animation: none;
-    opacity: 0.6;
+    animation: thinking-dot-fade 1.4s ease-in-out infinite !important;
+  }
+
+  .thinking-dot:nth-child(2) {
+    animation-delay: 0.18s !important;
+  }
+
+  .thinking-dot:nth-child(3) {
+    animation-delay: 0.36s !important;
+  }
+}
+
+/* Same rhythm as thinking-wave, minus the scale. */
+@keyframes thinking-dot-fade {
+  0%,
+  70%,
+  100% {
+    background-color: var(--thinking-idle);
+    opacity: 0.45;
+  }
+  35% {
+    background-color: var(--thinking-active);
+    opacity: 1;
+  }
+}
+
+@keyframes thinking-word-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }
 

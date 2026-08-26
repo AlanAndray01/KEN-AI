@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PublicMessage } from "@Ken/shared";
-import { appendChunk, applyFeedback, markLastAssistant, optimisticTurn } from "./chatMessages";
+import { appendChunk, applyFeedback, markLastAssistant, optimisticTurn, truncateAfterEdit } from "./chatMessages";
 
 function message(id: string, feedback?: PublicMessage["feedback"]): PublicMessage {
   return {
@@ -80,5 +80,50 @@ describe("markLastAssistant", () => {
   it("marks the last assistant message as failed", () => {
     const result = markLastAssistant([message("a")], "error");
     expect(result[0]?.status).toBe("error");
+  });
+});
+
+describe("truncateAfterEdit", () => {
+  const msg = (id: string, role: "user" | "assistant", content: string): PublicMessage => ({
+    id,
+    conversationId: "c1",
+    role,
+    content,
+    status: "complete",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  });
+
+  const thread = [
+    msg("u1", "user", "first question"),
+    msg("a1", "assistant", "first answer"),
+    msg("u2", "user", "second question"),
+    msg("a2", "assistant", "second answer"),
+  ];
+
+  it("rewrites the edited message and drops everything after it", () => {
+    const result = truncateAfterEdit(thread, "u1", "edited question");
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.id).toBe("u1");
+    expect(result[0]?.content).toBe("edited question");
+  });
+
+  it("keeps the turns that came before the edited message", () => {
+    const result = truncateAfterEdit(thread, "u2", "reworded");
+
+    expect(result.map((item) => item.id)).toEqual(["u1", "a1", "u2"]);
+    expect(result[2]?.content).toBe("reworded");
+  });
+
+  it("leaves the thread untouched when the message is already gone", () => {
+    expect(truncateAfterEdit(thread, "missing", "text")).toEqual(thread);
+  });
+
+  it("does not mutate the original list", () => {
+    truncateAfterEdit(thread, "u1", "edited question");
+
+    expect(thread[0]?.content).toBe("first question");
+    expect(thread).toHaveLength(4);
   });
 });

@@ -1,10 +1,10 @@
-import { useLayoutEffect, useRef, useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Check, ChevronDown, Copy, Pencil } from "lucide-react";
 import { LazyMarkdown } from "@/components/LazyMarkdown";
 import { cn } from "@/utils/cn";
 
 /**
- * A user turn, collapsed when it is long.
+ * A user turn, collapsed when it is long, with copy and edit controls.
  *
  * Pasting a long block — a log, a spec, an error dump — used to push the actual
  * conversation off screen, so the reply you came back for was never in view.
@@ -21,15 +21,27 @@ const COLLAPSED_MAX_PX = 220;
 /** Below this much overflow, collapsing hides too little to be worth a control. */
 const MIN_OVERFLOW_PX = 48;
 
+/** How long the copy button stays in its confirmed state. */
+const COPIED_FEEDBACK_MS = 2000;
+
+/** Upper bound on the auto-growing editor before it scrolls instead. */
+const EDITOR_MAX_PX = 400;
+
 interface UserMessageBubbleProps {
   content: string;
+  /** Omitted for read-only views such as a shared conversation. */
+  onEdit?: (content: string) => void | Promise<void>;
+  /** Editing starts a new generation, so it is blocked while one is running. */
+  editDisabled?: boolean;
   children?: React.ReactNode;
 }
 
-export function UserMessageBubble({ content, children }: UserMessageBubbleProps) {
+export function UserMessageBubble({ content, onEdit, editDisabled, children }: UserMessageBubbleProps) {
   const bodyRef = useRef<HTMLDivElement>(null);
   const [collapsible, setCollapsible] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [editing, setEditing] = useState(false);
 
   useLayoutEffect(() => {
     const node = bodyRef.current;
@@ -52,41 +64,189 @@ export function UserMessageBubble({ content, children }: UserMessageBubbleProps)
     return () => {
       observer.disconnect();
     };
-  }, [content]);
+  }, [content, editing]);
+
+  useEffect(() => {
+    if (!copied) return;
+    const timer = window.setTimeout(() => setCopied(false), COPIED_FEEDBACK_MS);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [copied]);
+
+  async function copy(): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopied(true);
+    } catch {
+      // Clipboard access is denied in some browsers and over plain HTTP. The
+      // text stays selectable, so failing quietly beats an alarming error.
+    }
+  }
+
+  if (editing) {
+    return (
+      <MessageEditor
+        initialContent={content}
+        onCancel={() => setEditing(false)}
+        onSubmit={async (next) => {
+          setEditing(false);
+          await onEdit?.(next);
+        }}
+      />
+    );
+  }
 
   const isClamped = collapsible && !expanded;
 
   return (
-    <div className="max-w-[85%] rounded-[1.5rem] bg-user-bubble px-4 py-3 text-fg">
-      <div className="relative">
-        <div
-          ref={bodyRef}
-          className={cn("overflow-hidden", isClamped ? "user-message-clamped" : undefined)}
-          style={isClamped ? { maxHeight: `${COLLAPSED_MAX_PX}px` } : undefined}
-        >
-          {content ? <LazyMarkdown>{content}</LazyMarkdown> : null}
+    <div className="group/message flex max-w-[85%] flex-col items-end">
+      <div className="w-full rounded-[1.5rem] bg-user-bubble px-4 py-3 text-fg">
+        <div className="relative">
+          <div
+            ref={bodyRef}
+            className={cn("overflow-hidden", isClamped ? "user-message-clamped" : undefined)}
+            style={isClamped ? { maxHeight: `${COLLAPSED_MAX_PX}px` } : undefined}
+          >
+            {content ? <LazyMarkdown>{content}</LazyMarkdown> : null}
+          </div>
+          {isClamped ? <div className="user-message-fade" aria-hidden="true" /> : null}
         </div>
-        {isClamped ? <div className="user-message-fade" aria-hidden="true" /> : null}
+
+        {collapsible ? (
+          <button
+            type="button"
+            onClick={() => {
+              setExpanded((current) => !current);
+            }}
+            aria-expanded={expanded}
+            className="mt-1 flex items-center gap-1 text-sm font-medium text-fg-muted transition-colors hover:text-fg"
+          >
+            {expanded ? "Show less" : "Show more"}
+            <ChevronDown
+              aria-hidden="true"
+              className={cn("h-4 w-4 transition-transform", expanded ? "rotate-180" : undefined)}
+            />
+          </button>
+        ) : null}
+
+        {children}
       </div>
 
-      {collapsible ? (
+      {/*
+        Kept mounted rather than conditionally rendered so the buttons stay
+        reachable by keyboard: focus-within reveals them for tab users, hover
+        for pointer users, and they are always in the accessibility tree.
+      */}
+      <div className="mt-1 flex items-center gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover/message:opacity-100">
         <button
           type="button"
-          onClick={() => {
-            setExpanded((current) => !current);
-          }}
-          aria-expanded={expanded}
-          className="mt-1 flex items-center gap-1 text-sm font-medium text-fg-muted transition-colors hover:text-fg"
+          onClick={() => void copy()}
+          aria-label={copied ? "Copied" : "Copy message"}
+          title={copied ? "Copied" : "Copy"}
+          className="rounded-lg p-1.5 text-fg-muted transition-colors hover:bg-surface-muted hover:text-fg"
         >
-          {expanded ? "Show less" : "Show more"}
-          <ChevronDown
-            aria-hidden="true"
-            className={cn("h-4 w-4 transition-transform", expanded ? "rotate-180" : undefined)}
-          />
+          {copied ? (
+            <Check aria-hidden="true" className="h-4 w-4" />
+          ) : (
+            <Copy aria-hidden="true" className="h-4 w-4" />
+          )}
         </button>
-      ) : null}
+        {onEdit ? (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            disabled={editDisabled}
+            aria-label="Edit message"
+            title={editDisabled ? "Wait for the current reply to finish" : "Edit"}
+            className="rounded-lg p-1.5 text-fg-muted transition-colors hover:bg-surface-muted hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Pencil aria-hidden="true" className="h-4 w-4" />
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
 
-      {children}
+function MessageEditor({
+  initialContent,
+  onCancel,
+  onSubmit,
+}: {
+  initialContent: string;
+  onCancel: () => void;
+  onSubmit: (content: string) => void | Promise<void>;
+}) {
+  const [value, setValue] = useState(initialContent);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Focus with the caret at the end, so typing continues the message rather
+  // than replacing a fully selected block.
+  useLayoutEffect(() => {
+    const node = textareaRef.current;
+    if (!node) return;
+    node.focus();
+    node.setSelectionRange(node.value.length, node.value.length);
+  }, []);
+
+  // Grow with the content instead of showing a fixed box with an inner scrollbar.
+  useLayoutEffect(() => {
+    const node = textareaRef.current;
+    if (!node) return;
+    node.style.height = "auto";
+    node.style.height = `${Math.min(node.scrollHeight, EDITOR_MAX_PX)}px`;
+  }, [value]);
+
+  const trimmed = value.trim();
+  const unchanged = trimmed === initialContent.trim();
+  const canSubmit = trimmed.length > 0 && !unchanged;
+
+  function submit(): void {
+    if (!canSubmit) return;
+    void onSubmit(trimmed);
+  }
+
+  return (
+    <div className="w-full max-w-[85%] rounded-[1.5rem] border border-accent bg-user-bubble px-4 py-3">
+      <textarea
+        ref={textareaRef}
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        onKeyDown={(event) => {
+          // Enter sends, matching the composer. Shift+Enter inserts a newline.
+          if (event.key === "Enter" && !event.shiftKey) {
+            event.preventDefault();
+            submit();
+            return;
+          }
+          if (event.key === "Escape") {
+            event.preventDefault();
+            onCancel();
+          }
+        }}
+        aria-label="Edit your message"
+        rows={1}
+        className="w-full resize-none bg-transparent text-fg outline-none"
+      />
+      <div className="mt-2 flex justify-end gap-2">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded-full border border-border px-4 py-1.5 text-sm font-medium text-fg transition-colors hover:bg-surface-muted"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={submit}
+          disabled={!canSubmit}
+          title={unchanged ? "Change the message first" : undefined}
+          className="rounded-full bg-accent px-4 py-1.5 text-sm font-medium text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Update
+        </button>
+      </div>
     </div>
   );
 }

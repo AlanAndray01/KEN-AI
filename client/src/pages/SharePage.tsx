@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
-import { CLIENT_ROUTES } from "@Ken/shared";
+import { APP_NAME, CLIENT_ROUTES } from "@Ken/shared";
 import { MarkdownContent } from "@/components/MarkdownContent";
 import { ApiError, api } from "@/services/api";
 
@@ -56,7 +56,7 @@ export function SharePage() {
                 </div>
               ) : (
                 <div className="w-full">
-                  <div className="mb-1 text-xs font-medium tracking-wide text-fg-muted uppercase">Ken</div>
+                  <div className="mb-1 text-xs font-medium tracking-wide text-fg-muted uppercase">{APP_NAME}</div>
                   <MarkdownContent>{message.content}</MarkdownContent>
                 </div>
               )}

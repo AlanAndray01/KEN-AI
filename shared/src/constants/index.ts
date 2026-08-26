@@ -1,4 +1,4 @@
-export const APP_NAME = "Ken";
+export const APP_NAME = "Ken AI";
 export const APP_SERVICE_ID = "ken-api";
 
 export const API_PREFIX = "/api";

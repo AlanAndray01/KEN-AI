@@ -31,7 +31,7 @@ import { useUiStore } from "@/stores/uiStore";
 import { attachmentRejection } from "@/utils/attachmentGate";
 import { describeApiError, logApiError } from "@/utils/apiErrors";
 import { canUseBrowserStt, canUseBrowserTts, getSpeechRecognition, speakWithBrowser } from "@/utils/browserSpeech";
-import { appendChunk, applyFeedback, CHAT_MESSAGE_WINDOW, dedupeMessages, markLastAssistant, optimisticTurn, upsertMessage } from "@/utils/chatMessages";
+import { appendChunk, applyFeedback, CHAT_MESSAGE_WINDOW, dedupeMessages, markLastAssistant, optimisticTurn, truncateAfterEdit, upsertMessage } from "@/utils/chatMessages";
 import { pickDefaultModel, shouldReplaceStoredModel } from "@/utils/defaultModel";
 import { cn } from "@/utils/cn";
 import type { MentionCandidate } from "@/utils/mentions";
@@ -529,6 +529,29 @@ export function ChatPage() {
     await consumeStream(api.conversations.regenerate(conversationId, messageId, controller.signal));
   }
 
+  /**
+   * Rewrites a user turn and streams a new answer to it.
+   *
+   * The cached message list is trimmed before the stream opens, not after. The
+   * "start" event rebuilds state from that cache, so leaving the old branch in
+   * place would let dedupeMessages — which keeps the first entry it sees —
+   * resurrect the pre-edit text and the replies it superseded.
+   */
+  async function onEditMessage(messageId: string, content: string): Promise<void> {
+    if (!conversationId || streaming) return;
+
+    const trimmed = truncateAfterEdit(messages, messageId, content);
+    queryClient.setQueryData<{ messages: PublicMessage[] }>(["messages", conversationId], {
+      messages: trimmed,
+    });
+    setLiveMessages(trimmed);
+
+    setStreaming(true);
+    const controller = new AbortController();
+    abortRef.current = controller;
+    await consumeStream(api.conversations.editMessage(conversationId, messageId, content, controller.signal));
+  }
+
   const feedbackMutation = useMutation({
     mutationFn: (input: { message: PublicMessage; rating: "up" | "down" }) =>
       // The message carries its own conversation id, so feedback never depends
@@ -688,7 +711,15 @@ export function ChatPage() {
                 className={message.role === "user" ? "chat-message flex justify-end" : "chat-message"}
               >
                 {message.role === "user" ? (
-                  <UserMessageBubble content={message.content}>
+                  <UserMessageBubble
+                    content={message.content}
+                    editDisabled={streaming}
+                    // A turn that has not been persisted yet has no server id to
+                    // edit against, so the control is withheld until it lands.
+                    {...(message.id.startsWith("temp-")
+                      ? {}
+                      : { onEdit: (next: string) => onEditMessage(message.id, next) })}
+                  >
                     {message.attachments?.length ? <MessageAttachments attachments={message.attachments} /> : null}
                   </UserMessageBubble>
                 ) : (

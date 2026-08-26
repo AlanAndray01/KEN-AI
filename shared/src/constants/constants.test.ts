@@ -14,7 +14,7 @@ import {
 
 describe("shared constants", () => {
   it("uses the Ken product name", () => {
-    expect(APP_NAME).toBe("Ken");
+    expect(APP_NAME).toBe("Ken AI");
   });
 
   it("defaults chat inference to Groq GPT OSS 20B, with OpenAI as the documented hop", () => {

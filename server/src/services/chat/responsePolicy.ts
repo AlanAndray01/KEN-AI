@@ -1,5 +1,6 @@
 import type { ChatMessage } from "../ai/AIProvider.js";
 import { KEN_IDENTITY } from "./identity.js";
+import { LANGUAGE_RULE } from "./languageRule.js";
 import { TUTOR_PROTOCOL } from "./tutorProtocol.js";
 
 export type ReplyBudget = "minimal" | "short" | "medium" | "long";
@@ -100,12 +101,13 @@ export function buildResponsePolicyMessage(
 ): ChatMessage {
   const signals = detectTaskSignals(content);
   const policy = renderPolicy(signals);
-  // The identity block leads on every turn, custom GPTs included: a custom
-  // persona replaces the tutor protocol, never the answer to "who are you?".
+  // Identity and language lead on every turn, custom GPTs included: a custom
+  // persona replaces the tutor protocol, never the answer to "who are you?" and
+  // never the language the user is owed a reply in.
   const body = options?.skipTutor ? policy : `${TUTOR_PROTOCOL}\n\n${policy}`;
   return {
     role: "system",
-    content: `${KEN_IDENTITY}\n\n${body}`,
+    content: `${KEN_IDENTITY}\n\n${LANGUAGE_RULE}\n\n${body}`,
   };
 }
 

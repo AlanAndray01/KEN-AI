@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import {
   abortGenerationSchema,
   createConversationSchema,
+  editMessageSchema,
   messageFeedbackSchema,
   patchConversationSchema,
   sendMessageSchema,
@@ -11,6 +12,7 @@ import { writeSseDone, writeSseEvent, writeSseHeaders } from "../utils/sse.js";
 import {
   abortGeneration,
   loadHistory,
+  prepareEdit,
   prepareRegenerate,
   prepareSend,
   runGeneration,
@@ -143,6 +145,28 @@ export async function regenerateHandler(req: Request, res: Response): Promise<vo
       userId,
       conversationId: req.params.id ?? "",
     },
+  );
+}
+
+export async function editMessageHandler(req: Request, res: Response): Promise<void> {
+  const userId = requireUserId(req);
+  const body = editMessageSchema.parse(req.body ?? {});
+  await streamFromPrepare(
+    req,
+    res,
+    () =>
+      prepareEdit({
+        userId,
+        conversationId: req.params.id ?? "",
+        messageId: req.params.messageId ?? "",
+        content: body.content,
+      }),
+    "POST /conversations/:id/messages/:messageId/edit",
+    // Deliberately no preload hint. streamFromPrepare loads history in parallel
+    // with prepare() as a latency optimisation, but prepareEdit is the one
+    // prepare that *rewrites* history — a parallel read would race it and feed
+    // the model the old wording plus the replies it is meant to discard.
+    // Without a hint, runGeneration loads history itself, after the edit lands.
   );
 }
 

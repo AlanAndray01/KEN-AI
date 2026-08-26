@@ -3,6 +3,7 @@ import {
   abortHandler,
   createConversationHandler,
   deleteConversationHandler,
+  editMessageHandler,
   feedbackHandler,
   getConversationHandler,
   listConversationsHandler,
@@ -31,6 +32,7 @@ conversationsRouter.patch("/:id", asyncHandler(updateConversationHandler));
 conversationsRouter.delete("/:id", asyncHandler(deleteConversationHandler));
 conversationsRouter.get("/:id/messages", asyncHandler(listMessagesHandler));
 conversationsRouter.post("/:id/messages", rateLimitChat, asyncHandler(sendConversationMessageHandler));
+conversationsRouter.post("/:id/messages/:messageId/edit", rateLimitChat, asyncHandler(editMessageHandler));
 conversationsRouter.post("/:id/messages/:messageId/regenerate", rateLimitChat, asyncHandler(regenerateHandler));
 conversationsRouter.post("/:id/messages/:messageId/feedback", asyncHandler(feedbackHandler));
 conversationsRouter.post("/:id/generation/abort", asyncHandler(abortHandler));

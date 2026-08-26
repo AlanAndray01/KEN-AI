@@ -184,6 +184,113 @@ export async function prepareSend(input: {
   };
 }
 
+/**
+ * Rewrites one of the user's own turns and answers the new question.
+ *
+ * Editing branches the thread: every message after the edited turn was a reply
+ * to the old wording, so keeping them would feed the model a history that
+ * contradicts the question it is being asked. They are marked superseded rather
+ * than deleted — the same flag regenerate already uses — so history building,
+ * the message list, exports, and share links all skip them while the original
+ * exchange stays recoverable in the database.
+ */
+export async function prepareEdit(input: {
+  userId: string;
+  conversationId: string;
+  messageId: string;
+  content: string;
+}): Promise<PreparedGeneration> {
+  const conversation = await findOwnedConversation(input.userId, input.conversationId);
+  if (!mongoose.isValidObjectId(input.messageId)) {
+    throw new AppError("Message not found", { statusCode: 404, code: "MESSAGE_NOT_FOUND" });
+  }
+
+  const target = await Message.findOne({
+    _id: input.messageId,
+    conversationId: conversation._id,
+    userId: input.userId,
+  });
+  if (!target) {
+    throw new AppError("Message not found", { statusCode: 404, code: "MESSAGE_NOT_FOUND" });
+  }
+  if (target.role !== "user") {
+    throw new AppError("Only your own messages can be edited", {
+      statusCode: 400,
+      code: "EDIT_UNAVAILABLE",
+    });
+  }
+  if (asRecord(target.metadata)?.["superseded"] === true) {
+    throw new AppError("This message is no longer part of the conversation", {
+      statusCode: 400,
+      code: "EDIT_UNAVAILABLE",
+    });
+  }
+
+  target.content = input.content;
+  target.set("metadata", {
+    ...(asRecord(target.metadata) ?? {}),
+    edited: true,
+    editedAt: new Date().toISOString(),
+  });
+  await target.save();
+
+  // Compares on createdAt, falling back to _id when two documents share a
+  // millisecond — a user turn and its assistant reply are often created in the
+  // same tick, and a plain `$gt: createdAt` would leave that reply behind.
+  await Message.updateMany(
+    {
+      conversationId: conversation._id,
+      userId: input.userId,
+      "metadata.superseded": { $ne: true },
+      $or: [
+        { createdAt: { $gt: target.createdAt } },
+        { createdAt: target.createdAt, _id: { $gt: target._id } },
+      ],
+    },
+    { $set: { "metadata.superseded": true } },
+  );
+
+  const { providerId, modelId, model } = await resolveExecutionModel(
+    input.userId,
+    conversation.providerId,
+    conversation.modelId,
+  );
+  if (providerId !== conversation.providerId || modelId !== conversation.modelId) {
+    conversation.providerId = providerId;
+    conversation.modelId = modelId;
+  }
+
+  const generationId = randomUUID();
+  const assistantDoc = await Message.create({
+    conversationId: conversation._id,
+    userId: input.userId,
+    role: "assistant",
+    content: "",
+    model: modelId,
+    provider: providerId,
+    status: "streaming",
+    generationId,
+    parentMessageId: target._id,
+  });
+  conversation.messageCount = (conversation.messageCount ?? 0) + 1;
+  await conversation.save();
+
+  const { signal } = generationRegistry.start(input.userId, String(conversation._id), generationId);
+  return {
+    userId: input.userId,
+    conversationId: String(conversation._id),
+    generationId,
+    providerId,
+    modelId,
+    userMessage: toPublicMessage(target),
+    assistantMessage: toPublicMessage(assistantDoc),
+    conversation: toPublicConversation(conversation),
+    abortSignal: signal,
+    ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
+    ...(conversation.customGptId ? { customGptId: String(conversation.customGptId) } : {}),
+  };
+}
+
 export async function prepareRegenerate(input: {
   userId: string;
   conversationId: string;

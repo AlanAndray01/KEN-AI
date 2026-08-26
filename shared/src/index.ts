@@ -98,6 +98,7 @@ export {
   changePasswordSchema,
   createAnalysisJobSchema,
   createConversationSchema,
+  editMessageSchema,
   createGptSchema,
   createMemorySchema,
   databaseHealthStatusSchema,

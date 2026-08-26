@@ -5,7 +5,9 @@ import { AuthLayout } from "@/layouts/AuthLayout";
 import { WorkspaceLayout } from "@/layouts/WorkspaceLayout";
 import { AdminRoute } from "@/routes/AdminRoute";
 import { GuestRoute } from "@/routes/GuestRoute";
+import { LandingRoute } from "@/routes/LandingRoute";
 import { ProtectedRoute } from "@/routes/ProtectedRoute";
+import { showLandingPage } from "@/utils/featureFlags";
 
 export const router = createBrowserRouter([
   {
@@ -13,10 +15,16 @@ export const router = createBrowserRouter([
     children: [
       {
         path: CLIENT_ROUTES.home,
-        lazy: async () => {
-          const { HomePage } = await import("@/pages/HomePage");
-          return { Component: HomePage };
-        },
+        // The landing page is a local-testing surface. When it is switched off
+        // the chunk below is never fetched and `/` redirects instead.
+        ...(showLandingPage
+          ? {
+              lazy: async () => {
+                const { HomePage } = await import("@/pages/HomePage");
+                return { Component: HomePage };
+              },
+            }
+          : { element: <LandingRoute /> }),
       },
       {
         path: CLIENT_ROUTES.share,

@@ -190,6 +190,14 @@ export const sendMessageSchema = z
     message: "Message or attachment is required",
   });
 
+/**
+ * Editing a user turn resends it, so the content must be non-empty — unlike
+ * sendMessageSchema, an edit cannot fall back to attachments alone.
+ */
+export const editMessageSchema = z.object({
+  content: z.string().trim().min(1).max(MAX_MESSAGE_CONTENT_CHARS),
+});
+
 export const messageFeedbackSchema = z.object({
   rating: z.enum(["up", "down"]),
   comment: z.string().trim().max(2000).optional(),

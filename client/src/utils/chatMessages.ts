@@ -67,6 +67,29 @@ export function optimisticTurn(
   };
 }
 
+/**
+ * The client-side half of editing a turn: keep everything up to the edited
+ * message, apply its new text, and drop the replies that answered the old
+ * wording. The server supersedes the same messages, so this only keeps the UI
+ * from showing a stale branch during the round trip.
+ *
+ * Returns the list unchanged when the id is not present, so a stale click on a
+ * message that has already been superseded cannot blank the thread.
+ */
+export function truncateAfterEdit(
+  messages: PublicMessage[],
+  messageId: string,
+  content: string,
+): PublicMessage[] {
+  const index = messages.findIndex((message) => message.id === messageId);
+  if (index < 0) return messages;
+  const kept = messages.slice(0, index + 1);
+  const edited = kept[index];
+  if (!edited) return kept;
+  kept[index] = { ...edited, content };
+  return kept;
+}
+
 export function markLastAssistant(messages: PublicMessage[], status: MessageStatus): PublicMessage[] {
   const copy = [...messages];
   for (let index = copy.length - 1; index >= 0; index -= 1) {

@@ -503,6 +503,9 @@ export const api = {
       streamRequest(`/conversations/${id}/messages`, body, signal),
     regenerate: (id: string, messageId: string, signal?: AbortSignal) =>
       streamRequest(`/conversations/${id}/messages/${messageId}/regenerate`, {}, signal),
+    /** Rewrites a user turn and streams a fresh answer; later turns are dropped. */
+    editMessage: (id: string, messageId: string, content: string, signal?: AbortSignal) =>
+      streamRequest(`/conversations/${id}/messages/${messageId}/edit`, { content }, signal),
     feedback: (id: string, messageId: string, body: { rating: "up" | "down"; comment?: string }) =>
       request<{ message: PublicMessage }>(`/conversations/${id}/messages/${messageId}/feedback`, {
         method: "POST",
