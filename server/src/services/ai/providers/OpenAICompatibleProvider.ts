@@ -78,6 +78,7 @@ export class OpenAICompatibleProvider implements AIProvider {
         body: JSON.stringify({
           model: request.modelId,
           messages: toOpenAIMessages(request.messages),
+          ...(request.maxTokens ? { max_tokens: request.maxTokens } : {}),
         }),
       };
       if (request.abortSignal) init.signal = request.abortSignal;

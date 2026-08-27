@@ -69,7 +69,7 @@ export class AnthropicProvider implements AIProvider {
         ...(request.abortSignal ? { signal: request.abortSignal } : {}),
         body: {
           model: request.modelId,
-          max_tokens: 4096,
+          max_tokens: request.maxTokens ?? 4096,
           messages,
           ...(system ? { system } : {}),
         },

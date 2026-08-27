@@ -13,6 +13,7 @@ import { Conversation } from "../../models/Conversation.js";
 import { Message } from "../../models/Message.js";
 import { contextManager, estimateContextTokens, MAX_HISTORY_MESSAGES } from "./ContextManager.js";
 import { findOwnedConversation, titleFromContent, capStoredTurns, conversationExpiry } from "./conversationService.js";
+import { generateChatTitle } from "./chatTitle.js";
 import { buildResponsePolicyMessage } from "./responsePolicy.js";
 import { generationRegistry } from "./generationRegistry.js";
 import { toPublicConversation, toPublicMessage } from "./toPublic.js";
@@ -102,6 +103,10 @@ export async function prepareSend(input: {
     (await Conversation.create({
       userId: input.userId,
       title: titleFromContent(titleSource),
+      // Written explicitly rather than left to the schema default, so only
+      // conversations created since this field existed are ever auto-renamed.
+      // A chat from before it hydrates with no value and is left alone.
+      titleSource: "auto",
       modelId,
       providerId,
       archived: false,
@@ -518,6 +523,8 @@ export async function runGeneration(
   conversation.lastMessagePreview = (partial || prepared.userMessage.content).slice(0, 280);
   await conversation.save();
 
+  await maybeUpgradeTitle(conversation, prepared, partial, finishStatus);
+
   generationRegistry.finish(prepared.generationId, prepared.userId, prepared.conversationId);
 
   await recordUsage({
@@ -548,7 +555,46 @@ export async function runGeneration(
     });
     return;
   }
-  emit({ type: "complete", assistantMessage: publicAssistant });
+  // The conversation rides along so a title written above reaches the sidebar.
+  emit({
+    type: "complete",
+    assistantMessage: publicAssistant,
+    conversation: toPublicConversation(conversation),
+  });
+}
+
+/**
+ * Replaces the keyword placeholder title with a model-written one, once.
+ *
+ * Only the first exchange qualifies. The message count covers the opening send
+ * (2) plus a regenerate or edit of that same turn (3), and stops at the second
+ * user turn (4) - so an established chat is never silently renamed, including
+ * the ones that predate this field and hydrate as "auto".
+ */
+const FIRST_EXCHANGE_MESSAGE_COUNT = 3;
+
+async function maybeUpgradeTitle(
+  conversation: Awaited<ReturnType<typeof findOwnedConversation>>,
+  prepared: PreparedGeneration,
+  reply: string,
+  finishStatus: "complete" | "aborted" | "error",
+): Promise<void> {
+  if (finishStatus !== "complete" || !reply.trim()) return;
+  if (conversation.titleSource !== "auto") return;
+  if ((conversation.messageCount ?? 0) > FIRST_EXCHANGE_MESSAGE_COUNT) return;
+
+  const title = await generateChatTitle({
+    userId: prepared.userId,
+    providerId: prepared.providerId,
+    modelId: prepared.modelId,
+    userMessage: prepared.userMessage.content,
+    assistantReply: reply,
+  });
+  if (!title) return;
+
+  conversation.title = title;
+  conversation.titleSource = "model";
+  await conversation.save();
 }
 
 export function abortGeneration(userId: string, conversationId: string, generationId?: string): boolean {

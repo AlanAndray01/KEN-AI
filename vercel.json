@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "npm run build -w @Ken/shared && npm run build -w @Ken/client",
-  "installCommand": "npm ci",
+  "installCommand": "npm ci --include=dev",
   "outputDirectory": "client/dist",
   "framework": "vite",
   "rewrites": [{ "source": "/((?!assets/).*)", "destination": "/index.html" }],

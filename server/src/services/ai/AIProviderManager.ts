@@ -139,14 +139,14 @@ export class AIProviderManager {
 
   private async generateOnce(request: GenerateRequest): Promise<AIResponse> {
     const resolved = this.prepareRequest(request);
-    const adapter = await this.getAdapter(resolved.providerId, resolved.userId);
+    const adapter = await this.getAdapter(resolved.providerId, resolved.userId, resolved.skipQuota);
     await modelRegistry.assertModelAvailable(resolved.providerId, resolved.modelId, resolved.userId);
     return adapter.generate(resolved);
   }
 
   private async *streamOnce(request: GenerateRequest): AsyncIterable<StreamEvent> {
     const resolved = this.prepareRequest(request);
-    const adapter = await this.getAdapter(resolved.providerId, resolved.userId);
+    const adapter = await this.getAdapter(resolved.providerId, resolved.userId, resolved.skipQuota);
     await modelRegistry.assertModelAvailable(resolved.providerId, resolved.modelId, resolved.userId);
     if (adapter.stream) {
       yield* adapter.stream(resolved);
@@ -248,9 +248,9 @@ export class AIProviderManager {
     return match;
   }
 
-  async getAdapter(providerId: string, userId?: string): Promise<AIProvider> {
+  async getAdapter(providerId: string, userId?: string, skipQuota?: boolean): Promise<AIProvider> {
     const resolved = requireConfigured(await resolveCredentials(providerId, userId));
-    if (userId) {
+    if (userId && !skipQuota) {
       consumePlatformChatQuota(userId, resolved.source);
     }
     return createProviderAdapter({

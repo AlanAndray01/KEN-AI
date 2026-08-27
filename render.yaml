@@ -13,7 +13,11 @@ services:
     plan: free
     region: oregon
     branch: main
-    buildCommand: npm ci && npm run build -w @Ken/shared && npm run build -w @Ken/server
+    # `--include=dev` is required, not optional: NODE_ENV=production below makes
+    # npm skip devDependencies, and the build needs typescript and @types/node
+    # from there. Without it tsc fails with "Cannot find type definition file
+    # for 'node'" (TS2688). Only the build needs them; the runtime does not.
+    buildCommand: npm ci --include=dev && npm run build -w @Ken/shared && npm run build -w @Ken/server
     startCommand: npm run start -w @Ken/server
     healthCheckPath: /api/health
     envVars:

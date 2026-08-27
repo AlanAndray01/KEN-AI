@@ -89,10 +89,12 @@ vi.mock("../ai/ModelRegistry.js", () => ({
 }));
 
 const stream = vi.fn();
+const generate = vi.fn();
 
 vi.mock("../ai/AIProviderManager.js", () => ({
   aiProviderManager: {
     stream: (...args: unknown[]) => stream(...args),
+    generate: (...args: unknown[]) => generate(...args),
     applyEnabledTools: vi.fn(async () => ({ systemMessages: [], files: [] })),
   },
 }));
@@ -122,6 +124,7 @@ describe("chatService abort", () => {
     messages.clear();
     conversations.clear();
     stream.mockReset();
+    generate.mockReset();
   });
 
   it("keeps the partial assistant reply when generation is aborted", async () => {
@@ -150,5 +153,82 @@ describe("chatService abort", () => {
     expect(aborted?.assistantMessage?.status).toBe("aborted");
     const input = stream.mock.calls[0]?.[0] as { messages: Array<{ role: string; content: string }> };
     expect(input.messages[0]?.content).toContain("Ken reply policy");
+  });
+});
+
+describe("chatService automatic titles", () => {
+  beforeEach(() => {
+    messages.clear();
+    conversations.clear();
+    stream.mockReset();
+    generate.mockReset();
+    stream.mockImplementation(async function* () {
+      yield { type: "start", model: "mock-text", provider: "mock" };
+      yield { type: "chunk", text: "Photosynthesis converts light into sugar." };
+      yield {
+        type: "complete",
+        response: { content: "Photosynthesis converts light into sugar.", model: "mock-text", provider: "mock" },
+      };
+    });
+  });
+
+  async function send(content: string) {
+    const { prepareSend, runGeneration } = await import("./chatService.js");
+    const prepared = await prepareSend({
+      userId: "000000000000000000000001",
+      content,
+      providerId: "mock",
+      modelId: "mock-text",
+    });
+    const events: Array<{ type: string; conversation?: { title?: string } }> = [];
+    await runGeneration(prepared, (event) => events.push(event), "test");
+    return { events, conversation: conversations.get(prepared.conversationId) };
+  }
+
+  it("replaces the placeholder title with the model's once the first answer lands", async () => {
+    generate.mockResolvedValue({ content: '"Photosynthesis Basics"' });
+
+    const { events, conversation } = await send("explain photosynthesis to me yaar");
+
+    expect(conversation?.title).toBe("Photosynthesis Basics");
+    expect(conversation?.titleSource).toBe("model");
+    // The sidebar reads the title off the completion event.
+    expect(events.find((event) => event.type === "complete")?.conversation?.title).toBe(
+      "Photosynthesis Basics",
+    );
+  });
+
+  it("never spends the user's shared-key chat quota on naming", async () => {
+    generate.mockResolvedValue({ content: "Photosynthesis Basics" });
+    await send("explain photosynthesis");
+    expect(generate.mock.calls[0]?.[0]).toMatchObject({ skipQuota: true, maxTokens: 32 });
+  });
+
+  it("keeps the placeholder when the naming call fails", async () => {
+    generate.mockRejectedValue(new Error("provider down"));
+
+    const { conversation } = await send("explain photosynthesis");
+
+    expect(conversation?.title).toBe("explain photosynthesis");
+    expect(conversation?.titleSource).toBe("auto");
+  });
+
+  it("leaves a title the user typed alone", async () => {
+    generate.mockResolvedValue({ content: "Photosynthesis Basics" });
+    const { prepareSend, runGeneration } = await import("./chatService.js");
+    const prepared = await prepareSend({
+      userId: "000000000000000000000001",
+      content: "explain photosynthesis",
+      providerId: "mock",
+      modelId: "mock-text",
+    });
+    const conversation = conversations.get(prepared.conversationId)!;
+    conversation.title = "Bio homework";
+    conversation.titleSource = "user";
+
+    await runGeneration(prepared, () => undefined, "test");
+
+    expect(conversation.title).toBe("Bio homework");
+    expect(generate).not.toHaveBeenCalled();
   });
 });

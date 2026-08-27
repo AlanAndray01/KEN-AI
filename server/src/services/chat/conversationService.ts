@@ -59,6 +59,8 @@ export async function createConversation(userId: string, input: CreateConversati
   const created = await Conversation.create({
     userId,
     title: input.title ?? "New chat",
+    // A title supplied at creation was chosen by the caller, so it is theirs.
+    titleSource: input.title ? "user" : "auto",
     modelId: input.modelId,
     providerId: input.providerId,
     archived: false,
@@ -81,7 +83,12 @@ export async function updateConversation(
   input: PatchConversationInput,
 ) {
   const doc = await findOwnedConversation(userId, conversationId);
-  if (input.title) doc.title = input.title;
+  if (input.title) {
+    doc.title = input.title;
+    // A hand-typed name outranks the model's; this stops the naming pass from
+    // overwriting a rename the user made during the first exchange.
+    doc.titleSource = "user";
+  }
   if (input.archived !== undefined) doc.archived = input.archived;
   if (input.pinned !== undefined) {
     doc.pinned = input.pinned;

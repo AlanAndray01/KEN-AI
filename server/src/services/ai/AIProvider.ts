@@ -62,6 +62,14 @@ export interface GenerateRequest {
   messages: ChatMessage[];
   userId?: string;
   abortSignal?: AbortSignal;
+  /** Caps the reply. Set for short internal calls so a chatty model cannot stall them. */
+  maxTokens?: number;
+  /**
+   * Skips the shared-key chat quota. Only for internal calls the user did not
+   * ask for - a chat title, say - so an auxiliary request never eats the
+   * allowance meant for their actual messages, or fails their turn with a 429.
+   */
+  skipQuota?: boolean;
 }
 
 export interface ProviderRuntimeConfig {
