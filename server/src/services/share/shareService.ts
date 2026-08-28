@@ -1,5 +1,5 @@
 import type { PublicShare, PublicSharedConversation, PublicSharedMessage } from "@Ken/shared";
-import { env } from "../../config/env.js";
+import { allowedClientOrigins } from "../../config/cors.js";
 import { Conversation } from "../../models/Conversation.js";
 import { Message } from "../../models/Message.js";
 import { SharedConversation } from "../../models/SharedConversation.js";
@@ -33,7 +33,10 @@ function toPublicShare(doc: {
     id: doc.id ?? String(doc._id),
     conversationId: String(doc.conversationId),
     token,
-    url: `${env.CLIENT_URL.replace(/\/$/, "")}/share/${token}`,
+    // CLIENT_URL is a comma-separated allowlist, so it must be split before use.
+    // Interpolating it whole produced share links like
+    // "https://ken-ai.tech,https://www.ken-ai.tech/share/<token>" — unopenable.
+    url: `${allowedClientOrigins()[0] ?? ""}/share/${token}`,
     isReadOnly: true,
     revoked: Boolean(doc.revokedAt),
     viewCount: doc.viewCount ?? 0,

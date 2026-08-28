@@ -1,4 +1,5 @@
 import type { CookieOptions, Response } from "express";
+import { allowedClientOrigins } from "../../config/cors.js";
 import { env, isProduction } from "../../config/env.js";
 import { ACCESS_COOKIE, OAUTH_STATE_COOKIE, REFRESH_COOKIE } from "./config.js";
 
@@ -64,6 +65,15 @@ export function clearOAuthStateCookie(res: Response): void {
   res.clearCookie(OAUTH_STATE_COOKIE, oauthStateCookieOptions());
 }
 
+/**
+ * The single origin to send a browser back to after an OAuth round trip.
+ *
+ * CLIENT_URL is a comma-separated allowlist (apex plus www, and any preview
+ * origins), so it cannot be pasted into a URL as-is: doing that produced
+ * redirects to `https://ken-ai.tech,https://www.ken-ai.tech/login`, which no
+ * browser can resolve. The first entry is the canonical origin, so redirects
+ * use that and the rest stay purely a CORS concern.
+ */
 export function clientOrigin(): string {
-  return env.CLIENT_URL.replace(/\/$/, "");
+  return allowedClientOrigins()[0] ?? env.CLIENT_URL.split(",")[0]?.trim().replace(/\/$/, "") ?? "";
 }
