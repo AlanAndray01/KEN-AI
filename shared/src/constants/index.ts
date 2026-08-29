@@ -192,6 +192,11 @@ export const API_ROUTES = {
 
 export const CLIENT_ROUTES = {
   home: "/",
+  // Public legal pages. Reachable without an account: Google's OAuth consent
+  // screen links to them, and a signed-out visitor must be able to read what
+  // they are agreeing to before they register.
+  privacy: "/privacy",
+  terms: "/terms",
   login: "/login",
   register: "/register",
   forgotPassword: "/forgot-password",

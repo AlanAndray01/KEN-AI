@@ -27,6 +27,22 @@ export const router = createBrowserRouter([
           : { element: <LandingRoute /> }),
       },
       {
+        // Public and unauthenticated: Google's OAuth consent screen links here,
+        // and a visitor must be able to read these before creating an account.
+        path: CLIENT_ROUTES.privacy,
+        lazy: async () => {
+          const { PrivacyPage } = await import("@/pages/PrivacyPage");
+          return { Component: PrivacyPage };
+        },
+      },
+      {
+        path: CLIENT_ROUTES.terms,
+        lazy: async () => {
+          const { TermsPage } = await import("@/pages/TermsPage");
+          return { Component: TermsPage };
+        },
+      },
+      {
         path: CLIENT_ROUTES.share,
         lazy: async () => {
           const { SharePage } = await import("@/pages/SharePage");
