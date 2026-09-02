@@ -203,6 +203,45 @@ export async function attachFilesToMessage(input: {
   });
 }
 
+/**
+ * Gives a second message its own attachment rows pointing at the same stored
+ * files. Editing a turn re-asks the question as a new message, and the model
+ * only receives files that hang off the newest user turn.
+ */
+export async function copyMessageAttachments(input: {
+  sourceMessageId: string;
+  targetMessageId: string;
+}): Promise<PublicAttachment[]> {
+  const source = await Attachment.find({ messageId: input.sourceMessageId });
+  if (source.length === 0) return [];
+
+  const created = await Attachment.insertMany(
+    source.map((doc) => ({
+      userId: doc.userId,
+      fileId: doc.fileId,
+      conversationId: doc.conversationId,
+      messageId: input.targetMessageId,
+    })),
+  );
+  const files = await StoredFile.find({ _id: { $in: created.map((doc) => doc.fileId) } });
+  const fileMap = new Map(files.map((file) => [String(file._id), file]));
+
+  return created.flatMap((doc) => {
+    const file = fileMap.get(String(doc.fileId));
+    if (!file) return [];
+    return [
+      {
+        id: String(doc._id),
+        fileId: String(file._id),
+        originalName: file.originalName,
+        mimeType: file.mimeType,
+        size: file.size,
+        kind: file.kind ?? "other",
+      },
+    ];
+  });
+}
+
 export async function publicAttachmentsForMessages(
   messageIds: string[],
 ): Promise<Map<string, PublicAttachment[]>> {

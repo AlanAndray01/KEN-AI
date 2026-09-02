@@ -80,7 +80,7 @@ export function ShortcutsModal({
         aria-modal="true"
         aria-labelledby="shortcuts-title"
         tabIndex={-1}
-        className="relative w-full max-w-lg rounded-2xl border border-border bg-surface p-6 shadow-xl outline-none"
+        className="shortcuts-dialog relative w-full max-w-lg rounded-2xl border border-border bg-surface p-6 shadow-xl outline-none"
       >
         <div className="mb-4 flex items-center gap-2">
           <Keyboard className="size-5 text-fg-muted" />

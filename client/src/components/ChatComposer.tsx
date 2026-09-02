@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
-import { Globe, Image as ImageIcon, Mic, Plus, Send, Square, X } from "lucide-react";
+import { AudioLines, Globe, Image as ImageIcon, Mic, Plus, Send, Square, X } from "lucide-react";
 import { estimatePromptTokens, type ModelCapability, type PublicFile } from "@Ken/shared";
 import { AttachmentChips } from "@/components/AttachmentChips";
 import { cn } from "@/utils/cn";
@@ -29,6 +29,8 @@ interface ChatComposerProps {
   onVoiceInput?: () => void;
   voiceDisabledReason?: string;
   recording?: boolean;
+  onLiveVoice?: () => void;
+  liveVoiceDisabledReason?: string;
   mentionCandidates?: MentionCandidate[];
   mentioned?: MentionCandidate;
   onMention?: (item: MentionCandidate | undefined) => void;
@@ -60,6 +62,8 @@ export function ChatComposer({
   onVoiceInput,
   voiceDisabledReason,
   recording = false,
+  onLiveVoice,
+  liveVoiceDisabledReason,
   mentionCandidates = [],
   mentioned,
   onMention,
@@ -154,7 +158,7 @@ export function ChatComposer({
 
   return (
     <form
-      className="mx-auto w-full max-w-3xl px-4 pb-4"
+      className="chat-composer mx-auto w-full max-w-3xl px-4 pb-4"
       onSubmit={handleSubmit}
       aria-label="Send message"
       aria-busy={streaming || Boolean(uploading)}
@@ -172,14 +176,14 @@ export function ChatComposer({
       }}
       onDrop={onDrop}
     >
-      <div className={cn("relative rounded-[1.75rem] border bg-surface shadow-sm", dragging ? "border-accent" : "border-border")}>
+      <div className={cn("composer-shell relative rounded-[1.75rem] border bg-surface shadow-sm", dragging ? "border-accent" : "border-border")}>
         {dragging ? (
           <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-[1.75rem] bg-surface/90 text-sm font-medium">
             Drop files to attach
           </div>
         ) : null}
         {mentioned ? (
-          <div className="flex items-center justify-between gap-2 px-4 pt-3">
+          <div className="composer-mention-bar flex items-center justify-between gap-2 px-4 pt-3">
             <p className="text-xs text-fg-muted">
               Talking to <span className="font-medium text-fg">@{mentioned.name}</span>
             </p>
@@ -244,8 +248,8 @@ export function ChatComposer({
             ))}
           </ul>
         ) : null}
-        <div className="flex items-center justify-between px-3 pb-2">
-          <div className="flex items-center gap-1">
+        <div className="composer-toolbar flex items-center justify-between px-3 pb-2">
+          <div className="composer-tools flex items-center gap-1">
             <input
               ref={fileInputRef}
               type="file"
@@ -310,30 +314,42 @@ export function ChatComposer({
             >
               <Mic className="size-4" />
             </button>
-            <p className="px-1 text-[11px] text-fg-muted">
+            <p className="composer-hint px-1 text-[11px] text-fg-muted">
               {sendOnEnter ? "Enter to send · Shift+Enter for a new line" : "⌘ Enter to send"}
               {value.trim() ? ` · ~${estimatePromptTokens(value)} tokens` : ""}
             </p>
           </div>
-          {streaming ? (
+          <div className="composer-actions flex items-center gap-2">
             <button
               type="button"
-              className="inline-flex size-9 items-center justify-center rounded-full border border-border text-fg hover:bg-surface-muted"
-              aria-label="Stop generating"
-              onClick={onStop}
+              className="inline-flex size-9 items-center justify-center rounded-full border border-border text-fg-muted hover:bg-surface-muted hover:text-fg disabled:opacity-40"
+              aria-label="Live voice chat"
+              title={liveVoiceDisabledReason ?? "Talk to KEN hands-free"}
+              disabled={streaming || disabled || Boolean(liveVoiceDisabledReason) || !onLiveVoice}
+              onClick={onLiveVoice}
             >
-              <Square className="size-3.5 fill-current" />
+              <AudioLines className="size-4" />
             </button>
-          ) : (
-            <button
-              type="submit"
-              disabled={disabled || uploading || generatingImage || !canSend}
-              aria-label="Send"
-              className="inline-flex size-9 items-center justify-center rounded-full bg-accent text-accent-fg disabled:opacity-40"
-            >
-              <Send className="size-4" />
-            </button>
-          )}
+            {streaming ? (
+              <button
+                type="button"
+                className="inline-flex size-9 items-center justify-center rounded-full border border-border text-fg hover:bg-surface-muted"
+                aria-label="Stop generating"
+                onClick={onStop}
+              >
+                <Square className="size-3.5 fill-current" />
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={disabled || uploading || generatingImage || !canSend}
+                aria-label="Send"
+                className="inline-flex size-9 items-center justify-center rounded-full bg-accent text-accent-fg disabled:opacity-40"
+              >
+                <Send className="size-4" />
+              </button>
+            )}
+          </div>
         </div>
       </div>
       {!vision ? (

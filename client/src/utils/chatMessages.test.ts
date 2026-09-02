@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { PublicMessage } from "@Ken/shared";
-import { appendChunk, applyFeedback, markLastAssistant, optimisticTurn, truncateAfterEdit } from "./chatMessages";
+import {
+  appendChunk,
+  applyFeedback,
+  markLastAssistant,
+  optimisticTurn,
+  startTurn,
+  truncateFromMessage,
+  upsertMessage,
+} from "./chatMessages";
 
 function message(id: string, feedback?: PublicMessage["feedback"]): PublicMessage {
   return {
@@ -13,6 +21,15 @@ function message(id: string, feedback?: PublicMessage["feedback"]): PublicMessag
     updatedAt: "2026-01-01T00:00:00.000Z",
     ...(feedback ? { feedback } : {}),
   };
+}
+
+function turn(id: string, role: "user" | "assistant", content: string): PublicMessage {
+  return { ...message(id), role, content };
+}
+
+/** A freshly opened assistant bubble, before the first token lands. */
+function streamingTurn(id: string): PublicMessage {
+  return { ...message(id), role: "assistant", content: "", status: "streaming" };
 }
 
 describe("applyFeedback", () => {
@@ -83,47 +100,157 @@ describe("markLastAssistant", () => {
   });
 });
 
-describe("truncateAfterEdit", () => {
-  const msg = (id: string, role: "user" | "assistant", content: string): PublicMessage => ({
-    id,
-    conversationId: "c1",
-    role,
-    content,
-    status: "complete",
-    createdAt: "2026-01-01T00:00:00.000Z",
-    updatedAt: "2026-01-01T00:00:00.000Z",
-  });
-
+describe("truncateFromMessage", () => {
   const thread = [
-    msg("u1", "user", "first question"),
-    msg("a1", "assistant", "first answer"),
-    msg("u2", "user", "second question"),
-    msg("a2", "assistant", "second answer"),
+    turn("u1", "user", "first question"),
+    turn("a1", "assistant", "first answer"),
+    turn("u2", "user", "second question"),
+    turn("a2", "assistant", "second answer"),
   ];
 
-  it("rewrites the edited message and drops everything after it", () => {
-    const result = truncateAfterEdit(thread, "u1", "edited question");
+  it("drops the answer being replaced and everything after it", () => {
+    const result = truncateFromMessage(thread, "a1");
 
-    expect(result).toHaveLength(1);
-    expect(result[0]?.id).toBe("u1");
-    expect(result[0]?.content).toBe("edited question");
+    expect(result.map((item) => item.id)).toEqual(["u1"]);
   });
 
-  it("keeps the turns that came before the edited message", () => {
-    const result = truncateAfterEdit(thread, "u2", "reworded");
+  it("keeps the whole thread up to the newest answer", () => {
+    const result = truncateFromMessage(thread, "a2");
 
     expect(result.map((item) => item.id)).toEqual(["u1", "a1", "u2"]);
-    expect(result[2]?.content).toBe("reworded");
   });
 
   it("leaves the thread untouched when the message is already gone", () => {
-    expect(truncateAfterEdit(thread, "missing", "text")).toEqual(thread);
+    expect(truncateFromMessage(thread, "missing")).toEqual(thread);
   });
 
   it("does not mutate the original list", () => {
-    truncateAfterEdit(thread, "u1", "edited question");
+    truncateFromMessage(thread, "a1");
 
-    expect(thread[0]?.content).toBe("first question");
     expect(thread).toHaveLength(4);
+  });
+});
+
+describe("startTurn", () => {
+  it("appends the server's rows to the surviving history", () => {
+    const base = [turn("u1", "user", "question")];
+    const result = startTurn(base, turn("u1", "user", "question"), streamingTurn("a9"));
+
+    expect(result.map((item) => item.id)).toEqual(["u1", "a9"]);
+  });
+
+  it("replaces optimistic bubbles with the persisted rows rather than keeping both", () => {
+    const base = [
+      turn("u1", "user", "old question"),
+      turn("a1", "assistant", "old answer"),
+      turn("temp-user-1", "user", "new question"),
+      streamingTurn("temp-assistant-1"),
+    ];
+
+    const result = startTurn(base, turn("u2", "user", "new question"), streamingTurn("a2"));
+
+    expect(result.map((item) => item.id)).toEqual(["u1", "a1", "u2", "a2"]);
+  });
+
+  it("carries text already streamed into an optimistic bubble across to the real one", () => {
+    const base = [turn("u1", "user", "q"), { ...streamingTurn("temp-assistant-1"), content: "partial" }];
+
+    const result = startTurn(base, turn("u1", "user", "q"), streamingTurn("a1"));
+
+    expect(result[1]?.content).toBe("partial");
+    expect(result[1]?.status).toBe("streaming");
+  });
+
+  it("never seeds the new answer with the text of a persisted earlier reply", () => {
+    const base = [
+      turn("u1", "user", "first question"),
+      turn("a1", "assistant", "first answer"),
+      turn("u2", "user", "edited question"),
+    ];
+
+    const result = startTurn(base, turn("u2", "user", "edited question"), streamingTurn("a2"));
+
+    expect(result[3]?.content).toBe("");
+  });
+
+  it("keeps the locally edited wording when the server echoes the same id", () => {
+    const base = [turn("u1", "user", "edited question")];
+
+    const result = startTurn(base, turn("u1", "user", "edited question"), streamingTurn("a2"));
+
+    expect(result).toHaveLength(2);
+    expect(result[0]?.content).toBe("edited question");
+  });
+});
+
+describe("edit and resubmit sequence", () => {
+  const thread = [
+    turn("u1", "user", "first question"),
+    turn("a1", "assistant", "first answer"),
+    turn("u2", "user", "second question"),
+    turn("a2", "assistant", "second answer"),
+  ];
+
+  /**
+   * The client half of one edit round trip, in the order ChatPage runs it.
+   * Nothing is trimmed: the server appends the reworded question as a new turn,
+   * so "start" carries a new user id rather than the one that was edited.
+   */
+  function resubmit(content: string): PublicMessage[] {
+    const started = startTurn(thread, turn("u9", "user", content), streamingTurn("a9"));
+    const streamed = appendChunk(started, "fresh answer");
+    return upsertMessage(streamed, { ...turn("a9", "assistant", "fresh answer"), status: "complete" });
+  }
+
+  it("appends the reworded question and its answer to the end of the thread", () => {
+    const result = resubmit("edited question");
+
+    expect(result.map((item) => item.id)).toEqual(["u1", "a1", "u2", "a2", "u9", "a9"]);
+    expect(result[4]?.content).toBe("edited question");
+    expect(result[5]?.content).toBe("fresh answer");
+    expect(result[5]?.status).toBe("complete");
+  });
+
+  it("loses none of the earlier exchanges", () => {
+    const result = resubmit("reworded");
+
+    expect(result.slice(0, 4).map((item) => item.content)).toEqual([
+      "first question",
+      "first answer",
+      "second question",
+      "second answer",
+    ]);
+  });
+
+  it("produces no duplicate ids", () => {
+    const result = resubmit("edited question");
+
+    expect(new Set(result.map((item) => item.id)).size).toBe(result.length);
+  });
+});
+
+describe("regenerate and resubmit sequence", () => {
+  const thread = [
+    turn("u1", "user", "first question"),
+    turn("a1", "assistant", "first answer"),
+    turn("u2", "user", "second question"),
+    turn("a2", "assistant", "second answer"),
+  ];
+
+  it("replaces an older answer in place instead of appending below the thread", () => {
+    const trimmed = truncateFromMessage(thread, "a1");
+    const started = startTurn(trimmed, turn("u1", "user", "first question"), streamingTurn("a9"));
+    const result = appendChunk(started, "better answer");
+
+    expect(result.map((item) => item.id)).toEqual(["u1", "a9"]);
+    expect(result[1]?.content).toBe("better answer");
+  });
+
+  it("replaces the newest answer without leaving the old one behind", () => {
+    const trimmed = truncateFromMessage(thread, "a2");
+    const started = startTurn(trimmed, turn("u2", "user", "second question"), streamingTurn("a9"));
+
+    expect(started.map((item) => item.id)).toEqual(["u1", "a1", "u2", "a9"]);
+    expect(started.map((item) => item.content)).not.toContain("second answer");
   });
 });

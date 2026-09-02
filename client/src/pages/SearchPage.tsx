@@ -1,11 +1,13 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { CLIENT_ROUTES } from "@Ken/shared";
+import { CLIENT_ROUTES, type PublicConversation } from "@Ken/shared";
 import { api } from "@/services/api";
 import { CONVERSATION_STALE_MS } from "@/query";
 import { useUiStore } from "@/stores/uiStore";
 import { groupConversations } from "@/utils/groupConversations";
+
+const EMPTY_CONVERSATIONS: PublicConversation[] = [];
 
 export function SearchPage() {
   const filter = useUiStore((state) => state.chatFilter);
@@ -15,7 +17,7 @@ export function SearchPage() {
     queryFn: () => api.conversations.list(),
     staleTime: CONVERSATION_STALE_MS,
   });
-  const conversations = conversationsQuery.data?.conversations ?? [];
+  const conversations = conversationsQuery.data?.conversations ?? EMPTY_CONVERSATIONS;
   const filtered = useMemo(() => {
     const query = filter.trim().toLowerCase();
     if (!query) return conversations;

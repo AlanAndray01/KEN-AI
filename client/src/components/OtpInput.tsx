@@ -68,7 +68,7 @@ export function OtpInput({ value, onChange, disabled = false, error = false }: O
   }
 
   return (
-    <div className="flex justify-center gap-2" role="group" aria-label="Verification code">
+    <div className="otp-group flex justify-center gap-2" role="group" aria-label="Verification code">
       {digits.map((digit, index) => (
         <input
           key={index}
@@ -84,7 +84,7 @@ export function OtpInput({ value, onChange, disabled = false, error = false }: O
           aria-label={`Digit ${index + 1} of ${OTP_LENGTH}`}
           className={cn(
             "h-12 w-10 rounded-xl border bg-surface/70 text-center text-lg font-semibold tracking-widest shadow-sm outline-none transition-colors sm:h-14 sm:w-12",
-            error ? "border-danger" : "border-border focus:border-fg",
+            error ? "border-danger" : "border-border focus:border-accent",
             disabled && "opacity-60",
           )}
           onChange={(event) => onDigitChange(index, event)}

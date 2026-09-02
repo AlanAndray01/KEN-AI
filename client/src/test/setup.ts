@@ -36,6 +36,28 @@ if (!("ResizeObserver" in globalThis)) {
   });
 }
 
+// jsdom has no viewport, so it ships no IntersectionObserver either. Anything
+// that reveals on scroll needs the constructor to exist; it never fires here, so
+// observed elements simply stay in their initial state for the duration of a test.
+if (!("IntersectionObserver" in globalThis)) {
+  class IntersectionObserverStub implements IntersectionObserver {
+    readonly root = null;
+    readonly rootMargin = "";
+    readonly thresholds: readonly number[] = [];
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+    takeRecords(): IntersectionObserverEntry[] {
+      return [];
+    }
+  }
+  Object.defineProperty(globalThis, "IntersectionObserver", {
+    writable: true,
+    configurable: true,
+    value: IntersectionObserverStub,
+  });
+}
+
 Object.defineProperty(navigator, "clipboard", {
   configurable: true,
   value: {

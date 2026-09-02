@@ -3,6 +3,7 @@ import type { PublicUser } from "@Ken/shared";
 import { AuthContext, type AuthUser } from "@/contexts/auth-context";
 import { ApiError, api, onUnauthorized } from "@/services/api";
 import { hydrateModelSelection } from "@/stores/modelStore";
+import { readCachedAuthUser, writeCachedAuthUser } from "@/utils/authCache";
 
 function toAuthUser(user: PublicUser): AuthUser {
   hydrateModelSelection(user.preferences.selectedProviderId, user.preferences.selectedModelId);
@@ -18,9 +19,21 @@ function toAuthUser(user: PublicUser): AuthUser {
   };
 }
 
+function hydrateFromCache(): AuthUser | null {
+  const cached = readCachedAuthUser();
+  if (!cached) return null;
+  hydrateModelSelection(cached.preferences.selectedProviderId, cached.preferences.selectedModelId);
+  return cached;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [user, setUser] = useState<AuthUser | null>(hydrateFromCache);
+  const [isLoading, setIsLoading] = useState(() => !readCachedAuthUser());
+
+  const commitUser = useCallback((next: AuthUser | null) => {
+    writeCachedAuthUser(next);
+    setUser(next);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -29,16 +42,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .me()
       .then((response) => {
         if (!cancelled) {
-          setUser(toAuthUser(response.user));
+          commitUser(toAuthUser(response.user));
         }
       })
       .catch((error: unknown) => {
-        if (!cancelled && error instanceof ApiError && error.status === 401) {
-          setUser(null);
+        if (cancelled) return;
+        if (error instanceof ApiError && error.status === 401) {
+          commitUser(null);
           return;
         }
-        if (!cancelled) {
-          setUser(null);
+        // Network / 5xx: keep a cached session so `/chat` still paints.
+        // A real logout is only a 401 (or the explicit logout path).
+        if (!readCachedAuthUser()) {
+          commitUser(null);
         }
       })
       .finally(() => {
@@ -50,16 +66,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [commitUser]);
 
   // The API client rotates an expired access token automatically; this fires
   // only when the refresh token is gone too, so the session is truly over.
-  useEffect(() => onUnauthorized(() => setUser(null)), []);
+  useEffect(() => onUnauthorized(() => commitUser(null)), [commitUser]);
 
   const login = useCallback(async (email: string, password: string) => {
     try {
       const response = await api.auth.login({ email, password });
-      setUser(toAuthUser(response.user));
+      commitUser(toAuthUser(response.user));
       return undefined;
     } catch (error: unknown) {
       if (error instanceof ApiError && error.code === "EMAIL_NOT_VERIFIED") {
@@ -71,7 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       throw error;
     }
-  }, []);
+  }, [commitUser]);
 
   const register = useCallback(async (input: { name: string; email: string; password: string }) => {
     const response = await api.auth.register(input);
@@ -84,8 +100,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const verifyEmail = useCallback(async (email: string, code: string) => {
     const response = await api.auth.verifyEmail({ email, code });
-    setUser(toAuthUser(response.user));
-  }, []);
+    commitUser(toAuthUser(response.user));
+  }, [commitUser]);
 
   const resendCode = useCallback(async (email: string) => {
     await api.auth.resendCode({ email });
@@ -95,14 +111,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await api.auth.logout();
     } finally {
-      setUser(null);
+      commitUser(null);
     }
-  }, []);
+  }, [commitUser]);
 
   const refreshUser = useCallback(async () => {
     const response = await api.auth.me();
-    setUser(toAuthUser(response.user));
-  }, []);
+    commitUser(toAuthUser(response.user));
+  }, [commitUser]);
 
   const value = useMemo(
     () => ({ user, isLoading, login, register, verifyEmail, resendCode, logout, refreshUser }),

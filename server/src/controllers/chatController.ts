@@ -163,10 +163,9 @@ export async function editMessageHandler(req: Request, res: Response): Promise<v
       }),
     "POST /conversations/:id/messages/:messageId/edit",
     // Deliberately no preload hint. streamFromPrepare loads history in parallel
-    // with prepare() as a latency optimisation, but prepareEdit is the one
-    // prepare that *rewrites* history — a parallel read would race it and feed
-    // the model the old wording plus the replies it is meant to discard.
-    // Without a hint, runGeneration loads history itself, after the edit lands.
+    // with prepare() as a latency optimisation, but prepareEdit appends the
+    // reworded question as a new turn — a parallel read would finish first and
+    // hand the model a history that is missing the question being asked.
   );
 }
 

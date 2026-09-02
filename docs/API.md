@@ -121,7 +121,8 @@ Auth required. Chat send/regenerate are rate limited (`RATE_LIMIT_CHAT`, default
 | `DELETE` | `/api/conversations/:id` | Delete the thread and its messages after an ownership check. |
 | `GET` | `/api/conversations/:id/messages` | Paginated messages. |
 | `POST` | `/api/conversations/:id/messages` | Send. **SSE** (`text/event-stream`). |
-| `POST` | `/api/conversations/:id/messages/:messageId/regenerate` | SSE regenerate. |
+| `POST` | `/api/conversations/:id/messages/:messageId/regenerate` | SSE regenerate. Branches: the target answer and every later turn are superseded. |
+| `POST` | `/api/conversations/:id/messages/:messageId/edit` | SSE re-ask. Body: `{ content }`. Appends the reworded question as a new turn; nothing earlier is changed or superseded. |
 | `POST` | `/api/conversations/:id/messages/:messageId/feedback` | Body: `{ rating: "up" \| "down" }`. |
 | `POST` | `/api/conversations/:id/generation/abort` | Stop in-flight generation. Partial assistant text is kept. |
 | `GET` | `/api/conversations/:id/share` | Current share metadata. |

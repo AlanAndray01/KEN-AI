@@ -71,7 +71,7 @@ export function ModelSelector({
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label="Model"
-        className="inline-flex max-w-[16rem] items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-medium hover:bg-surface-muted disabled:opacity-60"
+        className="model-selector-trigger inline-flex max-w-[16rem] items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-medium hover:bg-surface-muted disabled:opacity-60"
         onClick={() => setOpen((value) => !value)}
       >
         <span className="truncate">{selected?.name ?? "Select model"}</span>
@@ -81,7 +81,7 @@ export function ModelSelector({
         <ul
           role="listbox"
           aria-label="Models"
-          className="absolute top-full right-0 z-20 mt-1 max-h-80 w-72 overflow-y-auto rounded-xl border border-border bg-surface p-1 shadow-lg"
+          className="model-selector-menu absolute top-full right-0 z-20 mt-1 max-h-80 w-72 overflow-y-auto rounded-xl border border-border bg-surface p-1 shadow-lg"
         >
           {grouped.map(([groupId, groupModels]) => (
             <li key={groupId} className="px-1 py-1">

@@ -14,11 +14,21 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    warmup: {
+      clientFiles: [
+        "./src/pages/ChatPage.tsx",
+        "./src/layouts/WorkspaceLayout.tsx",
+        "./src/components/ChatComposer.tsx",
+        "./src/components/ChatTurn.tsx",
+      ],
+    },
   },
   preview: {
     port: 4173,
   },
   build: {
+    target: "es2022",
+    modulePreload: { polyfill: false },
     rollupOptions: {
       output: {
         manualChunks(id) {

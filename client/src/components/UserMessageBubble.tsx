@@ -100,8 +100,8 @@ export function UserMessageBubble({ content, onEdit, editDisabled, children }: U
   const isClamped = collapsible && !expanded;
 
   return (
-    <div className="group/message flex max-w-[85%] flex-col items-end">
-      <div className="w-full rounded-[1.5rem] bg-user-bubble px-4 py-3 text-fg">
+    <div className="user-message group/message flex max-w-[85%] flex-col items-end">
+      <div className="w-full rounded-xl border border-accent/20 bg-user-bubble px-4 py-3 text-fg">
         <div className="relative">
           <div
             ref={bodyRef}
@@ -138,7 +138,7 @@ export function UserMessageBubble({ content, onEdit, editDisabled, children }: U
         reachable by keyboard: focus-within reveals them for tab users, hover
         for pointer users, and they are always in the accessibility tree.
       */}
-      <div className="mt-1 flex items-center gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover/message:opacity-100">
+      <div className="user-message-actions mt-1 flex items-center gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover/message:opacity-100">
         <button
           type="button"
           onClick={() => void copy()}

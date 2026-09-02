@@ -1,58 +1,31 @@
 import { Link } from "react-router-dom";
 import { CLIENT_ROUTES } from "@Ken/shared";
-import { ThemeToggle } from "@/components/ThemeToggle";
-import { useThemeStore } from "@/stores/themeStore";
-import { cn } from "@/utils/cn";
 
-const THEMES = [
-  {
-    value: "light" as const,
-    title: "Light",
-    description: "Warm paper canvas for daytime use.",
-  },
-  {
-    value: "dark" as const,
-    title: "Dark",
-    description: "Low-glare workspace for night sessions.",
-  },
-  {
-    value: "system" as const,
-    title: "System",
-    description: "Follow the operating system color scheme.",
-  },
-];
-
+/**
+ * Appearance settings.
+ *
+ * KEN ships a single dark palette, so there is no theme to pick. The route is
+ * kept because it is linked from the settings index and may be bookmarked; it
+ * now explains the situation rather than offering a control that does nothing.
+ */
 export function SettingsAppearancePage() {
-  const preference = useThemeStore((state) => state.preference);
-  const setPreference = useThemeStore((state) => state.setPreference);
-
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-6 py-12">
       <div className="space-y-1">
         <p className="text-sm text-fg-muted">Settings</p>
         <h1 className="text-3xl font-semibold tracking-tight">Appearance</h1>
-        <p className="text-fg-muted">Choose a light theme, a dark theme, or match your device.</p>
+        <p className="text-fg-muted">Ken uses a single dark theme across the app.</p>
       </div>
-      <ThemeToggle />
-      <div className="grid gap-3 sm:grid-cols-3">
-        {THEMES.map((theme) => {
-          const selected = preference === theme.value;
-          return (
-            <button
-              key={theme.value}
-              type="button"
-              aria-pressed={selected}
-              className={cn(
-                "rounded-xl border px-4 py-4 text-left",
-                selected ? "border-accent bg-surface" : "border-border bg-surface hover:bg-surface-muted",
-              )}
-              onClick={() => setPreference(theme.value)}
-            >
-              <div className="font-medium">{theme.title}</div>
-              <p className="mt-1 text-sm text-fg-muted">{theme.description}</p>
-            </button>
-          );
-        })}
+      <div className="rounded-xl border border-border bg-surface px-4 py-4">
+        <div className="flex items-center gap-3">
+          <span className="h-8 w-8 rounded-lg border border-border bg-canvas" aria-hidden="true" />
+          <div>
+            <div className="font-medium">Dark</div>
+            <p className="mt-1 text-sm text-fg-muted">
+              Low-glare workspace, tuned to the Ken palette.
+            </p>
+          </div>
+        </div>
       </div>
       <Link to={CLIENT_ROUTES.settings} className="text-sm text-accent underline-offset-4 hover:underline">
         Back to settings

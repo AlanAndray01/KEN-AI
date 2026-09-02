@@ -56,7 +56,7 @@ export function GptsPage() {
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Search GPTs"
           aria-label="Search GPTs"
-          className="min-w-[12rem] flex-1 rounded-lg border border-border bg-canvas px-3 py-1.5 text-sm"
+          className="gpts-search min-w-[12rem] flex-1 rounded-lg border border-border bg-canvas px-3 py-1.5 text-sm"
         />
         <select
           value={category}

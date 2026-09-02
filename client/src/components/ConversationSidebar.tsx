@@ -22,6 +22,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { APP_NAME, CLIENT_ROUTES, type PublicConversation } from "@Ken/shared";
+import { KenMark } from "@/components/KenMark";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError, api } from "@/services/api";
 import { CONVERSATION_STALE_MS } from "@/query";
@@ -182,12 +183,25 @@ export function ConversationSidebar() {
           narrow ? "w-72 md:w-[4.5rem]" : "w-72",
         )}
       >
-        <div className={cn("flex items-center gap-1 px-3 py-3", narrow && "md:justify-center md:px-2")}>
-          {!narrow ? (
-            <Link to={CLIENT_ROUTES.chat} className="flex-1 truncate px-1 text-sm font-semibold">
-              {APP_NAME}
-            </Link>
-          ) : null}
+        <div
+          className={cn(
+            "flex items-center gap-1 px-3 py-3",
+            // Collapsed, the rail is 4.5rem wide: the mark sits above the
+            // toggle rather than competing with it for the same row.
+            narrow && "md:flex-col md:gap-2 md:px-2",
+          )}
+        >
+          <Link
+            to={CLIENT_ROUTES.chat}
+            className={cn("flex items-center px-1", narrow ? "md:justify-center md:px-0" : "flex-1")}
+            aria-label={`${APP_NAME} home`}
+          >
+            <KenMark
+              withWordmark
+              className={cn("h-7 w-7", narrow && "md:h-8 md:w-8")}
+              wordmarkClassName={cn(narrow && "md:hidden")}
+            />
+          </Link>
           {!narrow ? (
             <button
               type="button"
@@ -271,12 +285,17 @@ export function ConversationSidebar() {
                           <div
                             className={cn(
                               "group flex items-center rounded-lg",
-                              active ? "bg-surface" : "hover:bg-surface-muted",
+                              active
+                                ? "bg-accent/10 shadow-[inset_2px_0_0_var(--color-accent)]"
+                                : "hover:bg-surface-muted",
                             )}
                           >
                             <Link
                               to={`/chat/${conversation.id}`}
-                              className="min-w-0 flex-1 truncate px-3 py-2 text-sm"
+                              className={cn(
+                                "min-w-0 flex-1 truncate px-3 py-2 text-sm",
+                                active ? "font-medium text-fg" : "text-fg-muted group-hover:text-fg",
+                              )}
                               title={conversation.title}
                             >
                               {conversation.title}

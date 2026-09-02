@@ -29,7 +29,7 @@ export function AuthField({ label, error, tone, type = "text", className, ...inp
             "peer w-full rounded-xl border bg-transparent px-3.5 pt-5 pb-2 text-sm outline-none transition-colors",
             resolvedTone === "error" && "auth-field-error",
             resolvedTone === "success" && "auth-field-ok",
-            !resolvedTone && (error ? "border-danger" : "border-border focus:border-fg"),
+            !resolvedTone && (error ? "border-danger" : "border-border focus:border-accent"),
             isPassword && "pr-11",
             className,
           )}

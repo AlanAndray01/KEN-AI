@@ -85,7 +85,7 @@ export function ShareExportMenu({ conversationId }: { conversationId: string }) 
         <Share2 className="size-4" />
       </button>
       {open ? (
-        <div className="absolute top-full right-0 z-20 mt-1 w-52 rounded-xl border border-border bg-surface py-1 shadow-lg">
+        <div className="share-menu-panel absolute top-full right-0 z-20 mt-1 w-52 rounded-xl border border-border bg-surface py-1 shadow-lg">
           <MenuItem icon={Link2} label="Copy share link" onClick={() => void copyShareLink()} />
           <MenuItem label="Revoke share link" onClick={() => void revokeShare()} />
           <div className="my-1 border-t border-border" />

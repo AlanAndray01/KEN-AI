@@ -23,6 +23,7 @@ import { buildPersonaMessages } from "../memory/persona.js";
 import {
   assertAttachmentsAllowed,
   attachFilesToMessage,
+  copyMessageAttachments,
   loadOwnedFiles,
   materializeFilesForModel,
   publicAttachmentsForMessages,
@@ -190,14 +191,15 @@ export async function prepareSend(input: {
 }
 
 /**
- * Rewrites one of the user's own turns and answers the new question.
+ * Re-asks one of the user's own turns with new wording, at the end of the thread.
  *
- * Editing branches the thread: every message after the edited turn was a reply
- * to the old wording, so keeping them would feed the model a history that
- * contradicts the question it is being asked. They are marked superseded rather
- * than deleted — the same flag regenerate already uses — so history building,
- * the message list, exports, and share links all skip them while the original
- * exchange stays recoverable in the database.
+ * Nothing is rewritten and nothing is discarded. The revised question is
+ * appended as a fresh user turn carrying `editedFromMessageId`, and the reply
+ * is generated against the whole conversation, so a correction late in a long
+ * thread keeps every exchange that came before it. Truncating here — which is
+ * what supersede-everything-after used to do — threw away work the user could
+ * not get back, and made an edit near the top of a thread look like the chat
+ * had been wiped.
  */
 export async function prepareEdit(input: {
   userId: string;
@@ -231,30 +233,6 @@ export async function prepareEdit(input: {
     });
   }
 
-  target.content = input.content;
-  target.set("metadata", {
-    ...(asRecord(target.metadata) ?? {}),
-    edited: true,
-    editedAt: new Date().toISOString(),
-  });
-  await target.save();
-
-  // Compares on createdAt, falling back to _id when two documents share a
-  // millisecond — a user turn and its assistant reply are often created in the
-  // same tick, and a plain `$gt: createdAt` would leave that reply behind.
-  await Message.updateMany(
-    {
-      conversationId: conversation._id,
-      userId: input.userId,
-      "metadata.superseded": { $ne: true },
-      $or: [
-        { createdAt: { $gt: target.createdAt } },
-        { createdAt: target.createdAt, _id: { $gt: target._id } },
-      ],
-    },
-    { $set: { "metadata.superseded": true } },
-  );
-
   const { providerId, modelId, model } = await resolveExecutionModel(
     input.userId,
     conversation.providerId,
@@ -266,6 +244,31 @@ export async function prepareEdit(input: {
   }
 
   const generationId = randomUUID();
+  const userDoc = await Message.create({
+    conversationId: conversation._id,
+    userId: input.userId,
+    role: "user",
+    content: input.content,
+    status: "complete",
+    metadata: {
+      edited: true,
+      editedAt: new Date().toISOString(),
+      editedFromMessageId: String(target._id),
+    },
+    ...(conversation.expiresAt ? { expiresAt: conversation.expiresAt } : {}),
+  });
+
+  // The model only sees files hanging off the newest user turn, so a reworded
+  // question about an uploaded document has to bring that document with it.
+  const attachments = await copyMessageAttachments({
+    sourceMessageId: String(target._id),
+    targetMessageId: String(userDoc._id),
+  });
+  if (attachments.length > 0) {
+    userDoc.attachments = attachments.map((item) => new mongoose.Types.ObjectId(item.id));
+    await userDoc.save();
+  }
+
   const assistantDoc = await Message.create({
     conversationId: conversation._id,
     userId: input.userId,
@@ -275,9 +278,12 @@ export async function prepareEdit(input: {
     provider: providerId,
     status: "streaming",
     generationId,
-    parentMessageId: target._id,
+    parentMessageId: userDoc._id,
+    ...(conversation.expiresAt ? { expiresAt: conversation.expiresAt } : {}),
   });
-  conversation.messageCount = (conversation.messageCount ?? 0) + 1;
+  conversation.messageCount = (conversation.messageCount ?? 0) + 2;
+  conversation.lastMessageAt = new Date();
+  conversation.lastMessagePreview = input.content.slice(0, 280);
   await conversation.save();
 
   const { signal } = generationRegistry.start(input.userId, String(conversation._id), generationId);
@@ -287,7 +293,7 @@ export async function prepareEdit(input: {
     generationId,
     providerId,
     modelId,
-    userMessage: toPublicMessage(target),
+    userMessage: toPublicMessage(userDoc, attachments),
     assistantMessage: toPublicMessage(assistantDoc),
     conversation: toPublicConversation(conversation),
     abortSignal: signal,
@@ -331,10 +337,29 @@ export async function prepareRegenerate(input: {
     throw new AppError("Cannot regenerate this message", { statusCode: 400, code: "REGENERATE_UNAVAILABLE" });
   }
 
-  if (target.role === "assistant") {
-    target.set("metadata", { ...(asRecord(target.metadata) ?? {}), superseded: true });
-    await target.save();
-  }
+  // Regenerating is a branch, not an append: every turn after the target
+  // answered a reply that is about to be replaced, so keeping them would leave
+  // the thread reading as a conversation that never happened and would feed the
+  // model a history contradicting the answer it is being asked to redo. The
+  // target itself goes only when it is the assistant turn being replaced —
+  // regenerating from a user turn keeps that question and discards what followed.
+  //
+  // Ordering compares on createdAt with _id as the tie-break, the same way
+  // prepareEdit does: a user turn and its reply are often written in the same
+  // millisecond, and a plain $gt would leave that reply behind.
+  await Message.updateMany(
+    {
+      conversationId: conversation._id,
+      userId: input.userId,
+      "metadata.superseded": { $ne: true },
+      $or: [
+        ...(target.role === "assistant" ? [{ _id: target._id }] : []),
+        { createdAt: { $gt: target.createdAt } },
+        { createdAt: target.createdAt, _id: { $gt: target._id } },
+      ],
+    },
+    { $set: { "metadata.superseded": true } },
+  );
 
   const { providerId, modelId, model } = await resolveExecutionModel(
     input.userId,

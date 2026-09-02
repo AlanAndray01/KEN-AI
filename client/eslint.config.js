@@ -5,7 +5,7 @@ import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
 
 export default defineConfig(
-  { ignores: ["dist/**", "vite.config.ts", "eslint.config.js"] },
+  { ignores: ["dist/**", "vite.config.ts", "eslint.config.js", "playwright.config.ts", "e2e/**", "playwright-report/**", "test-results/**"] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

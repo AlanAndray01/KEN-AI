@@ -1,5 +1,12 @@
 import type { MessageStatus, PublicAttachment, PublicMessage, PublicMessageFeedback } from "@Ken/shared";
 
+/** Prefix for a client-minted bubble that has no server row behind it yet. */
+const OPTIMISTIC_ID_PREFIX = "temp-";
+
+export function isOptimisticId(id: string): boolean {
+  return id.startsWith(OPTIMISTIC_ID_PREFIX);
+}
+
 export function dedupeMessages(messages: PublicMessage[]): PublicMessage[] {
   const seen = new Set<string>();
   const result: PublicMessage[] = [];
@@ -46,7 +53,7 @@ export function optimisticTurn(
   const suffix = `${now}-${Math.random().toString(36).slice(2, 8)}`;
   return {
     user: {
-      id: `temp-user-${suffix}`,
+      id: `${OPTIMISTIC_ID_PREFIX}user-${suffix}`,
       conversationId,
       role: "user",
       content,
@@ -56,7 +63,7 @@ export function optimisticTurn(
       ...(attachments.length > 0 ? { attachments } : {}),
     },
     assistant: {
-      id: `temp-assistant-${suffix}`,
+      id: `${OPTIMISTIC_ID_PREFIX}assistant-${suffix}`,
       conversationId,
       role: "assistant",
       content: "",
@@ -68,26 +75,56 @@ export function optimisticTurn(
 }
 
 /**
- * The client-side half of editing a turn: keep everything up to the edited
- * message, apply its new text, and drop the replies that answered the old
- * wording. The server supersedes the same messages, so this only keeps the UI
- * from showing a stale branch during the round trip.
+ * The client-side half of regenerating a turn: drop the answer being replaced
+ * and every turn that followed it.
+ *
+ * Regenerating mid-thread is a branch, not an append. The server supersedes the
+ * same range, so keeping the old replies here would leave the discarded branch
+ * on screen next to its replacement until the next full refetch.
  *
  * Returns the list unchanged when the id is not present, so a stale click on a
  * message that has already been superseded cannot blank the thread.
  */
-export function truncateAfterEdit(
-  messages: PublicMessage[],
-  messageId: string,
-  content: string,
-): PublicMessage[] {
+export function truncateFromMessage(messages: PublicMessage[], messageId: string): PublicMessage[] {
   const index = messages.findIndex((message) => message.id === messageId);
   if (index < 0) return messages;
-  const kept = messages.slice(0, index + 1);
-  const edited = kept[index];
-  if (!edited) return kept;
-  kept[index] = { ...edited, content };
-  return kept;
+  return messages.slice(0, index);
+}
+
+/**
+ * Rebuilds the thread when a generation opens.
+ *
+ * `base` is the list the turn was launched from — already trimmed by
+ * truncateFromMessage when the turn replaces part of the thread, so this never
+ * has to guess which branch survives.
+ *
+ * Optimistic bubbles are dropped because the server sends its own rows for the
+ * same turn under real ids, and dedupeMessages keeps the first id it sees: left
+ * in place they would strand a duplicate that no later event can address.
+ *
+ * Text already streamed into an optimistic bubble is carried across so a reply
+ * that started before the "start" event does not visibly restart. Only an
+ * optimistic bubble qualifies — a persisted answer belongs to an earlier turn,
+ * and copying its text would open the new one pre-filled with the wrong reply.
+ */
+export function startTurn(
+  base: PublicMessage[],
+  userMessage: PublicMessage | undefined,
+  assistantMessage: PublicMessage | undefined,
+): PublicMessage[] {
+  const next = base.filter((message) => !isOptimisticId(message.id));
+  if (userMessage) next.push(userMessage);
+  if (assistantMessage) {
+    const pending = [...base]
+      .reverse()
+      .find((message) => message.role === "assistant" && isOptimisticId(message.id));
+    next.push(
+      pending?.content && !assistantMessage.content
+        ? { ...assistantMessage, content: pending.content, status: "streaming" }
+        : assistantMessage,
+    );
+  }
+  return dedupeMessages(next);
 }
 
 export function markLastAssistant(messages: PublicMessage[], status: MessageStatus): PublicMessage[] {

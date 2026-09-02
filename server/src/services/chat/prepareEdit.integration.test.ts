@@ -46,8 +46,8 @@ async function seedThread(): Promise<{ firstUser: string; secondUser: string }> 
   return { firstUser: String(firstUser._id), secondUser: String(secondUser._id) };
 }
 
-async function supersededContents(): Promise<string[]> {
-  const docs = await Message.find({ conversationId, "metadata.superseded": true }).sort({ createdAt: 1 });
+async function threadContents(): Promise<string[]> {
+  const docs = await Message.find({ conversationId }).sort({ createdAt: 1, _id: 1 });
   return docs.map((doc) => doc.content);
 }
 
@@ -64,68 +64,98 @@ describe.skipIf(!mongo.ok)("prepareEdit (real MongoDB)", () => {
     userId = String(user._id);
   });
 
-  it("replaces the content of the edited turn", async () => {
+  it("appends the reworded question instead of rewriting the original", async () => {
     const { firstUser } = await seedThread();
 
-    await prepareEdit({ userId, conversationId, messageId: firstUser, content: "rewritten question" });
+    const prepared = await prepareEdit({
+      userId, conversationId, messageId: firstUser, content: "rewritten question",
+    });
 
-    const reloaded = await Message.findById(firstUser);
-    expect(reloaded?.content).toBe("rewritten question");
-    expect((reloaded?.metadata as Record<string, unknown>)["edited"]).toBe(true);
+    const original = await Message.findById(firstUser);
+    expect(original?.content).toBe("first question");
+    expect(prepared.userMessage.content).toBe("rewritten question");
+    expect(prepared.userMessage.id).not.toBe(firstUser);
   });
 
-  it("supersedes every message after the edited turn", async () => {
+  it("keeps every earlier exchange in the thread", async () => {
     const { firstUser } = await seedThread();
 
     await prepareEdit({ userId, conversationId, messageId: firstUser, content: "rewritten" });
 
-    expect(await supersededContents()).toEqual([
+    expect(await threadContents()).toEqual([
+      "first question",
       "first answer",
       "second question",
       "second answer",
+      "rewritten",
+      "", // the assistant turn that is about to stream
     ]);
   });
 
-  it("leaves earlier turns in the thread untouched", async () => {
-    const { secondUser } = await seedThread();
-
-    await prepareEdit({ userId, conversationId, messageId: secondUser, content: "reworded" });
-
-    expect(await supersededContents()).toEqual(["second answer"]);
-  });
-
-  it("never supersedes the edited message itself", async () => {
+  it("supersedes nothing", async () => {
     const { firstUser } = await seedThread();
 
     await prepareEdit({ userId, conversationId, messageId: firstUser, content: "rewritten" });
 
-    const reloaded = await Message.findById(firstUser);
-    expect((reloaded?.metadata as Record<string, unknown> | null)?.["superseded"]).toBeUndefined();
+    expect(await Message.countDocuments({ conversationId, "metadata.superseded": true })).toBe(0);
   });
 
-  it("hides the discarded branch from the history sent to the model", async () => {
-    const { firstUser } = await seedThread();
-
-    await prepareEdit({ userId, conversationId, messageId: firstUser, content: "rewritten question" });
-    const history = await loadHistory(userId, conversationId);
-    const texts = history.map((entry) => String(entry.content));
-
-    expect(texts).toContain("rewritten question");
-    expect(texts).not.toContain("first question");
-    expect(texts).not.toContain("second question");
-    expect(texts).not.toContain("second answer");
-  });
-
-  it("opens a fresh assistant turn parented to the edited message", async () => {
+  it("records where the reworded question came from", async () => {
     const { firstUser } = await seedThread();
 
     const prepared = await prepareEdit({
       userId, conversationId, messageId: firstUser, content: "rewritten",
     });
 
+    const appended = await Message.findById(prepared.userMessage.id);
+    const metadata = appended?.metadata as Record<string, unknown>;
+    expect(metadata["edited"]).toBe(true);
+    expect(metadata["editedFromMessageId"]).toBe(firstUser);
+  });
+
+  it("sends the model the whole thread, ending with the reworded question", async () => {
+    const { firstUser } = await seedThread();
+
+    await prepareEdit({ userId, conversationId, messageId: firstUser, content: "rewritten question" });
+    const history = await loadHistory(userId, conversationId);
+    const texts = history.map((entry) => String(entry.content));
+
+    expect(texts).toContain("first question");
+    expect(texts).toContain("second answer");
+    expect(texts.at(-1)).toBe("rewritten question");
+  });
+
+  it("counts both new messages against the conversation", async () => {
+    const { firstUser } = await seedThread();
+
+    await prepareEdit({ userId, conversationId, messageId: firstUser, content: "rewritten" });
+
+    const conversation = await Conversation.findById(conversationId);
+    expect(conversation?.messageCount).toBe(6);
+  });
+
+  it("opens a fresh assistant turn parented to the appended question", async () => {
+    const { firstUser } = await seedThread();
+
+    const prepared = await prepareEdit({
+      userId, conversationId, messageId: firstUser, content: "rewritten",
+    });
+
+    const assistant = await Message.findById(prepared.assistantMessage.id);
     expect(prepared.assistantMessage.status).toBe("streaming");
     expect(prepared.assistantMessage.content).toBe("");
-    expect(prepared.userMessage.content).toBe("rewritten");
+    expect(String(assistant?.parentMessageId)).toBe(prepared.userMessage.id);
+  });
+
+  it("allows editing the same turn twice", async () => {
+    const { firstUser } = await seedThread();
+    await prepareEdit({ userId, conversationId, messageId: firstUser, content: "rewritten" });
+
+    const second = await prepareEdit({
+      userId, conversationId, messageId: firstUser, content: "rewritten again",
+    });
+
+    expect(second.userMessage.content).toBe("rewritten again");
   });
 
   it("refuses to edit an assistant message", async () => {
@@ -134,15 +164,6 @@ describe.skipIf(!mongo.ok)("prepareEdit (real MongoDB)", () => {
 
     await expect(
       prepareEdit({ userId, conversationId, messageId: String(assistant?._id), content: "nope" }),
-    ).rejects.toMatchObject({ code: "EDIT_UNAVAILABLE" });
-  });
-
-  it("refuses to edit a message that was already superseded", async () => {
-    const { firstUser, secondUser } = await seedThread();
-    await prepareEdit({ userId, conversationId, messageId: firstUser, content: "rewritten" });
-
-    await expect(
-      prepareEdit({ userId, conversationId, messageId: secondUser, content: "too late" }),
     ).rejects.toMatchObject({ code: "EDIT_UNAVAILABLE" });
   });
 

@@ -46,10 +46,10 @@ export function LoginPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="auth-stack">
       <AuthModeNav />
       <div className="space-y-1 text-center">
-        <h1 className="text-2xl font-semibold tracking-tight">Welcome back</h1>
+        <h1 className="text-2xl tracking-tight">Welcome back</h1>
         <p className="text-sm text-fg-muted">
           Log in or sign up to get smarter responses, upload files and images, and more.
         </p>
@@ -61,15 +61,15 @@ export function LoginPage() {
       ) : null}
       <a
         href={api.auth.googleStartUrl}
-        className="flex w-full items-center justify-center gap-3 rounded-full border border-border px-4 py-2.5 text-sm font-medium transition-colors hover:bg-surface-muted"
+        className="auth-google flex w-full items-center justify-center gap-3 rounded-[10px] border px-4 py-2.5 text-sm font-medium transition-colors"
       >
         <GoogleMark />
         Continue with Google
       </a>
-      <div className="flex items-center gap-3 text-[11px] tracking-wide text-fg-muted uppercase">
-        <span className="h-px flex-1 bg-border" />
+      <div className="auth-or flex items-center gap-3 text-[11px] tracking-wide text-fg-muted uppercase">
+        <span className="h-px flex-1" />
         or
-        <span className="h-px flex-1 bg-border" />
+        <span className="h-px flex-1" />
       </div>
       <form className="space-y-3" onSubmit={onSubmit} aria-label="Sign in">
         <AuthField
@@ -93,7 +93,7 @@ export function LoginPage() {
         <button
           type="submit"
           disabled={pending}
-          className="w-full rounded-full bg-fg px-4 py-2.5 text-sm font-medium text-canvas disabled:opacity-60"
+          className="auth-submit"
         >
           {pending ? "Signing in…" : "Continue"}
         </button>

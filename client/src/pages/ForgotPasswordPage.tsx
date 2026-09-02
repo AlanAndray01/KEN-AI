@@ -26,10 +26,10 @@ export function ForgotPasswordPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="auth-stack">
       <AuthModeNav />
       <div className="space-y-1 text-center">
-        <h1 className="text-2xl font-semibold tracking-tight">Forgot password</h1>
+        <h1 className="text-2xl tracking-tight">Forgot password</h1>
         <p className="text-sm text-fg-muted">
           If that email exists, we create a 6-digit code that expires in 15 minutes. Check your inbox, or the API
           terminal for <code className="font-mono text-fg">[DEV AUTH CODE]</code> in development.
@@ -52,7 +52,7 @@ export function ForgotPasswordPage() {
         <button
           type="submit"
           disabled={pending}
-          className="w-full rounded-full bg-fg px-4 py-2.5 text-sm font-medium text-canvas disabled:opacity-60"
+          className="auth-submit"
         >
           {pending ? "Sending…" : "Continue"}
         </button>

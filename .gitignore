@@ -27,6 +27,10 @@ npm-debug.log*
 # Test / coverage
 coverage/
 .nyc_output/
+client/playwright-report/
+client/test-results/
+client/blob-report/
+client/playwright/.cache/
 
 # Uploads (local storage)
 uploads/*

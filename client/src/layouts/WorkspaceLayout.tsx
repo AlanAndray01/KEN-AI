@@ -1,12 +1,15 @@
-import { Suspense, useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { Menu } from "lucide-react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { CLIENT_ROUTES } from "@Ken/shared";
 import { ConversationSidebar } from "@/components/ConversationSidebar";
 import { PageFallback } from "@/components/PageFallback";
-import { ShortcutsModal } from "@/components/ShortcutsModal";
 import { useAuth } from "@/hooks/useAuth";
 import { useUiStore } from "@/stores/uiStore";
+
+const ShortcutsModal = lazy(() =>
+  import("@/components/ShortcutsModal").then((mod) => ({ default: mod.ShortcutsModal })),
+);
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -66,7 +69,7 @@ export function WorkspaceLayout() {
   }, [navigate, setShortcutsOpen, shortcutsOpen]);
 
   return (
-    <div className="flex h-svh overflow-hidden bg-canvas">
+    <div className="workspace-shell flex h-svh overflow-hidden bg-canvas">
       <ConversationSidebar />
       <div className="flex min-w-0 flex-1 flex-col">
         {isChat ? null : (
@@ -95,7 +98,11 @@ export function WorkspaceLayout() {
           </Suspense>
         </main>
       </div>
-      <ShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} sendOnEnter={sendOnEnter} />
+      {shortcutsOpen ? (
+        <Suspense fallback={null}>
+          <ShortcutsModal open onClose={() => setShortcutsOpen(false)} sendOnEnter={sendOnEnter} />
+        </Suspense>
+      ) : null}
     </div>
   );
 }

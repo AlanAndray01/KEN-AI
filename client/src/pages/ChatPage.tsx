@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy, Menu, RotateCw, ThumbsDown, ThumbsUp, Volume2 } from "lucide-react";
+import { Menu } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   DEFAULT_GROQ_MODEL_ID,
@@ -9,16 +9,10 @@ import {
   type PublicMessage,
   type PublicMessageFeedback,
 } from "@Ken/shared";
-import { AddModelKeysDialog } from "@/components/AddModelKeysDialog";
-import { MessageAttachments } from "@/components/AttachmentChips";
 import { ChatComposer } from "@/components/ChatComposer";
-import { LazyMarkdown } from "@/components/LazyMarkdown";
-import { AssistantRichBody } from "@/components/RichContent";
+import { ChatTurn } from "@/components/ChatTurn";
 import { ModelSelector } from "@/components/ModelSelector";
 import { ShareExportMenu } from "@/components/ShareExportMenu";
-import { ThemeToggle } from "@/components/ThemeToggle";
-import { ThinkingPipeline } from "@/components/ThinkingPipeline";
-import { UserMessageBubble } from "@/components/UserMessageBubble";
 import { useAuth } from "@/hooks/useAuth";
 import { useStickToBottom } from "@/hooks/useStickToBottom";
 import { useStreamBuffer } from "@/hooks/useStreamBuffer";
@@ -30,11 +24,23 @@ import { toast } from "@/stores/toastStore";
 import { useUiStore } from "@/stores/uiStore";
 import { attachmentRejection } from "@/utils/attachmentGate";
 import { describeApiError, logApiError } from "@/utils/apiErrors";
-import { canUseBrowserStt, canUseBrowserTts, getSpeechRecognition, speakWithBrowser } from "@/utils/browserSpeech";
-import { appendChunk, applyFeedback, CHAT_MESSAGE_WINDOW, dedupeMessages, markLastAssistant, optimisticTurn, truncateAfterEdit, upsertMessage } from "@/utils/chatMessages";
+import {
+  canUseBrowserStt,
+  canUseBrowserTts,
+  getSpeechRecognition,
+  speakWithBrowser,
+  stopBrowserSpeech,
+} from "@/utils/browserSpeech";
+import { appendChunk, applyFeedback, CHAT_MESSAGE_WINDOW, markLastAssistant, optimisticTurn, startTurn, truncateFromMessage, upsertMessage } from "@/utils/chatMessages";
 import { pickDefaultModel, shouldReplaceStoredModel } from "@/utils/defaultModel";
-import { cn } from "@/utils/cn";
 import type { MentionCandidate } from "@/utils/mentions";
+
+const AddModelKeysDialog = lazy(() =>
+  import("@/components/AddModelKeysDialog").then((mod) => ({ default: mod.AddModelKeysDialog })),
+);
+const LiveVoiceOverlay = lazy(() =>
+  import("@/components/LiveVoiceOverlay").then((mod) => ({ default: mod.LiveVoiceOverlay })),
+);
 
 export function ChatPage() {
   const { conversationId } = useParams();
@@ -60,7 +66,9 @@ export function ChatPage() {
   const [webSearch, setWebSearch] = useState(false);
   const [generatingImage, setGeneratingImage] = useState(false);
   const [recording, setRecording] = useState(false);
+  const [liveVoiceOpen, setLiveVoiceOpen] = useState(false);
   const [mentionedGpt, setMentionedGpt] = useState<MentionCandidate>();
+  const speakingAudioRef = useRef<HTMLAudioElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const streamConversationRef = useRef<string | undefined>(undefined);
   const appliedConversationRef = useRef<string | undefined>(undefined);
@@ -133,6 +141,14 @@ export function ChatPage() {
     ? undefined
     : (voiceQuery.data?.message ?? "Voice input is not configured.");
   const ttsConfigured = Boolean(voiceQuery.data?.ttsConfigured) || canUseBrowserTts();
+  const ttsUnavailableReason =
+    voiceQuery.data?.message ?? "Text-to-speech is not configured, and this browser cannot speak.";
+  // A hands-free loop needs recognition that runs continuously. The server's
+  // transcribe endpoint takes one finished recording, so live mode is offered
+  // only where the browser can listen.
+  const liveVoiceDisabledReason = canUseBrowserStt()
+    ? undefined
+    : "Live voice needs speech recognition, which this browser does not provide.";
   const gptParam = searchParams.get("gpt");
   const activeGptId = mentionedGpt?.id ?? currentConversation?.customGptId ?? gptParam ?? undefined;
   const gptQuery = useQuery({
@@ -147,6 +163,10 @@ export function ChatPage() {
     name: gpt.name,
     ...(gpt.description ? { description: gpt.description } : {}),
   }));
+
+  useEffect(() => {
+    void import("@/components/MarkdownContent");
+  }, []);
 
   useEffect(() => {
     setDraft(useDraftStore.getState().drafts[draftKey(conversationId)] ?? "");
@@ -220,9 +240,20 @@ export function ChatPage() {
     setShowAllMessages(false);
   }, [conversationId, resetChunks]);
 
+  // Slice rather than react-window: turns have variable height (markdown,
+  // KaTeX, streaming caret) so a fixed-size virtualizer would jump the scroll
+  // position. 48 mounted nodes is the budget for low-spec hardware.
   const hiddenCount =
     showAllMessages || messages.length <= CHAT_MESSAGE_WINDOW ? 0 : messages.length - CHAT_MESSAGE_WINDOW;
   const visibleMessages = hiddenCount > 0 ? messages.slice(-CHAT_MESSAGE_WINDOW) : messages;
+  // The newest finished answer, which live voice mode reads out loud.
+  const latestReply = useMemo(
+    () =>
+      [...messages]
+        .reverse()
+        .find((message) => message.role === "assistant" && message.status !== "streaming"),
+    [messages],
+  );
 
   // Follow the newest tokens only while the reader is already at the bottom, so
   // scrolling up mid-stream to re-read something is not yanked back every frame.
@@ -258,21 +289,18 @@ export function ChatPage() {
             }
           }
           setLiveMessages((current) => {
-            const history =
-              event.conversation?.id === conversationId || !conversationId
-                ? (messagesQuery.data?.messages ?? [])
-                : [];
-            const next = [...history];
-            if (event.userMessage) next.push(event.userMessage);
-            if (event.assistantMessage) {
-              const streamed = [...(current ?? [])].reverse().find((message) => message.role === "assistant");
-              next.push(
-                streamed?.content && !event.assistantMessage.content
-                  ? { ...event.assistantMessage, content: streamed.content, status: "streaming" }
-                  : event.assistantMessage,
-              );
-            }
-            return dedupeMessages(next);
+            const sameConversation = !conversationId || event.conversation?.id === conversationId;
+            // Read the thread as it stands at this instant. onEditMessage and
+            // onRegenerate trim it synchronously before opening the stream, and
+            // the render closure that created this handler still holds the
+            // pre-trim messagesQuery.data — using it would resurrect the branch
+            // the edit was meant to discard.
+            const base = sameConversation
+              ? (current ??
+                queryClient.getQueryData<{ messages: PublicMessage[] }>(["messages", conversationId])?.messages ??
+                [])
+              : [];
+            return startTurn(base, event.userMessage, event.assistantMessage);
           });
           void queryClient.invalidateQueries({ queryKey: ["conversations"] });
         }
@@ -319,15 +347,21 @@ export function ChatPage() {
     }
   }
 
-  async function onSubmit(): Promise<void> {
-    const content = draft.trim();
-    if ((!content && attachments.length === 0) || streaming || uploading) return;
+  /**
+   * Sends the draft, or `spoken` when live voice mode supplies the turn. A
+   * spoken turn carries no attachments and leaves the typed draft alone, so
+   * switching to voice never eats something half-written.
+   */
+  async function onSubmit(spoken?: string): Promise<void> {
+    const content = (spoken ?? draft).trim();
+    const outgoing = spoken === undefined ? attachments : [];
+    if ((!content && outgoing.length === 0) || streaming || uploading) return;
     if (!defaultModel && models.length === 0) {
       toast("No AI provider configured.", "error");
       return;
     }
-    const attachmentIds = attachments.map((item) => item.id);
-    const publicAttachments = attachments.map((item) => ({
+    const attachmentIds = outgoing.map((item) => item.id);
+    const publicAttachments = outgoing.map((item) => ({
       id: item.id,
       fileId: item.id,
       originalName: item.originalName,
@@ -335,9 +369,11 @@ export function ChatPage() {
       size: item.size,
       kind: item.kind,
     }));
-    setDraft("");
-    clearStoredDraft(currentDraftKey);
-    setAttachments([]);
+    if (spoken === undefined) {
+      setDraft("");
+      clearStoredDraft(currentDraftKey);
+      setAttachments([]);
+    }
     setStreaming(true);
     const pending = optimisticTurn(content, conversationId ?? "pending", publicAttachments);
     setLiveMessages((current) => [...(current ?? messagesQuery.data?.messages ?? []), pending.user, pending.assistant]);
@@ -486,6 +522,7 @@ export function ChatPage() {
     }
   }
 
+  /** Resolves when playback finishes, so the live voice loop can resume listening. */
   async function onSpeak(text: string): Promise<void> {
     if (!text.trim()) return;
     if (voiceQuery.data?.ttsConfigured) {
@@ -493,18 +530,34 @@ export function ChatPage() {
         const blob = await api.voice.speak(text);
         const url = URL.createObjectURL(blob);
         const audio = new Audio(url);
-        audio.onended = () => URL.revokeObjectURL(url);
+        speakingAudioRef.current = audio;
         await audio.play();
+        await new Promise<void>((resolve) => {
+          audio.onended = () => resolve();
+          audio.onerror = () => resolve();
+        });
+        URL.revokeObjectURL(url);
+        speakingAudioRef.current = null;
         return;
       } catch (err) {
-        if (speakWithBrowser(text)) return;
+        if (await speakWithBrowser(text)) return;
         toast(err instanceof ApiError ? err.message : "Voice playback is not configured.", "error");
         return;
       }
     }
-    if (!speakWithBrowser(text)) {
+    if (!(await speakWithBrowser(text))) {
       toast("Voice playback is not configured.", "error");
     }
+  }
+
+  /** Cuts playback short when the reader closes live voice mid-sentence. */
+  function stopSpeaking(): void {
+    const audio = speakingAudioRef.current;
+    if (audio) {
+      audio.pause();
+      speakingAudioRef.current = null;
+    }
+    stopBrowserSpeech();
   }
 
   async function onStop(): Promise<void> {
@@ -519,8 +572,22 @@ export function ChatPage() {
     abortRef.current?.abort();
   }
 
+  /**
+   * Re-runs the answer at `messageId`, discarding it and every turn after it.
+   *
+   * The thread is trimmed before the stream opens for the same reason the edit
+   * path trims: the "start" event rebuilds from whatever the thread holds then,
+   * so the replaced branch has to be gone by the time it arrives.
+   */
   async function onRegenerate(messageId: string): Promise<void> {
     if (!conversationId || streaming) return;
+
+    const trimmed = truncateFromMessage(messages, messageId);
+    queryClient.setQueryData<{ messages: PublicMessage[] }>(["messages", conversationId], {
+      messages: trimmed,
+    });
+    setLiveMessages(trimmed);
+
     setStreaming(true);
     const controller = new AbortController();
     abortRef.current = controller;
@@ -528,23 +595,18 @@ export function ChatPage() {
   }
 
   /**
-   * Rewrites a user turn and streams a new answer to it.
+   * Re-asks a user turn with new wording and streams the answer.
    *
-   * The cached message list is trimmed before the stream opens, not after. The
-   * "start" event rebuilds state from that cache, so leaving the old branch in
-   * place would let dedupeMessages — which keeps the first entry it sees —
-   * resurrect the pre-edit text and the replies it superseded.
+   * Nothing is trimmed. The server appends the reworded question to the end of
+   * the thread, so the existing turns stay exactly where they are and the new
+   * exchange arrives underneath them through the "start" event.
    */
   async function onEditMessage(messageId: string, content: string): Promise<void> {
     if (!conversationId || streaming) return;
 
-    const trimmed = truncateAfterEdit(messages, messageId, content);
-    queryClient.setQueryData<{ messages: PublicMessage[] }>(["messages", conversationId], {
-      messages: trimmed,
-    });
-    setLiveMessages(trimmed);
-
     setStreaming(true);
+    // The reworded question lands at the bottom, so follow it there.
+    pin();
     const controller = new AbortController();
     abortRef.current = controller;
     await consumeStream(api.conversations.editMessage(conversationId, messageId, content, controller.signal));
@@ -591,11 +653,6 @@ export function ChatPage() {
     );
   }
 
-  const lastAssistant = useMemo(
-    () => [...messages].reverse().find((message) => message.role === "assistant"),
-    [messages],
-  );
-
   const title = currentConversation?.title ?? "Chat";
   const mentioned =
     mentionedGpt ??
@@ -609,8 +666,8 @@ export function ChatPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="flex items-center justify-between gap-2 border-b border-border px-3 py-2 md:px-4">
-        <div className="flex min-w-0 items-center gap-1">
+      <header className="chat-header flex items-center justify-between gap-2 border-b border-border px-3 py-2 md:px-4">
+        <div className="chat-header-start flex min-w-0 items-center gap-1">
           <button
             type="button"
             className="rounded-lg p-2 text-fg-muted hover:bg-surface-muted md:hidden"
@@ -620,9 +677,9 @@ export function ChatPage() {
             <Menu className="size-5" />
           </button>
           <h1 className="truncate text-lg font-semibold">{title}</h1>
-          {activeGpt ? <p className="truncate text-xs text-fg-muted">@{activeGpt.name}</p> : null}
+          {activeGpt ? <p className="chat-gpt-label truncate text-xs text-fg-muted">@{activeGpt.name}</p> : null}
         </div>
-        <div className="flex items-center gap-1">
+        <div className="chat-header-end flex items-center gap-1">
           <ModelSelector
             models={models}
             providerId={providerId}
@@ -632,19 +689,18 @@ export function ChatPage() {
             onAddModel={() => setKeysPanelOpen(true)}
           />
           {conversationId ? <ShareExportMenu conversationId={conversationId} /> : null}
-          <ThemeToggle compact />
         </div>
       </header>
       <section
         ref={scrollRef}
-        className="relative flex-1 overflow-y-auto px-4 py-6"
+        className="chat-messages relative flex-1 overflow-y-auto px-4 py-6"
         aria-label="Messages"
         aria-live="polite"
         aria-busy={streaming}
       >
         {messages.length === 0 ? (
           <div className="mx-auto flex h-full max-w-2xl flex-col items-center justify-center gap-2 text-center">
-            <p className="text-3xl font-semibold tracking-tight">
+            <p className="chat-empty-title text-3xl font-semibold tracking-tight">
               {activeGpt ? `Chat with ${activeGpt.name}` : "Where should we begin?"}
             </p>
             <p className="text-sm text-fg-muted">
@@ -704,119 +760,19 @@ export function ChatPage() {
               </button>
             ) : null}
             {visibleMessages.map((message) => (
-              <article
+              <ChatTurn
                 key={message.id}
-                className={message.role === "user" ? "chat-message flex justify-end" : "chat-message"}
-              >
-                {message.role === "user" ? (
-                  <UserMessageBubble
-                    content={message.content}
-                    editDisabled={streaming}
-                    // A turn that has not been persisted yet has no server id to
-                    // edit against, so the control is withheld until it lands.
-                    {...(message.id.startsWith("temp-")
-                      ? {}
-                      : { onEdit: (next: string) => onEditMessage(message.id, next) })}
-                  >
-                    {message.attachments?.length ? <MessageAttachments attachments={message.attachments} /> : null}
-                  </UserMessageBubble>
-                ) : (
-                  <div className="w-full rounded-2xl px-4 py-3 text-fg">
-                    {message.content ? (
-                      <>
-                        {message.status === "streaming" ? (
-                          <LazyMarkdown>{message.content}</LazyMarkdown>
-                        ) : (
-                          <AssistantRichBody content={message.content} />
-                        )}
-                        {message.status === "streaming" ? <span className="streaming-caret" aria-hidden="true" /> : null}
-                      </>
-                    ) : message.status === "streaming" ? (
-                      <ThinkingPipeline />
-                    ) : message.status === "error" ? (
-                      <div role="alert" className="rounded-xl border border-danger/40 bg-surface px-4 py-3">
-                        <p className="font-medium">Generation failed</p>
-                        <p className="mt-1 text-sm text-fg-muted">
-                          The model dropped or returned an error. You can retry this turn.
-                        </p>
-                        {message.id === lastAssistant?.id ? (
-                          <button
-                            type="button"
-                            className="mt-3 rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-surface-muted disabled:opacity-50"
-                            disabled={streaming}
-                            onClick={() => void onRegenerate(message.id)}
-                          >
-                            Retry
-                          </button>
-                        ) : null}
-                      </div>
-                    ) : message.status === "aborted" ? (
-                      <p className="text-sm text-fg-muted">Generation stopped.</p>
-                    ) : (
-                      <p className="text-sm text-fg-muted">No reply was generated. Try sending again.</p>
-                    )}
-                    {message.role === "assistant" && message.id === lastAssistant?.id ? (
-                      <div className="mt-2 flex gap-1">
-                        <button
-                          type="button"
-                          className="rounded-lg p-1.5 text-fg-muted hover:bg-surface-muted hover:text-fg disabled:opacity-50"
-                          disabled={streaming}
-                          aria-label="Regenerate"
-                          onClick={() => void onRegenerate(message.id)}
-                        >
-                          <RotateCw className="size-4" />
-                        </button>
-                        <button
-                          type="button"
-                          className="rounded-lg p-1.5 text-fg-muted hover:bg-surface-muted hover:text-fg disabled:opacity-50"
-                          disabled={!message.content}
-                          aria-label="Copy"
-                          onClick={() => void copyAssistantText(message.content)}
-                        >
-                          <Copy className="size-4" />
-                        </button>
-                        {ttsConfigured ? (
-                          <button
-                            type="button"
-                            className="rounded-lg p-1.5 text-fg-muted hover:bg-surface-muted hover:text-fg disabled:opacity-50"
-                            disabled={streaming || !message.content}
-                            aria-label="Play audio"
-                            onClick={() => void onSpeak(message.content)}
-                          >
-                            <Volume2 className="size-4" />
-                          </button>
-                        ) : null}
-                        <button
-                          type="button"
-                          className={cn(
-                            "rounded-lg p-1.5 hover:bg-surface-muted hover:text-fg disabled:opacity-50",
-                            message.feedback?.rating === "up" ? "text-accent" : "text-fg-muted",
-                          )}
-                          aria-label="Good response"
-                          aria-pressed={message.feedback?.rating === "up"}
-                          disabled={feedbackMutation.isPending}
-                          onClick={() => feedbackMutation.mutate({ message, rating: "up" })}
-                        >
-                          <ThumbsUp className="size-4" />
-                        </button>
-                        <button
-                          type="button"
-                          className={cn(
-                            "rounded-lg p-1.5 hover:bg-surface-muted hover:text-fg disabled:opacity-50",
-                            message.feedback?.rating === "down" ? "text-accent" : "text-fg-muted",
-                          )}
-                          aria-label="Bad response"
-                          aria-pressed={message.feedback?.rating === "down"}
-                          disabled={feedbackMutation.isPending}
-                          onClick={() => feedbackMutation.mutate({ message, rating: "down" })}
-                        >
-                          <ThumbsDown className="size-4" />
-                        </button>
-                      </div>
-                    ) : null}
-                  </div>
-                )}
-              </article>
+                message={message}
+                streaming={streaming}
+                ttsConfigured={ttsConfigured}
+                ttsUnavailableReason={ttsUnavailableReason}
+                feedbackPending={feedbackMutation.isPending}
+                onEdit={(id, content) => void onEditMessage(id, content)}
+                onRegenerate={(id) => void onRegenerate(id)}
+                onCopy={(text) => void copyAssistantText(text)}
+                onSpeak={onSpeak}
+                onFeedback={(item, rating) => feedbackMutation.mutate({ message: item, rating })}
+              />
             ))}
           </div>
         )}
@@ -842,11 +798,33 @@ export function ChatPage() {
         onVoiceInput={() => void onVoiceInput()}
         {...(voiceDisabledReason ? { voiceDisabledReason } : {})}
         recording={recording}
+        onLiveVoice={() => setLiveVoiceOpen(true)}
+        {...(liveVoiceDisabledReason ? { liveVoiceDisabledReason } : {})}
         mentionCandidates={mentionCandidates}
         {...(mentioned ? { mentioned } : {})}
         onMention={setMentionedGpt}
       />
-      <AddModelKeysDialog open={keysPanelOpen} onClose={() => setKeysPanelOpen(false)} />
+      {liveVoiceOpen ? (
+        <Suspense fallback={null}>
+          <LiveVoiceOverlay
+            streaming={streaming}
+            {...(latestReply ? { replyId: latestReply.id } : {})}
+            replyText={latestReply?.content ?? ""}
+            canSpeak={ttsConfigured}
+            onSend={(text) => void onSubmit(text)}
+            onSpeak={onSpeak}
+            onClose={() => {
+              stopSpeaking();
+              setLiveVoiceOpen(false);
+            }}
+          />
+        </Suspense>
+      ) : null}
+      {keysPanelOpen ? (
+        <Suspense fallback={null}>
+          <AddModelKeysDialog open onClose={() => setKeysPanelOpen(false)} />
+        </Suspense>
+      ) : null}
     </div>
   );
 }

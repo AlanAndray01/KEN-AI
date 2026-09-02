@@ -20,7 +20,8 @@
     "typecheck": "npm run typecheck -w @Ken/shared && npm run build -w @Ken/shared && npm run typecheck -w @Ken/server && npm run typecheck -w @Ken/client",
     "agents": "npm run agents -w @Ken/multi-agents --",
     "agents:audit": "npm run agents -w @Ken/multi-agents -- run audit",
-    "agents:verify": "npm run agents -w @Ken/multi-agents -- verify"
+    "agents:verify": "npm run agents -w @Ken/multi-agents -- verify",
+    "test:e2e": "npm run test:e2e -w @Ken/client"
   },
   "engines": {
     "node": ">=20"

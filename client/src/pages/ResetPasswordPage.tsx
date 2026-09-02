@@ -35,9 +35,9 @@ export function ResetPasswordPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="auth-stack">
       <div className="space-y-1 text-center">
-        <h1 className="text-2xl font-semibold tracking-tight">Reset password</h1>
+        <h1 className="text-2xl tracking-tight">Reset password</h1>
         <p className="text-sm text-fg-muted">Enter the 6-digit code and choose a new password.</p>
       </div>
       {error ? (
@@ -69,7 +69,7 @@ export function ResetPasswordPage() {
         <button
           type="submit"
           disabled={pending || code.length !== 6}
-          className="w-full rounded-full bg-fg px-4 py-2.5 text-sm font-medium text-canvas disabled:opacity-60"
+          className="auth-submit"
         >
           {pending ? "Updating…" : "Update password"}
         </button>

@@ -70,7 +70,7 @@ export function VerifyEmailPage() {
   if (!email) {
     return (
       <div className="space-y-4 text-center">
-        <h1 className="text-2xl font-semibold tracking-tight">Check your email</h1>
+        <h1 className="text-2xl tracking-tight">Check your email</h1>
         <p className="text-sm text-fg-muted">Start from sign up or sign in so we know which address to verify.</p>
         <Link to={CLIENT_ROUTES.login} className="text-sm font-medium text-accent hover:underline">
           Back to sign in
@@ -80,9 +80,9 @@ export function VerifyEmailPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="auth-stack">
       <div className="space-y-1 text-center">
-        <h1 className="text-2xl font-semibold tracking-tight">Enter the 6-digit code</h1>
+        <h1 className="text-2xl tracking-tight">Enter the 6-digit code</h1>
         <p className="text-sm text-fg-muted">
           We sent a verification code to <span className="font-medium text-fg">{email}</span>. It expires in 15 minutes.
         </p>
@@ -116,7 +116,7 @@ export function VerifyEmailPage() {
         <button
           type="submit"
           disabled={pending || code.length !== 6}
-          className="w-full rounded-full bg-fg px-4 py-2.5 text-sm font-medium text-canvas disabled:opacity-60"
+          className="auth-submit"
         >
           {pending ? "Verifying…" : "Verify email"}
         </button>
