@@ -8,13 +8,17 @@ export type ReplyBudget = "minimal" | "short" | "medium" | "long";
 export interface TaskSignals {
   budget: ReplyBudget;
   needsMath: boolean;
+  needsCode: boolean;
   needsQuotes: boolean;
   needsStructure: boolean;
   needsInteractive: boolean;
 }
 
 const MATH_RE =
-  /\b(equation|formula|integral|derivative|matrix|theorem|prove|calculate|compute|algebra|calculus|probability|statistic|latex|sqrt|frac)\b|[0-9]+\s*[+\-*/=×÷^]|[∑∫√πθλμσ∞≈≠≤≥±]|\$\$|\\\(|\\\[/i;
+  /\b(equation|formula|integral|derivative|matrix|theorem|prove|calculate|compute|algebra|calculus|probability|statistic|latex|sqrt|frac|quadratic|differentiate|integrate|polynomial|solve for)\b|[0-9]+\s*[+\-*/=×÷^]|[∑∫√πθλμσ∞≈≠≤≥±]|\$\$|\\\(|\\\[/i;
+
+const CODE_RE =
+  /\b(code|coding|program(?:ming)?|python|javascript|typescript|java\b|c\+\+|sql|regex|algorithm|debug|stack\s*trace|refactor|compile|function|endpoint)\b/i;
 
 const QUOTE_RE = /\b(quote|citation|cited|according to|said that)\b|[“”«»]|"[^"]{8,}"/;
 
@@ -72,16 +76,18 @@ export function detectTaskSignals(content: string): TaskSignals {
   const text = content.trim();
   const words = text ? text.split(/\s+/).length : 0;
   const needsMath = MATH_RE.test(text);
+  const needsCode = CODE_RE.test(text);
   const needsQuotes = QUOTE_RE.test(text);
   const needsInteractive = INTERACTIVE_RE.test(text);
-  const needsStructure = STRUCTURE_RE.test(text) || needsInteractive || words > 40;
+  const needsStructure = STRUCTURE_RE.test(text) || needsInteractive || needsCode || words > 40;
   const wantsLong = LONG_RE.test(text);
 
   // Small talk is decided first: a greeting must never inherit a word budget.
-  if (isTrivialTurn(text) && !needsMath && !needsInteractive) {
+  if (isTrivialTurn(text) && !needsMath && !needsInteractive && !needsCode) {
     return {
       budget: "minimal",
       needsMath: false,
+      needsCode: false,
       needsQuotes: false,
       needsStructure: false,
       needsInteractive: false,
@@ -90,24 +96,57 @@ export function detectTaskSignals(content: string): TaskSignals {
 
   let budget: ReplyBudget = "short";
   if (wantsLong) budget = "long";
-  else if (needsStructure || needsMath || words > 18) budget = "medium";
+  else if (needsStructure || needsMath || needsCode || words > 18) budget = "medium";
 
-  return { budget, needsMath, needsQuotes, needsStructure, needsInteractive };
+  return { budget, needsMath, needsCode, needsQuotes, needsStructure, needsInteractive };
+}
+
+/**
+ * Decode ceilings. GPT-OSS counts reasoning tokens against this budget, so
+ * even a greeting needs more than a handful of tokens after `reasoning_effort`
+ * is set to `low`.
+ */
+export function replyMaxTokens(budget: ReplyBudget): number {
+  switch (budget) {
+    case "minimal":
+      return 256;
+    case "short":
+      return 1_024;
+    case "medium":
+      return 2_048;
+    case "long":
+      return 4_096;
+  }
+}
+
+/**
+ * Two system messages so Groq's prefix cache can reuse identity + protocol
+ * across turns. The per-turn policy changes with the question, so it cannot
+ * sit in the same string as the stable prefix.
+ */
+export function buildResponsePolicyMessages(
+  content: string,
+  options?: { skipProtocol?: boolean },
+): ChatMessage[] {
+  const signals = detectTaskSignals(content);
+  const stable = [KEN_IDENTITY, LANGUAGE_RULE];
+  // Greetings skip the long protocol so prefill stays tiny and the first token
+  // can land in under a second.
+  if (!options?.skipProtocol && signals.budget !== "minimal") stable.push(ANSWER_PROTOCOL);
+  return [
+    { role: "system", content: stable.join("\n\n") },
+    { role: "system", content: renderPolicy(signals) },
+  ];
 }
 
 export function buildResponsePolicyMessage(
   content: string,
   options?: { skipProtocol?: boolean },
 ): ChatMessage {
-  const signals = detectTaskSignals(content);
-  const policy = renderPolicy(signals);
-  // Identity and language lead on every turn, custom GPTs included: a custom
-  // persona replaces the answer protocol, never the answer to "who are you?" and
-  // never the language the user is owed a reply in.
-  const body = options?.skipProtocol ? policy : `${ANSWER_PROTOCOL}\n\n${policy}`;
+  const messages = buildResponsePolicyMessages(content, options);
   return {
     role: "system",
-    content: `${KEN_IDENTITY}\n\n${LANGUAGE_RULE}\n\n${body}`,
+    content: messages.map((message) => message.content).join("\n\n"),
   };
 }
 
@@ -140,15 +179,20 @@ export function renderPolicy(signals: TaskSignals): string {
     "Use a heading only when there are two or more distinct sections.",
     "Use a list only for steps, options, or ranked items.",
     "Use a blockquote (>) only for a citation or quoted wording.",
-    "Put code in a fenced block tagged with its language.",
+    "Put code in a fenced block tagged with its language. Never put prose steps or equations in that fence.",
     "Explain any technical term in plain words the first time it appears, and include a short concrete example whenever one would make the idea clearer.",
   ];
   if (signals.needsMath) {
     formatBits.push(
-      "This turn needs math: write it as $inline$ or $$display$$ LaTeX, not unicode approximations. Each $$ fence sits alone on its own line, with a blank line before the opening fence and after the closing one.",
+      "This turn needs math: write every equation as $inline$ or $$display$$ LaTeX so it renders. Do not leave TeX commands in ordinary sentences. Each $$ fence sits alone on its own line, with a blank line before the opening fence and after the closing one.",
     );
   } else {
     formatBits.push("Skip LaTeX unless an equation actually appears.");
+  }
+  if (signals.needsCode) {
+    formatBits.push(
+      "This turn needs code: show a complete, copyable snippet in a language-tagged fence, and keep the explanation outside that fence.",
+    );
   }
   if (signals.needsQuotes) {
     formatBits.push("Preserve quoted wording in a blockquote or quotation marks.");

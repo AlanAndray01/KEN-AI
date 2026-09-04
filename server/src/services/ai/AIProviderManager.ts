@@ -140,14 +140,18 @@ export class AIProviderManager {
   private async generateOnce(request: GenerateRequest): Promise<AIResponse> {
     const resolved = this.prepareRequest(request);
     const adapter = await this.getAdapter(resolved.providerId, resolved.userId, resolved.skipQuota);
-    await modelRegistry.assertModelAvailable(resolved.providerId, resolved.modelId, resolved.userId);
+    if (!resolved.skipAvailabilityCheck) {
+      await modelRegistry.assertModelAvailable(resolved.providerId, resolved.modelId, resolved.userId);
+    }
     return adapter.generate(resolved);
   }
 
   private async *streamOnce(request: GenerateRequest): AsyncIterable<StreamEvent> {
     const resolved = this.prepareRequest(request);
     const adapter = await this.getAdapter(resolved.providerId, resolved.userId, resolved.skipQuota);
-    await modelRegistry.assertModelAvailable(resolved.providerId, resolved.modelId, resolved.userId);
+    if (!resolved.skipAvailabilityCheck) {
+      await modelRegistry.assertModelAvailable(resolved.providerId, resolved.modelId, resolved.userId);
+    }
     if (adapter.stream) {
       yield* adapter.stream(resolved);
       return;

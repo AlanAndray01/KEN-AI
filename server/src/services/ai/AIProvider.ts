@@ -70,6 +70,17 @@ export interface GenerateRequest {
    * allowance meant for their actual messages, or fails their turn with a 429.
    */
   skipQuota?: boolean;
+  /**
+   * The chat path already confirmed this model in prepare(). Skipping the
+   * second registry fan-out is what lets the Groq request start immediately
+   * instead of waiting on another round of provider lookups.
+   */
+  skipAvailabilityCheck?: boolean;
+  /**
+   * Hint for Groq reasoning models. Greetings send `none` (Qwen) so the first
+   * token is not delayed by a think phase.
+   */
+  reasoningEffort?: "none" | "low" | "medium" | "default";
 }
 
 export interface ProviderRuntimeConfig {

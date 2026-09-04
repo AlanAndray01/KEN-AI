@@ -33,6 +33,17 @@ describe("MarkdownContent", () => {
     expect(document.querySelector(".katex")).toBeTruthy();
   });
 
+  it("renders markdown after a display closer that was glued to the equation", () => {
+    render(
+      <MarkdownContent>
+        {"$$\nx = \\frac{4 - 8}{4} = -1$$ **Solution:** $x = 3, -1$"}
+      </MarkdownContent>,
+    );
+    expect(document.querySelector(".katex-error")).toBeNull();
+    expect(screen.getByText("Solution:")).toBeInTheDocument();
+    expect(document.querySelector(".katex-display")).toBeTruthy();
+  });
+
   it("renders a mole-conversion fraction as a display block, not inline", () => {
     // The empirical-formula answer that rendered with its numerators sliced off.
     render(

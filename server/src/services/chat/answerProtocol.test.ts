@@ -58,6 +58,9 @@ describe("answer protocol stays universal", () => {
     expect(ANSWER_PROTOCOL).toContain("$inline$");
     expect(ANSWER_PROTOCOL).toMatch(/Never narrate your plan/i);
     expect(ANSWER_PROTOCOL).toMatch(/<think>/);
+    expect(ANSWER_PROTOCOL).toMatch(/work the solution out internally/i);
+    expect(ANSWER_PROTOCOL).toMatch(/never put an equation/i);
+    expect(ANSWER_PROTOCOL).toMatch(/Code fences are only for code/i);
   });
 });
 

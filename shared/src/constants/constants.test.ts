@@ -17,11 +17,12 @@ describe("shared constants", () => {
     expect(APP_NAME).toBe("Ken AI");
   });
 
-  it("defaults chat inference to Groq GPT OSS 20B, with OpenAI as the documented hop", () => {
-    expect(DEFAULT_GROQ_MODEL_ID).toBe("openai/gpt-oss-20b");
+  it("defaults chat inference to Groq Qwen 3.6 27B, with OpenAI as the documented hop", () => {
+    expect(DEFAULT_GROQ_MODEL_ID).toBe("qwen/qwen3.6-27b");
     expect(GROQ_QUALITY_MODEL_ID).toBe("openai/gpt-oss-120b");
     expect(DEFAULT_OPENAI_MODEL_ID).toBe("gpt-4o-mini");
     expect(resolveGroqModelId("llama-3.3-70b-versatile")).toBe("openai/gpt-oss-120b");
+    expect(resolveGroqModelId("llama-3.1-8b-instant")).toBe("qwen/qwen3.6-27b");
     expect(resolveGroqModelId("openai/gpt-oss-20b")).toBe("openai/gpt-oss-20b");
   });
 

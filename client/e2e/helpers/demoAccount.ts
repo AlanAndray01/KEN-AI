@@ -25,16 +25,16 @@ export const DEMO_USER = {
     language: "en",
     sendOnEnter: true,
     selectedProviderId: "groq",
-    selectedModelId: "openai/gpt-oss-20b",
+    selectedModelId: "qwen/qwen3.6-27b",
   },
   createdAt: now,
   updatedAt: now,
 };
 
 export const DEMO_MODEL = {
-  id: "openai/gpt-oss-20b",
+  id: "qwen/qwen3.6-27b",
   providerId: "groq",
-  name: "GPT OSS 20B",
+  name: "Qwen 3.6 27B",
   capabilities: ["text", "streaming", "vision", "tools"],
   enabled: true,
   available: true,

@@ -12,18 +12,21 @@ function model(partial: Partial<PublicAIModel> & Pick<PublicAIModel, "id" | "pro
 }
 
 describe("pickDefaultModel", () => {
-  it("prefers Groq GPT OSS 20B when that model is available", () => {
+  it("prefers Groq Qwen 3.6 27B when that model is available", () => {
+    const qwen = model({ id: "qwen/qwen3.6-27b", providerId: "groq", name: "Qwen 3.6 27B" });
+    const groq20 = model({ id: "openai/gpt-oss-20b", providerId: "groq", name: "GPT OSS 20B" });
+    const groq120 = model({ id: "openai/gpt-oss-120b", providerId: "groq", name: "GPT OSS 120B" });
+    const openai = model({ id: "gpt-4o-mini", providerId: "openai", name: "GPT-4o mini" });
+
+    expect(pickDefaultModel([openai, groq120, groq20, qwen])).toEqual(qwen);
+  });
+
+  it("falls back to Groq OSS, then OpenAI, when Qwen is missing", () => {
     const groq20 = model({ id: "openai/gpt-oss-20b", providerId: "groq", name: "GPT OSS 20B" });
     const groq120 = model({ id: "openai/gpt-oss-120b", providerId: "groq", name: "GPT OSS 120B" });
     const openai = model({ id: "gpt-4o-mini", providerId: "openai", name: "GPT-4o mini" });
 
     expect(pickDefaultModel([openai, groq120, groq20])).toEqual(groq20);
-  });
-
-  it("falls back to Groq 120B, then OpenAI, when faster models are missing", () => {
-    const groq120 = model({ id: "openai/gpt-oss-120b", providerId: "groq", name: "GPT OSS 120B" });
-    const openai = model({ id: "gpt-4o-mini", providerId: "openai", name: "GPT-4o mini" });
-
     expect(pickDefaultModel([openai, groq120])).toEqual(groq120);
     expect(pickDefaultModel([openai])).toEqual(openai);
   });

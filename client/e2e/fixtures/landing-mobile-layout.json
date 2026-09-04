@@ -1,0 +1,131 @@
+{
+  "phone": {
+    "viewport": "phone",
+    "loops": 0,
+    "clones": 0,
+    "cap": {
+      "display": "grid",
+      "columns": "278px",
+      "count": 8
+    },
+    "api": {
+      "display": "grid",
+      "columns": "278px",
+      "count": 6
+    },
+    "trust": {
+      "display": "grid",
+      "columns": "280px",
+      "count": 6
+    },
+    "perf": {
+      "display": "grid",
+      "columns": "250px"
+    },
+    "price": {
+      "display": "grid",
+      "columns": "280px",
+      "names": [
+        "Free",
+        "Pro",
+        "Team"
+      ]
+    },
+    "verbs": {
+      "wrap": "wrap",
+      "fontSize": "11.5px",
+      "padding": "8px 14px"
+    },
+    "productPadding": {
+      "top": "74px",
+      "bottom": "74px"
+    },
+    "splitGap": "36px"
+  },
+  "tablet": {
+    "viewport": "tablet",
+    "loops": 0,
+    "clones": 0,
+    "cap": {
+      "display": "grid",
+      "columns": "351.781px 351.781px",
+      "count": 8
+    },
+    "api": {
+      "display": "grid",
+      "columns": "351.781px 351.781px",
+      "count": 6
+    },
+    "trust": {
+      "display": "grid",
+      "columns": "345.281px 345.281px",
+      "count": 6
+    },
+    "perf": {
+      "display": "grid",
+      "columns": "210.844px 210.859px 210.859px"
+    },
+    "price": {
+      "display": "grid",
+      "columns": "224.844px 224.859px 224.859px",
+      "names": [
+        "Free",
+        "Pro",
+        "Team"
+      ]
+    },
+    "verbs": {
+      "wrap": "wrap",
+      "fontSize": "11.5px",
+      "padding": "8px 14px"
+    },
+    "productPadding": {
+      "top": "88px",
+      "bottom": "88px"
+    },
+    "splitGap": "38.4px"
+  },
+  "tablet-landscape": {
+    "viewport": "tablet-landscape",
+    "loops": 0,
+    "clones": 0,
+    "cap": {
+      "display": "grid",
+      "columns": "469.547px 469.547px",
+      "count": 8
+    },
+    "api": {
+      "display": "grid",
+      "columns": "469.547px 469.547px",
+      "count": 6
+    },
+    "trust": {
+      "display": "grid",
+      "columns": "463.047px 463.047px",
+      "count": 6
+    },
+    "perf": {
+      "display": "grid",
+      "columns": "289.359px 289.359px 289.375px"
+    },
+    "price": {
+      "display": "grid",
+      "columns": "303.359px 303.359px 303.375px",
+      "names": [
+        "Free",
+        "Pro",
+        "Team"
+      ]
+    },
+    "verbs": {
+      "wrap": "wrap",
+      "fontSize": "11.5px",
+      "padding": "8px 14px"
+    },
+    "productPadding": {
+      "top": "112.64px",
+      "bottom": "112.64px"
+    },
+    "splitGap": "51.2px"
+  }
+}

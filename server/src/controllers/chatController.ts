@@ -18,6 +18,7 @@ import {
   runGeneration,
 } from "../services/chat/chatService.js";
 import { buildPersonaMessages } from "../services/memory/persona.js";
+import { isTrivialTurn } from "../services/chat/responsePolicy.js";
 import {
   createConversation,
   deleteConversation,
@@ -27,6 +28,26 @@ import {
   setMessageFeedback,
   updateConversation,
 } from "../services/chat/conversationService.js";
+
+function contextHint(
+  userId: string,
+  content: string,
+  extra?: { conversationId?: string; customGptId?: string; attachmentIds?: string[]; enabledTools?: unknown[] },
+): { userId: string; conversationId?: string; customGptId?: string } | undefined {
+  if (
+    isTrivialTurn(content) &&
+    !(extra?.attachmentIds && extra.attachmentIds.length > 0) &&
+    !(extra?.enabledTools && extra.enabledTools.length > 0) &&
+    !extra?.customGptId
+  ) {
+    return undefined;
+  }
+  return {
+    userId,
+    ...(extra?.conversationId ? { conversationId: extra.conversationId } : {}),
+    ...(extra?.customGptId ? { customGptId: extra.customGptId } : {}),
+  };
+}
 
 function requireUserId(req: Request): string {
   if (!req.auth) {
@@ -95,11 +116,12 @@ export async function sendConversationMessageHandler(req: Request, res: Response
         ...(body.customGptId ? { customGptId: body.customGptId } : {}),
       }),
     "POST /conversations/:id/messages",
-    {
-      userId,
+    contextHint(userId, body.content, {
       ...(req.params.id ? { conversationId: req.params.id } : {}),
       ...(body.customGptId ? { customGptId: body.customGptId } : {}),
-    },
+      ...(body.attachmentIds ? { attachmentIds: body.attachmentIds } : {}),
+      ...(body.enabledTools ? { enabledTools: body.enabledTools } : {}),
+    }),
   );
 }
 
@@ -121,11 +143,12 @@ export async function sendChatHandler(req: Request, res: Response): Promise<void
         ...(body.customGptId ? { customGptId: body.customGptId } : {}),
       }),
     "POST /chat",
-    {
-      userId,
+    contextHint(userId, body.content, {
       ...(body.conversationId ? { conversationId: body.conversationId } : {}),
       ...(body.customGptId ? { customGptId: body.customGptId } : {}),
-    },
+      ...(body.attachmentIds ? { attachmentIds: body.attachmentIds } : {}),
+      ...(body.enabledTools ? { enabledTools: body.enabledTools } : {}),
+    }),
   );
 }
 

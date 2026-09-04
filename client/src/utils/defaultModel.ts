@@ -1,6 +1,7 @@
 import {
   DEFAULT_GROQ_MODEL_ID,
   DEFAULT_OPENAI_MODEL_ID,
+  GROQ_OSS_20B_MODEL_ID,
   GROQ_QUALITY_MODEL_ID,
   resolveGroqModelId,
   type PublicAIModel,
@@ -13,6 +14,7 @@ export function pickDefaultModel(models: PublicAIModel[]): PublicAIModel | undef
 
   return (
     pick("groq", DEFAULT_GROQ_MODEL_ID) ??
+    pick("groq", GROQ_OSS_20B_MODEL_ID) ??
     pick("groq", GROQ_QUALITY_MODEL_ID) ??
     pick("openai", DEFAULT_OPENAI_MODEL_ID) ??
     available.find((model) => model.providerId !== "gemini") ??

@@ -112,4 +112,15 @@ describe("HomePage", () => {
     expect(within(footer).getByRole("link", { name: "Privacy" })).toHaveAttribute("href", "/privacy");
     expect(within(footer).getByRole("link", { name: "Terms" })).toHaveAttribute("href", "/terms");
   });
+
+  it("paints the KEN AI title in place with no drop animation", () => {
+    mockUser.mockReturnValue(null);
+    const container = renderHome();
+
+    expect(container.querySelector(".drop-letter")).toBeNull();
+    expect(container.querySelector(".impact-line")).toBeNull();
+    const heading = screen.getByRole("heading", { name: "KEN AI", level: 1 });
+    expect(heading.querySelector(".ken-title")?.textContent?.trim()).toBe("KEN");
+    expect(heading.querySelector(".ai-title")?.textContent?.trim()).toBe("AI");
+  });
 });

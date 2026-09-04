@@ -14,7 +14,7 @@ import { Message } from "../../models/Message.js";
 import { contextManager, estimateContextTokens, MAX_HISTORY_MESSAGES } from "./ContextManager.js";
 import { findOwnedConversation, titleFromContent, capStoredTurns, conversationExpiry } from "./conversationService.js";
 import { generateChatTitle } from "./chatTitle.js";
-import { buildResponsePolicyMessage } from "./responsePolicy.js";
+import { buildResponsePolicyMessages, detectTaskSignals, replyMaxTokens } from "./responsePolicy.js";
 import { generationRegistry } from "./generationRegistry.js";
 import { toPublicConversation, toPublicMessage } from "./toPublic.js";
 import { recordUsage } from "./usageService.js";
@@ -426,21 +426,30 @@ export async function runGeneration(
   let executedModelId = prepared.modelId;
 
   try {
-    const [history, persona] = preloaded
-      ? [preloaded.history, preloaded.persona]
-      : await Promise.all([
-          loadHistory(prepared.userId, prepared.conversationId),
-          buildPersonaMessages(prepared.userId, prepared.customGptId),
-        ]);
+    const signals = detectTaskSignals(prepared.userMessage.content);
+    const casual = signals.budget === "minimal";
+    const [history, persona] = casual
+      ? [[], []]
+      : preloaded
+        ? [preloaded.history, preloaded.persona]
+        : await Promise.all([
+            loadHistory(prepared.userId, prepared.conversationId),
+            buildPersonaMessages(prepared.userId, prepared.customGptId),
+          ]);
     const messages = contextManager.build({
-      messages: [
-        buildResponsePolicyMessage(prepared.userMessage.content, {
-          skipProtocol: Boolean(prepared.customGptId),
-        }),
-        ...persona,
-        ...(prepared.toolSystemMessages ?? []),
-        ...withCurrentUser(history, prepared.userMessage),
-      ],
+      messages: casual
+        ? [
+            ...buildResponsePolicyMessages(prepared.userMessage.content),
+            { role: "user", content: prepared.userMessage.content },
+          ]
+        : [
+            ...buildResponsePolicyMessages(prepared.userMessage.content, {
+              skipProtocol: Boolean(prepared.customGptId),
+            }),
+            ...persona,
+            ...(prepared.toolSystemMessages ?? []),
+            ...withCurrentUser(history, prepared.userMessage),
+          ],
       modelId: prepared.modelId,
       providerId: prepared.providerId,
       ...(prepared.contextWindow ? { contextWindow: prepared.contextWindow } : {}),
@@ -457,12 +466,16 @@ export async function runGeneration(
     );
 
     let chunks = 0;
+    const maxTokens = replyMaxTokens(signals.budget);
     for await (const event of aiProviderManager.stream({
       providerId: prepared.providerId,
       modelId: prepared.modelId,
       messages,
       userId: prepared.userId,
       abortSignal: prepared.abortSignal,
+      maxTokens,
+      skipAvailabilityCheck: true,
+      ...(casual ? { reasoningEffort: "none" as const } : {}),
     })) {
       if (prepared.abortSignal.aborted) {
         finishStatus = "aborted";
@@ -548,8 +561,6 @@ export async function runGeneration(
   conversation.lastMessagePreview = (partial || prepared.userMessage.content).slice(0, 280);
   await conversation.save();
 
-  await maybeUpgradeTitle(conversation, prepared, partial, finishStatus);
-
   generationRegistry.finish(prepared.generationId, prepared.userId, prepared.conversationId);
 
   await recordUsage({
@@ -580,12 +591,15 @@ export async function runGeneration(
     });
     return;
   }
-  // The conversation rides along so a title written above reaches the sidebar.
   emit({
     type: "complete",
     assistantMessage: publicAssistant,
     conversation: toPublicConversation(conversation),
   });
+
+  // Naming is a second Groq round-trip. Waiting for it kept the SSE open
+  // (and the stop button up) after the user already had the full reply.
+  void maybeUpgradeTitle(conversation, prepared, partial, finishStatus);
 }
 
 /**

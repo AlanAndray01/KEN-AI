@@ -10,6 +10,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
+    "bench:groq": "tsx src/scripts/bench-latency.ts groq",
+    "bench:mongo": "tsx src/scripts/bench-latency.ts mongo",
+    "bench:api": "tsx src/scripts/bench-latency.ts api",
     "verify:db": "tsx src/scripts/verify-mongo.ts",
     "verify:health": "tsx src/scripts/verify-health.ts",
     "clear:dummy": "tsx src/scripts/clearDummyData.ts"

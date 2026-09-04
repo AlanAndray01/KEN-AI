@@ -1,7 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { buildResponsePolicyMessage, detectTaskSignals } from "./responsePolicy.js";
+import { buildResponsePolicyMessage, buildResponsePolicyMessages, detectTaskSignals, replyMaxTokens } from "./responsePolicy.js";
 
 describe("detectTaskSignals", () => {
+  it("caps decode length to the turn's reply budget", () => {
+    expect(replyMaxTokens("minimal")).toBe(256);
+    expect(replyMaxTokens("short")).toBe(1024);
+    expect(replyMaxTokens("medium")).toBe(2048);
+    expect(replyMaxTokens("long")).toBe(4096);
+  });
+
+  it("splits the stable prefix from the per-turn policy so Groq can cache it", () => {
+    const messages = buildResponsePolicyMessages("Explain photosynthesis");
+    expect(messages).toHaveLength(2);
+    expect(messages[0]?.content).toContain("You are Ken AI");
+    expect(messages[0]?.content).toContain("general-purpose assistant");
+    expect(messages[0]?.content).not.toContain("Ken reply policy");
+    expect(messages[1]?.content).toContain("Ken reply policy");
+    expect(messages[1]?.content).not.toContain("You are Ken AI");
+  });
+
   it("gives small talk the minimal budget, not a word count", () => {
     // A greeting carries no question. Anything above `minimal` told the model to
     // pad a one-line reply up to a target length.
@@ -27,14 +44,25 @@ describe("detectTaskSignals", () => {
     expect(policy).not.toMatch(/heading only when/);
   });
 
-  it("flags math and asks for LaTeX", () => {
+  it("flags math and asks for LaTeX that will render", () => {
     const signals = detectTaskSignals("Derive the quadratic formula for ax^2 + bx + c = 0");
     expect(signals.needsMath).toBe(true);
     expect(signals.budget).toBe("medium");
     expect(buildResponsePolicyMessage("Solve 2+2").content).toMatch(/\$inline\$/);
-    expect(buildResponsePolicyMessage("hi").content).toContain("general-purpose assistant");
+    expect(buildResponsePolicyMessage("Solve 2+2").content).toMatch(/Do not leave TeX commands/);
+    expect(buildResponsePolicyMessage("hi").content).toContain("You are Ken AI");
+    expect(buildResponsePolicyMessage("hi").content).not.toContain("general-purpose assistant");
     expect(buildResponsePolicyMessage("hi", { skipProtocol: true }).content).not.toContain(
       "general-purpose assistant",
+    );
+  });
+
+  it("flags coding questions and keeps code fences for source only", () => {
+    const signals = detectTaskSignals("Write a Python function that reverses a string");
+    expect(signals.needsCode).toBe(true);
+    expect(signals.budget).toBe("medium");
+    expect(buildResponsePolicyMessage("Write a Python function that reverses a string").content).toMatch(
+      /language-tagged fence/i,
     );
   });
 

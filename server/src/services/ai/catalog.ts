@@ -5,6 +5,7 @@ import {
   DEFAULT_CLOUDFLARE_MODEL_ID,
   DEFAULT_DEEPSEEK_MODEL_ID,
   DEFAULT_GROQ_MODEL_ID,
+  GROQ_OSS_20B_MODEL_ID,
   GROQ_QUALITY_MODEL_ID,
 } from "@Ken/shared";
 import type { ProviderModelDescriptor } from "./AIProvider.js";
@@ -32,8 +33,15 @@ export const BUILT_IN_PROVIDERS: BuiltInProviderDefinition[] = [
     models: [
       {
         id: DEFAULT_GROQ_MODEL_ID,
+        name: "Qwen 3.6 27B",
+        description: "Default Groq model. Reasoning is off, so greetings and short replies start in under a second.",
+        capabilities: TEXT_STREAM,
+        contextWindow: 131_072,
+      },
+      {
+        id: GROQ_OSS_20B_MODEL_ID,
         name: "GPT OSS 20B",
-        description: "Fast Groq default (replaces Llama 3.1 8B Instant)",
+        description: "Reasoning model; Ken uses low effort so the first visible token is not delayed by a long think phase.",
         capabilities: TEXT_STREAM,
         contextWindow: 131_072,
       },
@@ -41,13 +49,6 @@ export const BUILT_IN_PROVIDERS: BuiltInProviderDefinition[] = [
         id: GROQ_QUALITY_MODEL_ID,
         name: "GPT OSS 120B",
         description: "Higher-quality Groq model. Groq retired llama-3.3-70b-versatile.",
-        capabilities: TEXT_STREAM,
-        contextWindow: 131_072,
-      },
-      {
-        id: "qwen/qwen3.6-27b",
-        name: "Qwen 3.6 27B",
-        description: "Quality alternative on Groq",
         capabilities: TEXT_STREAM,
         contextWindow: 131_072,
       },

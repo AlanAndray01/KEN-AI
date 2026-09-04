@@ -111,6 +111,20 @@ describe("AIProviderManager", () => {
     expect(fakeGenerate).toHaveBeenCalledTimes(1);
   });
 
+  it("skips the registry lookup when the caller already confirmed the model", async () => {
+    const { AIProviderManager } = await import("./AIProviderManager.js");
+    const manager = new AIProviderManager();
+    await manager.generate({
+      providerId: "groq",
+      modelId: "openai/gpt-oss-20b",
+      messages: [{ role: "user", content: "Hi" }],
+      skipAvailabilityCheck: true,
+    });
+
+    expect(assertModelAvailable).not.toHaveBeenCalled();
+    expect(fakeGenerate).toHaveBeenCalledTimes(1);
+  });
+
   it("gives every model call the Ken AI identity, whichever route built the prompt", async () => {
     const { AIProviderManager } = await import("./AIProviderManager.js");
     const manager = new AIProviderManager();

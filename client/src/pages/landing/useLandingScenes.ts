@@ -108,106 +108,14 @@ export function useLandingScenes(rootRef: RefObject<HTMLElement | null>): void {
       cleanups.push(() => document.body.classList.remove("locked"));
     }
 
-    /* ---------- LOADER + HERO DROP ---------- */
-    const letters = $$<HTMLElement>(".drop-letter");
-    const aiEl = $<HTMLElement>(".ai-title");
-    const impact = $<HTMLElement>(".impact-line");
-    // Written by the letter drop, read by the hero WebGL camera on the next frame.
-    const heroShake = { value: 0 };
-
+    /* ---------- LOADER + HERO COPY ---------- */
     const revealHeroText = (): void => {
-      aiEl?.classList.add("on");
       $$(".hero-reveal").forEach((el, i) => {
         const t = window.setTimeout(() => el.classList.add("on"), 260 + i * 120);
         cleanups.push(() => clearTimeout(t));
       });
       const t = window.setTimeout(() => nav?.classList.add("in"), 200);
       cleanups.push(() => clearTimeout(t));
-    };
-
-    const runDrop = (): void => {
-      if (REDUCED || letters.length === 0) {
-        letters.forEach((l) => {
-          l.style.transform = "none";
-          l.classList.add("settled");
-        });
-        revealHeroText();
-        return;
-      }
-      const G = 4400;
-      const st = letters.map((el, i) => ({
-        el,
-        y: -(window.innerHeight * 1.15 + i * 120 + Math.random() * 280),
-        v: 0,
-        r: (Math.random() * 2 - 1) * 24,
-        rv: (Math.random() * 2 - 1) * 46,
-        delay: i * 0.14,
-        bounces: 0,
-        phase: "fall" as "fall" | "settle" | "done",
-      }));
-      let last = performance.now();
-      let t = 0;
-      let firstHit = false;
-      let frameId = 0;
-
-      const frame = (now: number): void => {
-        if (disposed) return;
-        const dt = Math.min(0.032, (now - last) / 1000);
-        last = now;
-        t += dt;
-        let allDone = true;
-        for (const s of st) {
-          if (t < s.delay) {
-            allDone = false;
-            s.el.style.transform = `translateY(${s.y}px) rotate(${s.r}deg)`;
-            continue;
-          }
-          if (s.phase === "fall") {
-            allDone = false;
-            s.v += G * dt;
-            s.y += s.v * dt;
-            s.r += s.rv * dt;
-            s.rv *= 1 - 1.1 * dt;
-            if (s.y >= 0 && s.v > 0) {
-              s.y = 0;
-              s.bounces++;
-              if (!firstHit) {
-                firstHit = true;
-                impact?.classList.add("hit");
-                heroShake.value = 1;
-              }
-              if (Math.abs(s.v) < 300 || s.bounces > 3) {
-                s.phase = "settle";
-                s.v = 0;
-              } else {
-                s.v = -s.v * 0.27;
-                s.rv = s.rv * 0.35 + (Math.random() * 2 - 1) * 14;
-              }
-            }
-          } else if (s.phase === "settle") {
-            s.rv += -s.r * 90 * dt;
-            s.rv *= 1 - 6.5 * dt;
-            s.r += s.rv * dt;
-            if (Math.abs(s.r) < 0.12 && Math.abs(s.rv) < 0.6) {
-              s.r = 0;
-              s.rv = 0;
-              s.phase = "done";
-              s.el.classList.add("settled");
-            } else allDone = false;
-          }
-          s.el.style.transform = `translateY(${s.y}px) rotate(${s.r}deg)`;
-        }
-        if (!allDone) frameId = requestAnimationFrame(frame);
-        else {
-          letters.forEach((l) => {
-            l.style.transform = "translateY(0)";
-          });
-          const done = window.setTimeout(revealHeroText, 160);
-          cleanups.push(() => clearTimeout(done));
-        }
-      };
-      frameId = requestAnimationFrame(frame);
-      cleanups.push(() => cancelAnimationFrame(frameId));
     };
 
     let started = false;
@@ -217,7 +125,7 @@ export function useLandingScenes(rootRef: RefObject<HTMLElement | null>): void {
       const t = window.setTimeout(
         () => {
           hideBootLoader();
-          const d = window.setTimeout(runDrop, 240);
+          const d = window.setTimeout(revealHeroText, 240);
           cleanups.push(() => clearTimeout(d));
         },
         REDUCED ? 150 : 1750,
@@ -775,7 +683,6 @@ export function useLandingScenes(rootRef: RefObject<HTMLElement | null>): void {
           let my = 0;
           let tx = 0;
           let ty = 0;
-          let shake = 0;
           on(
             window,
             "pointermove",
@@ -837,13 +744,8 @@ export function useLandingScenes(rootRef: RefObject<HTMLElement | null>): void {
 
             mx = lerp(mx, tx, 0.045);
             my = lerp(my, ty, 0.045);
-            if (heroShake.value > 0) {
-              shake = heroShake.value;
-              heroShake.value = 0;
-            }
-            shake *= 0.86;
-            camera.position.x = mx * 70 + (Math.random() - 0.5) * shake * 6;
-            camera.position.y = -my * 44 + (Math.random() - 0.5) * shake * 6;
+            camera.position.x = mx * 70;
+            camera.position.y = -my * 44;
             camera.lookAt(mx * 20, -my * 12, -500);
             renderer.render(scene, camera);
           });

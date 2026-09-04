@@ -151,8 +151,14 @@ describe("chatService abort", () => {
     const aborted = events.find((event) => event.type === "aborted");
     expect(aborted?.assistantMessage?.content).toBe("Hello partial");
     expect(aborted?.assistantMessage?.status).toBe("aborted");
-    const input = stream.mock.calls[0]?.[0] as { messages: Array<{ role: string; content: string }> };
-    expect(input.messages[0]?.content).toContain("Ken reply policy");
+    const input = stream.mock.calls[0]?.[0] as {
+      messages: Array<{ role: string; content: string }>;
+      skipAvailabilityCheck?: boolean;
+      maxTokens?: number;
+    };
+    expect(input.messages[0]?.content).toContain("You are Ken AI");
+    expect(input.messages[1]?.content).toContain("Ken reply policy");
+    expect(input).toMatchObject({ skipAvailabilityCheck: true, maxTokens: 256, reasoningEffort: "none" });
   });
 });
 
@@ -185,23 +191,28 @@ describe("chatService automatic titles", () => {
     return { events, conversation: conversations.get(prepared.conversationId) };
   }
 
-  it("replaces the placeholder title with the model's once the first answer lands", async () => {
+  it("replaces the placeholder title with the model's after the stream has closed", async () => {
     generate.mockResolvedValue({ content: '"Photosynthesis Basics"' });
 
     const { events, conversation } = await send("explain photosynthesis to me yaar");
 
-    expect(conversation?.title).toBe("Photosynthesis Basics");
-    expect(conversation?.titleSource).toBe("model");
-    // The sidebar reads the title off the completion event.
-    expect(events.find((event) => event.type === "complete")?.conversation?.title).toBe(
+    // Complete must not wait on naming: that second Groq call used to keep the
+    // SSE open after the user already had the full reply.
+    expect(events.find((event) => event.type === "complete")?.conversation?.title).not.toBe(
       "Photosynthesis Basics",
     );
+    await vi.waitFor(() => {
+      expect(conversation?.title).toBe("Photosynthesis Basics");
+      expect(conversation?.titleSource).toBe("model");
+    });
   });
 
   it("never spends the user's shared-key chat quota on naming", async () => {
     generate.mockResolvedValue({ content: "Photosynthesis Basics" });
     await send("explain photosynthesis");
-    expect(generate.mock.calls[0]?.[0]).toMatchObject({ skipQuota: true, maxTokens: 32 });
+    await vi.waitFor(() => {
+      expect(generate.mock.calls[0]?.[0]).toMatchObject({ skipQuota: true, maxTokens: 128 });
+    });
   });
 
   it("keeps the placeholder when the naming call fails", async () => {
@@ -209,6 +220,9 @@ describe("chatService automatic titles", () => {
 
     const { conversation } = await send("explain photosynthesis");
 
+    await vi.waitFor(() => {
+      expect(generate).toHaveBeenCalled();
+    });
     expect(conversation?.title).toBe("explain photosynthesis");
     expect(conversation?.titleSource).toBe("auto");
   });

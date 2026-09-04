@@ -3,7 +3,7 @@ import { normalizeLatex } from "./latexNormalize";
 
 describe("normalizeLatex", () => {
   it("converts alternate delimiters and double-escaped commands", () => {
-    expect(normalizeLatex("Use \\(E = mc^2\\) and \\\\frac{a}{b}.")).toBe("Use $E = mc^2$ and \\frac{a}{b}.");
+    expect(normalizeLatex("Use \\(E = mc^2\\) and \\\\frac{a}{b}.")).toBe("Use $E = mc^2$ and $\\frac{a}{b}$.");
   });
 
   it("leaves fenced code unchanged", () => {
@@ -11,9 +11,26 @@ describe("normalizeLatex", () => {
     expect(normalizeLatex(source)).toBe(source);
   });
 
-  it("leaves balanced inline and block math untouched", () => {
+  it("leaves balanced inline math untouched", () => {
     expect(normalizeLatex("Inline $a=1$ stays.")).toBe("Inline $a=1$ stays.");
-    expect(normalizeLatex("Block $$a=1$$ stays.")).toBe("Block $$a=1$$ stays.");
+  });
+
+  it("isolates a one-line display equation so trailing markdown is not swallowed", () => {
+    expect(normalizeLatex("Block $$a=1$$ stays.")).toBe("Block\n\n$$\na=1\n$$\n\nstays.");
+  });
+
+  it("pulls **Solution** out when a display closer is glued to the last equation", () => {
+    const source = [
+      "$$",
+      "x = \\frac{4 + 8}{4} = 3",
+      "$$",
+      "$$",
+      "x = \\frac{4 - 8}{4} = -1$$ **Solution:** $x = 3, -1$",
+    ].join("\n");
+    const result = normalizeLatex(source);
+    expect(result).toMatch(/\$\$\nx = \\frac\{4 - 8\}\{4\} = -1\n\$\$/);
+    expect(result).toContain("**Solution:** $x = 3, -1$");
+    expect(result.indexOf("**Solution:**")).toBeGreaterThan(result.lastIndexOf("$$"));
   });
 
   it("escapes a block delimiter that has not been closed yet", () => {
@@ -60,5 +77,19 @@ describe("normalizeLatex", () => {
     expect(normalizeLatex("Result:\n$$\\begin{aligned}x &= 1\\end{aligned}$$")).toBe(
       "Result:\n\n$$\n\\begin{aligned}x &= 1\\end{aligned}\n$$\n",
     );
+  });
+
+  it("promotes a latex/tex/math fence into a display block", () => {
+    expect(normalizeLatex("```latex\nax^2 + bx + c = 0\n```")).toBe("\n\n$$\nax^2 + bx + c = 0\n$$\n\n");
+  });
+
+  it("wraps a TeX command that leaked into a sentence", () => {
+    expect(normalizeLatex("The term is \\frac{a}{b} times \\times two.")).toBe(
+      "The term is $\\frac{a}{b}$ times $\\times$ two.",
+    );
+  });
+
+  it("does not wrap commands already inside math delimiters", () => {
+    expect(normalizeLatex("Keep $\\frac{a}{b}$ as-is.")).toBe("Keep $\\frac{a}{b}$ as-is.");
   });
 });

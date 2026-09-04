@@ -74,8 +74,8 @@ Write it in the language the user wrote in.`;
 const MAX_SOURCE_CHARS = 600;
 const MAX_TITLE_CHARS = 60;
 const MAX_TITLE_WORDS = 8;
-/** A title is a handful of words, so a chatty model gets cut off rather than waited on. */
-const TITLE_MAX_TOKENS = 32;
+/** Enough room for a short GPT-OSS think phase plus a handful of title words. */
+const TITLE_MAX_TOKENS = 128;
 
 /**
  * Trims a model's answer down to something that belongs in a sidebar.

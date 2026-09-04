@@ -56,7 +56,9 @@ export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 export const MAX_ATTACHMENTS_PER_MESSAGE = 8;
 
 /** Fast Groq default when GROQ_API_KEY (or a user Groq credential) is present. */
-export const DEFAULT_GROQ_MODEL_ID = "openai/gpt-oss-20b";
+export const DEFAULT_GROQ_MODEL_ID = "qwen/qwen3.6-27b";
+
+export const GROQ_OSS_20B_MODEL_ID = "openai/gpt-oss-20b";
 
 /** Higher-quality Groq model used when the 20B id is unavailable. */
 export const GROQ_QUALITY_MODEL_ID = "openai/gpt-oss-120b";

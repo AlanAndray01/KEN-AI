@@ -23,8 +23,7 @@ export class ModelRegistry {
   }
 
   async listAllModels(userId?: string): Promise<PublicAIModel[]> {
-    const providers = await this.providerAvailability(userId);
-    const stored = await this.loadStoredModels();
+    const [providers, stored] = await Promise.all([this.providerAvailability(userId), this.loadStoredModels()]);
     const merged = new Map<string, PublicAIModel>();
 
     for (const builtIn of BUILT_IN_PROVIDERS) {
@@ -96,15 +95,17 @@ export class ModelRegistry {
     ]);
     if (isMockAiAllowed()) ids.add("mock");
 
-    for (const providerId of ids) {
-      const record = stored.find((item) => item.providerId === providerId);
-      const enabled = record?.enabled ?? Boolean(getBuiltInProvider(providerId) || providerId === "mock");
-      const secret = await describeConfiguredSecret(providerId, userId);
-      map.set(providerId, {
-        enabled,
-        configured: enabled && secret.configured,
-      });
-    }
+    await Promise.all(
+      [...ids].map(async (providerId) => {
+        const record = stored.find((item) => item.providerId === providerId);
+        const enabled = record?.enabled ?? Boolean(getBuiltInProvider(providerId) || providerId === "mock");
+        const secret = await describeConfiguredSecret(providerId, userId);
+        map.set(providerId, {
+          enabled,
+          configured: enabled && secret.configured,
+        });
+      }),
+    );
 
     return map;
   }

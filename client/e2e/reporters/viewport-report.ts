@@ -4,7 +4,7 @@ type AgentId = "desktop" | "tablet-mobile" | "clutter";
 
 const AGENTS: { id: AgentId; label: string; match: RegExp }[] = [
   { id: "desktop", label: "Desktop Regression Agent", match: /desktop-regression/ },
-  { id: "tablet-mobile", label: "Tablet & Mobile Viewport Agent", match: /tablet-mobile-viewport|landing-mobile-menu|landing-story-graphics|auth-responsive/ },
+  { id: "tablet-mobile", label: "Tablet & Mobile Viewport Agent", match: /tablet-mobile-viewport|landing-mobile-menu|landing-story-graphics|auth-responsive|landing-layout-compare/ },
   { id: "clutter", label: "Chat Interface Clutter Agent", match: /chat-interface-clutter/ },
 ];
 

@@ -116,15 +116,12 @@ export function HomePage() {
           <div className="hero-inner">
             <h1 className="ken-wrap" aria-label="KEN AI">
               <span className="ken-title" aria-hidden="true">
-                <span className="drop-letter">K</span>
-                <span className="drop-letter">E</span>
-                <span className="drop-letter">N</span>
+                KEN
               </span>
               <span className="ai-title" aria-hidden="true">
                 AI
               </span>
             </h1>
-            <div className="impact-line" aria-hidden="true" />
 
             <p className="hero-tag hero-reveal">Intelligence without the noise.</p>
             <p className="hero-sub hero-reveal">

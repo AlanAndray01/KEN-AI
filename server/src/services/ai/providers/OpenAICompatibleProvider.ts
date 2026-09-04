@@ -14,8 +14,9 @@ import type {
   StreamEvent,
 } from "../AIProvider.js";
 import { getBuiltInProvider } from "../catalog.js";
-import { normalizeAIResponse, compactUsage, toOpenAIMessages } from "../normalizers/normalize.js";
+import { normalizeAIResponse, compactUsage } from "../normalizers/normalize.js";
 import { createReasoningFilter, stripReasoning } from "@Ken/shared";
+import { buildCompatibleChatBody } from "./groqChatBody.js";
 
 export class OpenAICompatibleProvider implements AIProvider {
   readonly id: string;
@@ -75,11 +76,7 @@ export class OpenAICompatibleProvider implements AIProvider {
           "Content-Type": "application/json",
           ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
         },
-        body: JSON.stringify({
-          model: request.modelId,
-          messages: toOpenAIMessages(request.messages),
-          ...(request.maxTokens ? { max_tokens: request.maxTokens } : {}),
-        }),
+        body: JSON.stringify(buildCompatibleChatBody(request, { stream: false, providerId: this.id })),
       };
       if (request.abortSignal) init.signal = request.abortSignal;
       const response = await fetch(`${baseUrl}/chat/completions`, init);
@@ -134,11 +131,7 @@ export class OpenAICompatibleProvider implements AIProvider {
           Accept: "text/event-stream",
           ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
         },
-        body: JSON.stringify({
-          model: request.modelId,
-          stream: true,
-          messages: toOpenAIMessages(request.messages),
-        }),
+        body: JSON.stringify(buildCompatibleChatBody(request, { stream: true, providerId: this.id })),
       };
       if (request.abortSignal) init.signal = request.abortSignal;
       const response = await fetch(`${baseUrl}/chat/completions`, init);
