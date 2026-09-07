@@ -66,15 +66,18 @@ Environment variables to set in the dashboard:
 
 | Variable | Value | Required |
 | --- | --- | --- |
-| `MONGODB_URI` | Atlas connection string | **Yes** — no boot without it |
+| `MONGODB_URI` or `MONGO_URI` | Atlas connection string | **Yes** — no boot without it. `MONGO_URI` is accepted as an alias. |
 | `JWT_SECRET` | generated above | **Yes** |
 | `ENCRYPTION_KEY` | generated above | **Yes** |
-| `GROQ_API_KEY` | from console.groq.com | **Yes for chat** |
+| `GEMINI_API_KEY` | from [aistudio.google.com/apikey](https://aistudio.google.com/apikey) | **Yes for default chat** |
+| `GROQ_API_KEY` | from console.groq.com | Optional next hop |
+| `ANTHROPIC_API_KEY` | from console.anthropic.com | Optional Claude |
 | `NODE_ENV` | `production` | Yes (in blueprint) |
 | `CLIENT_URL` | `https://ken-ai.tech,https://www.ken-ai.tech` | Yes (in blueprint) |
 | `COOKIE_DOMAIN` | `.ken-ai.tech` | Yes (in blueprint) |
 | `INITIAL_ADMIN_EMAIL` | the email you will register with | Recommended |
-| `RESEND_API_KEY` | for signup verification + password reset | Recommended |
+| `RESEND_API_KEY` | from resend.com | **Yes** — production will not boot without it |
+| `EMAIL_FROM` or `RESEND_FROM_EMAIL` | verified sender, e.g. `Ken <noreply@ken-ai.tech>` | **Yes** |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | only if using Google sign-in | Optional |
 
 `CLIENT_URL` accepts a comma-separated list; `allowedClientOrigins()` in
@@ -103,9 +106,16 @@ One environment variable, for the Production environment:
 VITE_API_BASE_URL = https://api.ken-ai.tech/api
 ```
 
+`VITE_API_URL` is accepted as an alias. Do not set either to `localhost` on
+Vercel — the production client build refuses that fallback.
+
 The trailing `/api` matters — `API_BASE_URL` in `client/src/services/api.ts` is
 used as a prefix for paths like `/auth/login`. Vite inlines `VITE_*` variables
 at build time, so changing it requires a redeploy, not just a restart.
+
+Email signup and password reset require `RESEND_API_KEY` and a verified From
+address (`EMAIL_FROM` or `RESEND_FROM_EMAIL`) on Render. Production will not
+boot without them. A Resend delivery failure returns `503 EMAIL_UNAVAILABLE`.
 
 ## 5. DNS for ken-ai.tech
 
@@ -131,7 +141,7 @@ DNS resolves, which usually takes minutes but can take up to an hour.
 
 In Google Cloud Console → Credentials → your OAuth client:
 
-- Authorised JavaScript origin: `https://ken-ai.tech`
+- Authorised JavaScript origins: `https://ken-ai.tech` and `https://www.ken-ai.tech`
 - Authorised redirect URI: `https://api.ken-ai.tech/api/auth/google/callback`
 
 This must match `GOOGLE_CALLBACK_URL` on Render exactly, including the scheme.

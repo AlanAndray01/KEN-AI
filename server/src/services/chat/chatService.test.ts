@@ -1,6 +1,7 @@
 import { Types } from "mongoose";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AppError } from "../../utils/AppError.js";
+import { clearModelSkips, rememberModelSkip } from "../ai/modelSkip.js";
 
 const messages = new Map<string, Record<string, unknown>>();
 const conversations = new Map<string, Record<string, unknown>>();
@@ -125,6 +126,7 @@ describe("chatService abort", () => {
     conversations.clear();
     stream.mockReset();
     generate.mockReset();
+    clearModelSkips();
   });
 
   it("keeps the partial assistant reply when generation is aborted", async () => {
@@ -159,6 +161,112 @@ describe("chatService abort", () => {
     expect(input.messages[0]?.content).toContain("You are Ken AI");
     expect(input.messages[1]?.content).toContain("Ken reply policy");
     expect(input).toMatchObject({ skipAvailabilityCheck: true, maxTokens: 256, reasoningEffort: "none" });
+  });
+
+  it("asks for low thinking on a short factual question and surfaces a hop", async () => {
+    stream.mockImplementation(async function* () {
+      yield {
+        type: "fallback",
+        model: "gemini-3.5-flash-lite",
+        provider: "gemini",
+        fallbackFrom: "gemini-3.8-flash",
+        fallbackReason: "PROVIDER_RATE_LIMITED|429|quota_exceeded",
+      };
+      yield { type: "connected", model: "gemini-3.5-flash-lite", provider: "gemini", connectMs: 80 };
+      yield { type: "chunk", text: "There is" };
+      yield {
+        type: "complete",
+        response: { content: "There is", model: "gemini-3.5-flash-lite", provider: "gemini" },
+      };
+    });
+
+    const { prepareSend, runGeneration } = await import("./chatService.js");
+    const prepared = await prepareSend({
+      userId: "000000000000000000000001",
+      content: "So Whose the father of science?",
+      providerId: "mock",
+      modelId: "mock-text",
+    });
+
+    const events: Array<{ type: string; activeModel?: string; fallbackFrom?: string; firstVisibleChunkMs?: number }> =
+      [];
+    await runGeneration(prepared, (event) => events.push(event), "test", undefined, {
+      requestId: "5dd687df-c1e0-4eb3-8b5d-3433d9ce24b8",
+      startedAt: Date.now() - 259,
+    });
+
+    expect(stream.mock.calls[0]?.[0]).toMatchObject({
+      maxTokens: 1024,
+      reasoningEffort: "none",
+      requestId: "5dd687df-c1e0-4eb3-8b5d-3433d9ce24b8",
+    });
+    expect(events.find((event) => event.type === "model")).toMatchObject({
+      type: "model",
+      activeModel: "gemini-3.5-flash-lite",
+      fallbackFrom: "gemini-3.8-flash",
+      fallbackReason: "PROVIDER_RATE_LIMITED|429|quota_exceeded",
+    });
+    const timings = events.filter((event) => event.type === "timing");
+    expect(timings.length).toBeGreaterThanOrEqual(3);
+    expect(timings.some((event) => event.fallbackFrom === "gemini-3.8-flash")).toBe(true);
+    expect(timings.some((event) => event.firstVisibleChunkMs !== undefined)).toBe(true);
+    expect(events.find((event) => event.type === "complete")).toBeTruthy();
+  });
+
+  it("starts on Lite immediately when 3.8 is quota-skipped, without removing 3.8 from the conversation", async () => {
+    rememberModelSkip(
+      "gemini",
+      "gemini-3.8-flash",
+      new AppError("Provider rate limit reached.", {
+        statusCode: 429,
+        code: "PROVIDER_RATE_LIMITED",
+        extra: { httpStatus: 429, errorClass: "quota_exceeded" },
+      }),
+    );
+    stream.mockImplementation(async function* (request: { modelId: string }) {
+      yield { type: "chunk", text: "Glad to" };
+      yield {
+        type: "complete",
+        response: { content: "Glad to hear it.", model: request.modelId, provider: "gemini" },
+      };
+    });
+
+    const { prepareSend, runGeneration } = await import("./chatService.js");
+    const prepared = await prepareSend({
+      userId: "000000000000000000000001",
+      content: "Great",
+      providerId: "gemini",
+      modelId: "gemini-3.8-flash",
+    });
+    prepared.providerId = "gemini";
+    prepared.modelId = "gemini-3.8-flash";
+    prepared.conversation.modelId = "gemini-3.8-flash";
+    prepared.conversation.providerId = "gemini";
+    prepared.assistantMessage.model = "gemini-3.8-flash";
+    prepared.assistantMessage.provider = "gemini";
+
+    const events: Array<{
+      type: string;
+      assistantMessage?: { model?: string };
+      conversation?: { modelId?: string };
+      activeModel?: string;
+    }> = [];
+    await runGeneration(prepared, (event) => events.push(event), "test", undefined, {
+      requestId: "e87c3929-12de-455b-b90f-98443f9d3299",
+    });
+
+    expect(events.find((event) => event.type === "start")).toMatchObject({
+      assistantMessage: { model: "gemini-3.5-flash-lite" },
+      conversation: { modelId: "gemini-3.8-flash" },
+    });
+    expect(events.find((event) => event.type === "model")).toMatchObject({
+      activeModel: "gemini-3.5-flash-lite",
+      fallbackFrom: "gemini-3.8-flash",
+    });
+    expect(stream.mock.calls[0]?.[0]).toMatchObject({
+      providerId: "gemini",
+      modelId: "gemini-3.5-flash-lite",
+    });
   });
 });
 

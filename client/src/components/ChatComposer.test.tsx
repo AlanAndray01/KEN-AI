@@ -64,7 +64,28 @@ describe("ChatComposer", () => {
       />,
     );
 
-    expect(screen.getByRole("listbox", { name: "Mention a GPT" })).toBeInTheDocument();
+    const input = screen.getByLabelText("Message");
+    expect(input).not.toHaveAttribute("aria-expanded");
+    expect(input).toHaveAttribute("aria-autocomplete", "list");
+    expect(input).toHaveAttribute("aria-haspopup", "listbox");
+    expect(input).toHaveAttribute("aria-controls", "composer-mentions");
+    expect(screen.getByRole("listbox", { name: "Mention a GPT" })).toHaveAttribute("id", "composer-mentions");
     expect(screen.getByRole("option", { name: /Writer/ })).toBeInTheDocument();
+  });
+
+  it("does not put aria-expanded on the message textbox", () => {
+    render(
+      <ChatComposer
+        value=""
+        onChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onStop={vi.fn()}
+        streaming={false}
+      />,
+    );
+
+    const input = screen.getByLabelText("Message");
+    expect(input).not.toHaveAttribute("aria-expanded");
+    expect(input).not.toHaveAttribute("aria-controls");
   });
 });

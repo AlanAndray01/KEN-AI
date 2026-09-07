@@ -9,6 +9,7 @@ interface ModelSelectorProps {
   modelId: string;
   onChange: (providerId: string, modelId: string) => void;
   disabled?: boolean;
+  loading?: boolean;
   onAddModel?: () => void;
 }
 
@@ -18,6 +19,7 @@ export function ModelSelector({
   modelId,
   onChange,
   disabled = false,
+  loading = false,
   onAddModel,
 }: ModelSelectorProps) {
   const [open, setOpen] = useState(false);
@@ -59,7 +61,7 @@ export function ModelSelector({
     };
   }, [open]);
 
-  if (models.length === 0) {
+  if (models.length === 0 && !loading) {
     return <span className="text-sm text-fg-muted">No model available</span>;
   }
 
@@ -70,7 +72,8 @@ export function ModelSelector({
         disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
-        aria-label="Model"
+        aria-controls={open ? "model-selector-listbox" : undefined}
+        aria-label={selected?.name ? `Select model: ${selected.name}` : "Select model"}
         className="model-selector-trigger inline-flex max-w-[16rem] items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-medium hover:bg-surface-muted disabled:opacity-60"
         onClick={() => setOpen((value) => !value)}
       >
@@ -79,6 +82,7 @@ export function ModelSelector({
       </button>
       {open ? (
         <ul
+          id="model-selector-listbox"
           role="listbox"
           aria-label="Models"
           className="model-selector-menu absolute top-full right-0 z-20 mt-1 max-h-80 w-72 overflow-y-auto rounded-xl border border-border bg-surface p-1 shadow-lg"

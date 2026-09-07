@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Check, ChevronDown, Copy, Pencil } from "lucide-react";
-import { LazyMarkdown } from "@/components/LazyMarkdown";
+import { DeferredMarkdown } from "@/components/DeferredMarkdown";
 import { cn } from "@/utils/cn";
 
 /**
@@ -33,35 +33,58 @@ interface UserMessageBubbleProps {
   onEdit?: (content: string) => void | Promise<void>;
   /** Editing starts a new generation, so it is blocked while one is running. */
   editDisabled?: boolean;
+  eagerMarkdown?: boolean;
   children?: React.ReactNode;
 }
 
-export function UserMessageBubble({ content, onEdit, editDisabled, children }: UserMessageBubbleProps) {
+function likelyCollapsible(content: string): boolean {
+  if (content.length > 480) return true;
+  let lines = 1;
+  for (let index = 0; index < content.length; index += 1) {
+    if (content[index] === "\n") lines += 1;
+  }
+  return lines >= 10;
+}
+
+export function UserMessageBubble({
+  content,
+  onEdit,
+  editDisabled,
+  eagerMarkdown = true,
+  children,
+}: UserMessageBubbleProps) {
   const bodyRef = useRef<HTMLDivElement>(null);
-  const [collapsible, setCollapsible] = useState(false);
+  const [collapsible, setCollapsible] = useState(() => likelyCollapsible(content));
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
   const [editing, setEditing] = useState(false);
 
-  useLayoutEffect(() => {
+  useEffect(() => {
+    setCollapsible(likelyCollapsible(content));
+    setExpanded(false);
+  }, [content]);
+
+  useEffect(() => {
     const node = bodyRef.current;
-    if (!node) return;
+    if (!node || editing) return;
 
     const measure = (): void => {
       // scrollHeight is the full content height even while the box is clamped.
       setCollapsible(node.scrollHeight > COLLAPSED_MAX_PX + MIN_OVERFLOW_PX);
     };
 
-    measure();
-
-    // Markdown, KaTeX and fonts all settle after first paint, and the bubble
-    // reflows on window resize, so re-measure instead of trusting the first read.
-    // Guarded because non-browser render targets have no ResizeObserver; the
-    // synchronous measurement above is still correct without it.
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measure);
+    // Measure after paint so this read does not sit in the same turn as the
+    // markdown write that invalidates layout.
+    const frame = window.requestAnimationFrame(measure);
+    if (typeof ResizeObserver === "undefined") {
+      return () => window.cancelAnimationFrame(frame);
+    }
+    const observer = new ResizeObserver(() => {
+      window.requestAnimationFrame(measure);
+    });
     observer.observe(node);
     return () => {
+      window.cancelAnimationFrame(frame);
       observer.disconnect();
     };
   }, [content, editing]);
@@ -108,7 +131,7 @@ export function UserMessageBubble({ content, onEdit, editDisabled, children }: U
             className={cn("overflow-hidden", isClamped ? "user-message-clamped" : undefined)}
             style={isClamped ? { maxHeight: `${COLLAPSED_MAX_PX}px` } : undefined}
           >
-            {content ? <LazyMarkdown>{content}</LazyMarkdown> : null}
+            {content ? <DeferredMarkdown eager={eagerMarkdown}>{content}</DeferredMarkdown> : null}
           </div>
           {isClamped ? <div className="user-message-fade" aria-hidden="true" /> : null}
         </div>

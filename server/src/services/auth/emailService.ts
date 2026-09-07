@@ -1,6 +1,7 @@
 import { APP_NAME } from "@Ken/shared";
 import { env } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
+import { AppError } from "../../utils/AppError.js";
 import { redactSensitive } from "../../utils/redact.js";
 
 export const DEFAULT_DEV_FROM = `${APP_NAME} <onboarding@resend.dev>`;
@@ -22,6 +23,29 @@ export function resolveFromAddress(): string | undefined {
 
 export function isEmailConfigured(): boolean {
   return Boolean(env.RESEND_API_KEY && resolveFromAddress());
+}
+
+export function emailUnavailableError(): AppError {
+  return new AppError("Email verification is temporarily unavailable. Try again later.", {
+    statusCode: 503,
+    code: "EMAIL_UNAVAILABLE",
+  });
+}
+
+/**
+ * Production must actually deliver the code. Development and test may skip
+ * Resend and print the code to the API console instead.
+ */
+export async function deliverVerificationEmail(to: string, code: string): Promise<boolean> {
+  const sent = await sendVerificationEmail(to, code);
+  if (sent || env.NODE_ENV !== "production") return sent;
+  throw emailUnavailableError();
+}
+
+export async function deliverPasswordResetEmail(to: string, code: string): Promise<boolean> {
+  const sent = await sendPasswordResetEmail(to, code);
+  if (sent || env.NODE_ENV !== "production") return sent;
+  throw emailUnavailableError();
 }
 
 export function logDevAuthCode(kind: "verification" | "password_reset", to: string, secret: string): void {

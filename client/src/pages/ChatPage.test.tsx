@@ -2,6 +2,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { api } from "@/services/api";
+import { useModelStore } from "@/stores/modelStore";
 import { ChatPage } from "./ChatPage";
 
 const mocks = vi.hoisted(() => ({
@@ -48,9 +50,17 @@ vi.mock("@/services/api", () => ({
       list: vi.fn().mockResolvedValue({
         models: [
           {
-            id: "gemini-2.5-flash",
+            id: "gemini-3.5-flash-lite",
             providerId: "gemini",
-            name: "Gemini 2.5 Flash",
+            name: "Gemini 3.5 Flash Lite",
+            capabilities: ["text", "streaming"],
+            enabled: true,
+            available: true,
+          },
+          {
+            id: "gemini-3.8-flash",
+            providerId: "gemini",
+            name: "Gemini 3.8 Flash",
             capabilities: ["text", "streaming"],
             enabled: true,
             available: true,
@@ -105,9 +115,15 @@ vi.mock("@/services/api", () => ({
   },
 }));
 
+beforeEach(() => {
+  useModelStore.setState({ providerId: "", modelId: "" });
+});
+
 describe("ChatPage", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    useModelStore.setState({ providerId: "", modelId: "" });
+    vi.mocked(api.conversations.list).mockResolvedValue({ conversations: [] });
     mocks.listMessages.mockReset();
     mocks.feedback.mockReset();
     mocks.sendChat.mockReset();
@@ -142,6 +158,70 @@ describe("ChatPage", () => {
     expect(await screen.findByRole("heading", { name: "Chat" })).toBeInTheDocument();
     expect(screen.getByRole("form", { name: "Send message" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Messages" })).toHaveAttribute("aria-live", "polite");
+    expect(await screen.findByRole("button", { name: "Select model: Gemini 3.5 Flash Lite" })).toBeInTheDocument();
+  });
+
+  it("starts a new chat on Flash Lite even if the last stored pick was 3.8", async () => {
+    useModelStore.setState({ providerId: "gemini", modelId: "gemini-3.8-flash" });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={["/chat"]}>
+          <Routes>
+            <Route path="/chat" element={<ChatPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByRole("button", { name: "Select model: Gemini 3.5 Flash Lite" })).toBeInTheDocument();
+  });
+
+  it("keeps Gemini 3.8 Flash selected when opening a saved 3.8 thread", async () => {
+    vi.mocked(api.conversations.list).mockResolvedValue({
+      conversations: [
+        {
+          id: "c1",
+          title: "Old thread",
+          modelId: "gemini-3.8-flash",
+          providerId: "gemini",
+          archived: false,
+          pinned: false,
+          messageCount: 1,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={["/chat/c1"]}>
+          <Routes>
+            <Route path="/chat/:conversationId" element={<ChatPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByRole("button", { name: "Select model: Gemini 3.8 Flash" })).toBeInTheDocument();
+  });
+
+  it("reserves message space while a thread is loading instead of flashing the empty state", async () => {
+    mocks.listMessages.mockReturnValue(new Promise(() => undefined));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={["/chat/c1"]}>
+          <Routes>
+            <Route path="/chat/:conversationId" element={<ChatPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByLabelText("Loading messages")).toBeInTheDocument();
+    expect(screen.queryByText("Where should we begin?")).not.toBeInTheDocument();
   });
 
   it("shows a streaming placeholder immediately after send, before the first SSE event", async () => {

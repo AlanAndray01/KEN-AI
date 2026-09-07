@@ -86,4 +86,52 @@ describe("emailService", () => {
     expect(log).toHaveBeenCalledWith("🔑 VERIFICATION CODE FOR", "other@example.com", ":", "111111");
     log.mockRestore();
   });
+
+  it("throws EMAIL_UNAVAILABLE in production when Resend is missing", async () => {
+    vi.doMock("../../config/env.js", () => ({
+      env: { NODE_ENV: "production", RESEND_API_KEY: undefined, RESEND_FROM_EMAIL: undefined, EMAIL_FROM: undefined },
+    }));
+    vi.doMock("../../config/logger.js", () => ({ logger: { info: vi.fn(), warn: vi.fn() } }));
+    const { deliverVerificationEmail } = await import("./emailService.js");
+    await expect(deliverVerificationEmail("ada@example.com", "123456")).rejects.toMatchObject({
+      statusCode: 503,
+      code: "EMAIL_UNAVAILABLE",
+    });
+  });
+
+  it("throws EMAIL_UNAVAILABLE in production when a password reset cannot be sent", async () => {
+    vi.doMock("../../config/env.js", () => ({
+      env: { NODE_ENV: "production", RESEND_API_KEY: undefined, RESEND_FROM_EMAIL: undefined, EMAIL_FROM: undefined },
+    }));
+    vi.doMock("../../config/logger.js", () => ({ logger: { info: vi.fn(), warn: vi.fn() } }));
+    const { deliverPasswordResetEmail } = await import("./emailService.js");
+    await expect(deliverPasswordResetEmail("ada@example.com", "123456")).rejects.toMatchObject({
+      statusCode: 503,
+      code: "EMAIL_UNAVAILABLE",
+    });
+  });
+
+  it("throws EMAIL_UNAVAILABLE in production when Resend returns an error", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+        text: async () => "provider down",
+      }),
+    );
+    vi.doMock("../../config/env.js", () => ({
+      env: {
+        NODE_ENV: "production",
+        RESEND_API_KEY: "re_test_key",
+        EMAIL_FROM: "Ken <noreply@ken-ai.tech>",
+      },
+    }));
+    vi.doMock("../../config/logger.js", () => ({ logger: { info: vi.fn(), warn: vi.fn() } }));
+    const { deliverVerificationEmail } = await import("./emailService.js");
+    await expect(deliverVerificationEmail("ada@example.com", "123456")).rejects.toMatchObject({
+      statusCode: 503,
+      code: "EMAIL_UNAVAILABLE",
+    });
+  });
 });

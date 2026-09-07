@@ -50,6 +50,8 @@ export interface AIResponse {
 
 export type StreamEvent =
   | { type: "start"; model: string; provider: string }
+  | { type: "connected"; model: string; provider: string; connectMs: number }
+  | { type: "fallback"; model: string; provider: string; fallbackFrom: string; fallbackReason: string }
   | { type: "chunk"; text: string }
   | { type: "tool_call"; toolCall: unknown }
   | { type: "citation"; citation: unknown }
@@ -81,6 +83,13 @@ export interface GenerateRequest {
    * token is not delayed by a think phase.
    */
   reasoningEffort?: "none" | "low" | "medium" | "default";
+  /** Correlates provider logs with the HTTP `x-request-id`. Never a secret. */
+  requestId?: string;
+  /**
+   * Abort a hung connect/first-byte wait so a dead primary can fail over.
+   * Only the first hop should set this — fallbacks need time to think.
+   */
+  firstByteTimeoutMs?: number;
 }
 
 export interface ProviderRuntimeConfig {

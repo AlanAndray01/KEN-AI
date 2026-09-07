@@ -2,7 +2,6 @@ import { memo } from "react";
 import { Copy, RotateCw, ThumbsDown, ThumbsUp, Volume2 } from "lucide-react";
 import type { PublicMessage } from "@Ken/shared";
 import { MessageAttachments } from "@/components/AttachmentChips";
-import { LazyMarkdown } from "@/components/LazyMarkdown";
 import { MessageAvatar } from "@/components/MessageAvatar";
 import { AssistantRichBody } from "@/components/RichContent";
 import { ThinkingPipeline } from "@/components/ThinkingPipeline";
@@ -11,6 +10,8 @@ import { cn } from "@/utils/cn";
 
 interface ChatTurnProps {
   message: PublicMessage;
+  /** Parse markdown now. Older history waits until it is near the viewport. */
+  eagerMarkdown?: boolean;
   streaming: boolean;
   ttsConfigured: boolean;
   ttsUnavailableReason: string;
@@ -28,6 +29,7 @@ interface ChatTurnProps {
  */
 export const ChatTurn = memo(function ChatTurn({
   message,
+  eagerMarkdown = true,
   streaming,
   ttsConfigured,
   ttsUnavailableReason,
@@ -43,6 +45,7 @@ export const ChatTurn = memo(function ChatTurn({
       <article className="chat-message flex justify-end gap-3">
         <UserMessageBubble
           content={message.content}
+          eagerMarkdown={eagerMarkdown}
           editDisabled={streaming}
           {...(message.id.startsWith("temp-")
             ? {}
@@ -63,9 +66,9 @@ export const ChatTurn = memo(function ChatTurn({
           {message.content ? (
             <>
               {message.status === "streaming" ? (
-                <LazyMarkdown>{message.content}</LazyMarkdown>
+                <p className="markdown-stream">{message.content}</p>
               ) : (
-                <AssistantRichBody content={message.content} />
+                <AssistantRichBody content={message.content} eager={eagerMarkdown} />
               )}
               {message.status === "streaming" ? (
                 <span className="streaming-caret" aria-hidden="true" />
@@ -94,6 +97,11 @@ export const ChatTurn = memo(function ChatTurn({
             <p className="text-sm text-fg-muted">No reply was generated. Try sending again.</p>
           )}
         </div>
+        {message.model ? (
+          <p className="mt-1 text-[11px] text-fg-muted" data-active-model={message.model}>
+            {message.model}
+          </p>
+        ) : null}
         <div className="assistant-actions mt-2 flex gap-1">
           <button
             type="button"
@@ -158,6 +166,7 @@ export const ChatTurn = memo(function ChatTurn({
 function chatTurnPropsAreEqual(prev: ChatTurnProps, next: ChatTurnProps): boolean {
   return (
     prev.message === next.message &&
+    prev.eagerMarkdown === next.eagerMarkdown &&
     prev.streaming === next.streaming &&
     prev.ttsConfigured === next.ttsConfigured &&
     prev.ttsUnavailableReason === next.ttsUnavailableReason &&

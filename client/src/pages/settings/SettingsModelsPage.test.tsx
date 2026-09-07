@@ -48,6 +48,6 @@ describe("SettingsModelsPage", () => {
     expect(await screen.findByText("Gemini 2.5 Flash")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "API Keys & Models" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Test Connection" })).toBeInTheDocument();
-    expect(screen.getByText(/Google AI Studio \/ Gemini is not in this catalog/)).toBeInTheDocument();
+    expect(screen.getByText(/Gemini is the default when a Google AI Studio key is saved/)).toBeInTheDocument();
   });
 });

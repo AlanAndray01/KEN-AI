@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { PublicMessage } from "@Ken/shared";
 import {
+  CHAT_MESSAGE_WINDOW,
   appendChunk,
+  applyAssistantModel,
   applyFeedback,
   markLastAssistant,
   optimisticTurn,
@@ -31,6 +33,12 @@ function turn(id: string, role: "user" | "assistant", content: string): PublicMe
 function streamingTurn(id: string): PublicMessage {
   return { ...message(id), role: "assistant", content: "", status: "streaming" };
 }
+
+describe("CHAT_MESSAGE_WINDOW", () => {
+  it("keeps the mounted history short enough for the main thread", () => {
+    expect(CHAT_MESSAGE_WINDOW).toBeLessThanOrEqual(32);
+  });
+});
 
 describe("applyFeedback", () => {
   it("sets the rating on the targeted message only", () => {
@@ -90,6 +98,19 @@ describe("optimisticTurn", () => {
     expect(turn.assistant.role).toBe("assistant");
     expect(turn.assistant.content).toBe("");
     expect(turn.assistant.status).toBe("streaming");
+  });
+});
+
+describe("applyAssistantModel", () => {
+  it("writes the executed model onto the live assistant without clearing text", () => {
+    const result = applyAssistantModel(
+      [turn("u1", "user", "q"), { ...streamingTurn("a1"), content: "There is" }],
+      { model: "gemini-3.5-flash-lite", provider: "gemini" },
+    );
+
+    expect(result[1]?.content).toBe("There is");
+    expect(result[1]?.model).toBe("gemini-3.5-flash-lite");
+    expect(result[1]?.provider).toBe("gemini");
   });
 });
 

@@ -1,6 +1,6 @@
 # Ken
 
-Ken is a production-oriented MERN TypeScript AI assistant platform. The React client talks only to an Express API. MongoDB is the source of truth. AI providers (Groq first, then OpenAI, Anthropic, OpenRouter, Ollama, and custom OpenAI-compatible APIs) are adapters behind a server-side provider manager. Provider API keys never leave the server.
+Ken is a production-oriented MERN TypeScript AI assistant platform. The React client talks only to an Express API. MongoDB is the source of truth. AI providers (Gemini first, then Groq, OpenAI, Anthropic, OpenRouter, Ollama, and custom OpenAI-compatible APIs) are adapters behind a server-side provider manager. Provider API keys never leave the server.
 
 This repository is a npm workspaces monorepo:
 
@@ -88,13 +88,13 @@ Default URLs:
 
 ## Environment variables
 
-**Client (public only):** `VITE_API_BASE_URL` — e.g. `http://localhost:5000/api`
+**Client (public only):** `VITE_API_BASE_URL` (alias `VITE_API_URL`) — e.g. `http://localhost:5000/api` locally, `https://api.ken-ai.tech/api` on Vercel. Never put a production build on localhost.
 
 Never put `GROQ_API_KEY`, `OPENAI_API_KEY`, `MONGODB_URI`, or JWT secrets in `VITE_*` variables.
 
 **Server:** see `server/.env.example`. Provider keys are optional; a provider works only when configured. Mock AI is off unless `ENABLE_MOCK_AI=true` (ignored in production).
 
-When `NODE_ENV=production`, the server refuses to start unless `JWT_SECRET` (16+ characters) and `MONGODB_URI` are set — it will not fall back to a generated secret. In development, secrets are generated per machine and stored in a gitignored `server/.dev-secrets.json`; no usable secret is committed to the repository.
+When `NODE_ENV=production`, the server refuses to start unless `JWT_SECRET` (16+ characters) and `MONGODB_URI` (or `MONGO_URI`) are set — it will not fall back to a generated secret. It binds to `process.env.PORT` and reads `process.env.GEMINI_API_KEY` for the default Lite model. Missing Gemini does not crash boot; chat returns a clear 503. In development, secrets are generated per machine and stored in a gitignored `server/.dev-secrets.json`; no usable secret is committed to the repository.
 
 ## Database
 
@@ -117,7 +117,7 @@ Google sign-in is a backend OAuth redirect:
 
 If Google is not configured, the API redirects to `/login?error=google_not_configured` instead of faking a login.
 
-Password reset and email verification send mail when `RESEND_API_KEY` is set. The sender is `EMAIL_FROM` or `RESEND_FROM_EMAIL` (plain address or `Ken <onboarding@resend.dev>`). In development, that Resend test sender is the default if From is omitted. Signup still works without Resend: the hashed 6-digit code is stored, and the API terminal prints `🔑 VERIFICATION CODE FOR <email> : 123456`. Set `ENABLE_DEV_AUTH_TOOLS=true` in development to also receive `resetToken` or `verificationCode` in JSON. Production refuses to boot if that flag or `ENABLE_MOCK_AI` is enabled. Optional `INITIAL_ADMIN_EMAIL` grants `admin` on first registration of that address.
+Password reset and email verification send mail when `RESEND_API_KEY` is set. The sender is `EMAIL_FROM` or `RESEND_FROM_EMAIL` (plain address or `Ken <onboarding@resend.dev>`). In development, that Resend test sender is the default if From is omitted. Signup still works without Resend locally: the hashed 6-digit code is stored and the API terminal prints `🔑 VERIFICATION CODE FOR <email> : 123456`. Production requires `RESEND_API_KEY` and `EMAIL_FROM` (or `RESEND_FROM_EMAIL`) to boot. If delivery fails, register/login/forgot-password return `503 EMAIL_UNAVAILABLE` and the account stays unverified. Set `ENABLE_DEV_AUTH_TOOLS=true` in development to also receive `resetToken` or `verificationCode` in JSON. Production refuses to boot if that flag or `ENABLE_MOCK_AI` is enabled. Optional `INITIAL_ADMIN_EMAIL` grants `admin` on first registration of that address.
 
 Dummy `@example.com` / `@example.test` records can be removed without dropping collections:
 
@@ -129,9 +129,13 @@ CLEAR_DUMMY_DATA=true npm run clear:dummy -w @Ken/server
 
 Provider keys stay on the server (environment variables or AES-256-GCM encrypted MongoDB fields). The API never returns raw keys — only a masked suffix (`••••` + last four).
 
-**Groq (primary adapter):** set `GROQ_API_KEY` in `server/.env`. Chat completions stream over SSE. Default model is `openai/gpt-oss-20b` (Groq retired Llama 3.1/3.3 IDs on 2026-08-16). One Groq key unlocks every Groq model in the header dropdown. Gemini is no longer used.
+**Gemini (default adapter):** set `GEMINI_API_KEY` in `server/.env` from [Google AI Studio](https://aistudio.google.com/apikey). New chats pick `gemini-3.5-flash-lite` when that key is present. The same key unlocks Gemini 3.8 Flash and Gemini 3.6 Flash. Existing threads that saved `gemini-3.8-flash` keep that model. Retired Gemini 2.5 / 2.0 ids are aliased onto the current catalog so those chats stay on Google.
 
-Optional keys: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`. Custom OpenAI-compatible endpoints and Ollama are configured by an admin. Persist database keys with `ENCRYPTION_KEY` (required in production). Users can save personal keys through Settings or `POST /api/settings/keys`; those values are encrypted in MongoDB and never written to `.env`.
+**Groq (next hop):** set `GROQ_API_KEY`. Default Groq model is `qwen/qwen3.6-27b` (Groq retired Llama 3.1/3.3 IDs). Llama is never chosen as Ken's default.
+
+**Claude:** set `ANTHROPIC_API_KEY` from the official Anthropic console. There is no reliable public free Claude endpoint Ken will call. OpenRouter can list Claude only if you add your own `OPENROUTER_API_KEY` and accept OpenRouter's billing.
+
+Optional keys: `OPENAI_API_KEY`, `OPENROUTER_API_KEY`. Custom OpenAI-compatible endpoints and Ollama are configured by an admin. Persist database keys with `ENCRYPTION_KEY` (required in production). Users can save personal keys through Settings or `POST /api/settings/keys`; those values are encrypted in MongoDB and never written to `.env`.
 
 If no provider is configured, the API returns `"No AI provider configured."` Mock AI is isolated behind `ENABLE_MOCK_AI=true` and is disabled in production.
 

@@ -58,4 +58,14 @@ describe("ModelRegistry", () => {
     expect(JSON.stringify(publicModels)).not.toContain("encryptedApiKey");
     expect(JSON.stringify(publicModels)).not.toMatch(/"apiKey"/);
   });
+
+  it("reuses the provider listing for a few seconds so chat prepare is not a second fan-out", async () => {
+    const { AIModel } = await import("../../models/AIModel.js");
+    vi.mocked(AIModel.find).mockClear();
+    const { ModelRegistry } = await import("./ModelRegistry.js");
+    const registry = new ModelRegistry();
+    await registry.listPublicModels();
+    await registry.listPublicModels();
+    expect(AIModel.find).toHaveBeenCalledTimes(1);
+  });
 });

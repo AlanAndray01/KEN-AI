@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { extractPayloads, iterateSseData, writeSseDone, writeSseEvent, writeSseHeaders } from "./sse.js";
+import { buildSseTiming, extractPayloads, iterateSseData, writeSseDone, writeSseEvent, writeSseHeaders } from "./sse.js";
 
 async function collect(body: string): Promise<string[]> {
   const response = new Response(body, { headers: { "Content-Type": "text/event-stream" } });
@@ -86,6 +86,33 @@ describe("writeSseDone", () => {
 
     expect(writes.join("")).toBe("data: [DONE]\n\n");
     expect(flush).toHaveBeenCalled();
+  });
+});
+
+describe("buildSseTiming", () => {
+  it("builds a secret-free timing payload the Network panel can read", () => {
+    expect(
+      buildSseTiming({
+        requestId: "5dd687df-c1e0-4eb3-8b5d-3433d9ce24b8",
+        requestedModel: "gemini-3.8-flash",
+        activeModel: "gemini-3.5-flash-lite",
+        fallbackFrom: "gemini-3.8-flash",
+        fallbackReason: "PROVIDER_RATE_LIMITED|429|quota_exceeded",
+        ttfbMs: 259,
+        firstVisibleChunkMs: 820,
+        completeMs: 3100,
+      }),
+    ).toEqual({
+      type: "timing",
+      requestId: "5dd687df-c1e0-4eb3-8b5d-3433d9ce24b8",
+      requestedModel: "gemini-3.8-flash",
+      activeModel: "gemini-3.5-flash-lite",
+      fallbackFrom: "gemini-3.8-flash",
+      fallbackReason: "PROVIDER_RATE_LIMITED|429|quota_exceeded",
+      ttfbMs: 259,
+      firstVisibleChunkMs: 820,
+      completeMs: 3100,
+    });
   });
 });
 

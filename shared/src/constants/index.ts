@@ -55,6 +55,35 @@ export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
 export const MAX_ATTACHMENTS_PER_MESSAGE = 8;
 
+/**
+ * Google AI Studio default when GEMINI_API_KEY is present.
+ * Lite is the primary Ken model so new chats skip the slower 3.8 hop.
+ * Gemini 2.5 Flash is retired for new keys (404 → "no longer available to new users").
+ */
+export const GEMINI_FLASH_LITE_MODEL_ID = "gemini-3.5-flash-lite";
+
+export const DEFAULT_GEMINI_MODEL_ID = GEMINI_FLASH_LITE_MODEL_ID;
+
+/** Still listed so existing 3.8 threads and an explicit picker choice keep working. */
+export const GEMINI_FLASH_MODEL_ID = "gemini-3.8-flash";
+
+/** Mid Flash generation; Google's documented successor to Gemini 2.5 Flash. */
+export const GEMINI_FLASH_2_MODEL_ID = "gemini-3.6-flash";
+
+/**
+ * Retired Gemini IDs mapped onto models still served on AI Studio.
+ * One GEMINI_API_KEY unlocks every Gemini catalog entry; these aliases keep old chats on Google.
+ */
+export const GEMINI_MODEL_ALIASES: Readonly<Record<string, string>> = {
+  "gemini-2.5-flash": DEFAULT_GEMINI_MODEL_ID,
+  "gemini-2.5-flash-lite": GEMINI_FLASH_LITE_MODEL_ID,
+  "gemini-2.0-flash": GEMINI_FLASH_2_MODEL_ID,
+};
+
+export function resolveGeminiModelId(modelId: string): string {
+  return GEMINI_MODEL_ALIASES[modelId] ?? modelId;
+}
+
 /** Fast Groq default when GROQ_API_KEY (or a user Groq credential) is present. */
 export const DEFAULT_GROQ_MODEL_ID = "qwen/qwen3.6-27b";
 
@@ -78,6 +107,11 @@ export const GROQ_MODEL_ALIASES: Readonly<Record<string, string>> = {
 
 export function resolveGroqModelId(modelId: string): string {
   return GROQ_MODEL_ALIASES[modelId] ?? modelId;
+}
+
+/** True when a catalog id is a Llama family model (never used as Ken's default). */
+export function isLlamaModelId(modelId: string): boolean {
+  return /llama/i.test(modelId);
 }
 
 export const MAX_STORED_MESSAGE_TURNS = 100;

@@ -122,20 +122,16 @@ export function useLandingScenes(rootRef: RefObject<HTMLElement | null>): void {
     const begin = (): void => {
       if (started || disposed) return;
       started = true;
-      const t = window.setTimeout(
-        () => {
-          hideBootLoader();
-          const d = window.setTimeout(revealHeroText, 240);
-          cleanups.push(() => clearTimeout(d));
-        },
-        REDUCED ? 150 : 1750,
-      );
-      cleanups.push(() => clearTimeout(t));
+      // The old 1.75s boot hold was the landing LCP. Hero copy is already in
+      // the HTML; hide the loader on the first frame so Lighthouse measures
+      // text, not a theatrical delay.
+      hideBootLoader("instant");
+      revealHeroText();
     };
     if (document.readyState === "complete") begin();
     else on(window, "load", begin);
-    const failsafe = window.setTimeout(begin, 4000);
-    const navFailsafe = window.setTimeout(() => nav?.classList.add("in"), 6000);
+    const failsafe = window.setTimeout(begin, 800);
+    const navFailsafe = window.setTimeout(() => nav?.classList.add("in"), 1200);
     cleanups.push(() => {
       clearTimeout(failsafe);
       clearTimeout(navFailsafe);
@@ -1308,18 +1304,30 @@ export function useLandingScenes(rootRef: RefObject<HTMLElement | null>): void {
       }
     };
 
-    if (hasWebGL()) {
+    const loadThree = (): void => {
+      if (disposed) return;
+      if (!hasWebGL()) {
+        root.classList.add("no-webgl");
+        return;
+      }
       if (window.THREE) {
         initGL();
-      } else {
-        const s = document.createElement("script");
-        s.src = "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js";
-        s.onload = initGL;
-        s.onerror = () => root.classList.add("no-webgl");
-        document.head.appendChild(s);
+        return;
       }
+      const s = document.createElement("script");
+      s.src = "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js";
+      s.async = true;
+      s.onload = initGL;
+      s.onerror = () => root.classList.add("no-webgl");
+      document.head.appendChild(s);
+      cleanups.push(() => s.remove());
+    };
+    if ("requestIdleCallback" in window) {
+      const idleHandle = window.requestIdleCallback(loadThree, { timeout: 1200 });
+      cleanups.push(() => window.cancelIdleCallback(idleHandle));
     } else {
-      root.classList.add("no-webgl");
+      const timeoutHandle = globalThis.setTimeout(loadThree, 200);
+      cleanups.push(() => globalThis.clearTimeout(timeoutHandle));
     }
 
     /* live coordinate readout */

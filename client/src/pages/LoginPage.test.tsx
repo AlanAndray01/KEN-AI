@@ -1,11 +1,13 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { LoginPage } from "./LoginPage";
 
+const login = vi.fn();
+
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({
-    login: vi.fn(),
+    login,
     register: vi.fn(),
     logout: vi.fn(),
     user: null,
@@ -38,6 +40,31 @@ describe("LoginPage", () => {
     expect(screen.getByRole("navigation", { name: "Account" })).toBeInTheDocument();
     expect(screen.getByRole("form", { name: "Sign in" })).toBeInTheDocument();
     expect(screen.getByLabelText("Password")).toBeInTheDocument();
+  });
+
+  it("sends an unverified account to the verify screen instead of chat", async () => {
+    login.mockResolvedValue({
+      requiresVerification: true,
+      email: "ada@example.com",
+      emailSent: true,
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/login"]}>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/verify-email" element={<div>Verify email screen</div>} />
+          <Route path="/chat" element={<div>Chat screen</div>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(screen.getByLabelText("Email address"), { target: { value: "ada@example.com" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "secret1" } });
+    fireEvent.submit(screen.getByRole("form", { name: "Sign in" }));
+
+    expect(await screen.findByText("Verify email screen")).toBeInTheDocument();
+    expect(screen.queryByText("Chat screen")).not.toBeInTheDocument();
   });
 
   it("toggles password visibility", () => {

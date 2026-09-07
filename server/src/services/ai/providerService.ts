@@ -202,13 +202,6 @@ export async function testUserCredential(
   providerId: string,
   input: TestProviderInput = {},
 ): Promise<PublicCredentialTest> {
-  if (providerId === "gemini") {
-    throw new AppError("Gemini is no longer supported. Use Groq or an OpenAI-compatible provider.", {
-      statusCode: 400,
-      code: "PROVIDER_REMOVED",
-    });
-  }
-
   const builtIn = getBuiltInProvider(providerId);
   const stored = await loadGlobalProvider(providerId);
   if (!builtIn && !stored) {
@@ -290,12 +283,6 @@ export async function upsertUserCredential(
   providerId: string,
   input: UpsertUserCredentialInput,
 ): Promise<PublicUserCredential> {
-  if (providerId === "gemini") {
-    throw new AppError("Gemini is no longer supported. Use Groq or an OpenAI-compatible provider.", {
-      statusCode: 400,
-      code: "PROVIDER_REMOVED",
-    });
-  }
   const known = getBuiltInProvider(providerId) ?? (await loadGlobalProvider(providerId));
   if (!known) {
     throw new AppError("Provider not found", { statusCode: 404, code: "PROVIDER_NOT_FOUND" });

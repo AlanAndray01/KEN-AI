@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AppError } from "../../utils/AppError.js";
-import type { AIProvider, AIResponse } from "./AIProvider.js";
+import type { AIProvider, AIResponse, StreamEvent } from "./AIProvider.js";
+import { clearModelSkips, rememberModelSkip } from "./modelSkip.js";
 
 const fakeGenerate = vi.fn<(request: { modelId: string; providerId?: string }) => Promise<AIResponse>>();
 const assertModelAvailable = vi.fn();
@@ -36,11 +37,13 @@ vi.mock("./ModelRegistry.js", () => ({
   modelRegistry: {
     assertModelAvailable: (...args: unknown[]) => assertModelAvailable(...args),
     listPublicModels: (...args: unknown[]) => listPublicModels(...args),
+    listRoutableModels: (...args: unknown[]) => listPublicModels(...args),
   },
 }));
 
 describe("AIProviderManager", () => {
   beforeEach(() => {
+    clearModelSkips();
     fakeGenerate.mockReset();
     assertModelAvailable.mockReset();
     resolveCredentials.mockReset();
@@ -377,6 +380,90 @@ describe("AIProviderManager", () => {
     });
   });
 
+  it("aliases retired Gemini 2.5 Flash onto the current Gemini default", async () => {
+    resolveCredentials.mockResolvedValue({
+      providerId: "gemini",
+      name: "Google Gemini",
+      type: "gemini",
+      apiKey: "test-gemini-key-zzzz",
+      enabled: true,
+      configured: true,
+      source: "environment",
+      capabilities: ["text"],
+    });
+    fakeGenerate.mockResolvedValue({
+      content: "from-gemini",
+      model: "gemini-3.5-flash-lite",
+      provider: "gemini",
+      finishReason: "stop",
+    });
+
+    const { AIProviderManager } = await import("./AIProviderManager.js");
+    const manager = new AIProviderManager();
+    const result = await manager.generate({
+      providerId: "gemini",
+      modelId: "gemini-2.5-flash",
+      messages: [{ role: "user", content: "Hi" }],
+      skipAvailabilityCheck: true,
+    });
+
+    expect(result.content).toBe("from-gemini");
+    expect(fakeGenerate.mock.calls[0]?.[0]).toMatchObject({
+      providerId: "gemini",
+      modelId: "gemini-3.5-flash-lite",
+    });
+  });
+
+  it("does not hop to Groq when Gemini reports the model unavailable", async () => {
+    listPublicModels.mockResolvedValue([
+      {
+        id: "gemini-3.8-flash",
+        providerId: "gemini",
+        name: "Gemini 3.8 Flash",
+        capabilities: ["text", "streaming"],
+        enabled: true,
+        available: true,
+      },
+      {
+        id: "qwen/qwen3.6-27b",
+        providerId: "groq",
+        name: "Qwen 3.6 27B",
+        capabilities: ["text", "streaming"],
+        enabled: true,
+        available: true,
+      },
+    ]);
+    resolveCredentials.mockImplementation(async (providerId: string) => ({
+      providerId,
+      name: providerId,
+      type: providerId,
+      apiKey: "test-gemini-key-zzzz",
+      enabled: true,
+      configured: true,
+      source: "environment",
+      capabilities: ["text"],
+    }));
+    fakeGenerate.mockRejectedValue(
+      new AppError(
+        "This model models/gemini-3.8-flash is no longer available to new users.",
+        { statusCode: 404, code: "MODEL_UNAVAILABLE" },
+      ),
+    );
+
+    const { AIProviderManager } = await import("./AIProviderManager.js");
+    const manager = new AIProviderManager();
+
+    await expect(
+      manager.generate({
+        providerId: "gemini",
+        modelId: "gemini-3.8-flash",
+        messages: [{ role: "user", content: "Hi" }],
+        skipAvailabilityCheck: true,
+      }),
+    ).rejects.toMatchObject({ code: "MODEL_UNAVAILABLE" });
+    expect(fakeGenerate).toHaveBeenCalledTimes(1);
+  });
+
   it("aliases a retired fallback model id onto its supported replacement", async () => {
     // AI_FALLBACK_MODEL_ID may still name a decommissioned Groq model. The
     // registry filters those out, so without aliasing the hop resolves to
@@ -407,5 +494,231 @@ describe("AIProviderManager", () => {
       providerId: "groq",
       modelId: "openai/gpt-oss-120b",
     });
+  });
+
+  it("emits a fallback event and stays on Gemini Lite after a 3.8 429", async () => {
+    listPublicModels.mockResolvedValue([
+      {
+        id: "gemini-3.8-flash",
+        providerId: "gemini",
+        name: "Gemini 3.8 Flash",
+        capabilities: ["text", "streaming"],
+        enabled: true,
+        available: true,
+      },
+      {
+        id: "gemini-3.5-flash-lite",
+        providerId: "gemini",
+        name: "Gemini 3.5 Flash Lite",
+        capabilities: ["text", "streaming"],
+        enabled: true,
+        available: true,
+      },
+      {
+        id: "openai/gpt-oss-20b",
+        providerId: "groq",
+        name: "GPT OSS 20B",
+        capabilities: ["text", "streaming"],
+        enabled: true,
+        available: true,
+      },
+    ]);
+    resolveCredentials.mockImplementation(async (providerId: string) => ({
+      providerId,
+      name: providerId,
+      type: providerId,
+      apiKey: "test-gemini-key-zzzz",
+      enabled: true,
+      configured: true,
+      source: "environment",
+      capabilities: ["text"],
+    }));
+
+    const attempted: Array<{ modelId: string; firstByteTimeoutMs?: number }> = [];
+    fakeAdapter.stream = async function* (request: {
+      modelId: string;
+      maxTokens?: number;
+      reasoningEffort?: string;
+      firstByteTimeoutMs?: number;
+    }) {
+      attempted.push({ modelId: request.modelId, firstByteTimeoutMs: request.firstByteTimeoutMs });
+      if (request.modelId === "gemini-3.8-flash") {
+        throw new AppError("Provider rate limit reached.", {
+          statusCode: 429,
+          code: "PROVIDER_RATE_LIMITED",
+          extra: { httpStatus: 429, errorClass: "quota_exceeded", retryAfterMs: 49_391 },
+        });
+      }
+      yield { type: "start", model: request.modelId, provider: "gemini" };
+      yield { type: "chunk", text: "There is" };
+      yield {
+        type: "complete",
+        response: { content: "There is", model: request.modelId, provider: "gemini", finishReason: "stop" },
+      };
+    };
+
+    const { AIProviderManager } = await import("./AIProviderManager.js");
+    const manager = new AIProviderManager();
+    const events: StreamEvent[] = [];
+    for await (const event of manager.stream({
+      providerId: "gemini",
+      modelId: "gemini-3.8-flash",
+      messages: [{ role: "user", content: "So Whose the father of science?" }],
+      skipAvailabilityCheck: true,
+      maxTokens: 1024,
+      reasoningEffort: "none",
+      requestId: "5dd687df-c1e0-4eb3-8b5d-3433d9ce24b8",
+    })) {
+      events.push(event);
+    }
+
+    expect(attempted).toEqual([
+      { modelId: "gemini-3.8-flash", firstByteTimeoutMs: 2_500 },
+      { modelId: "gemini-3.5-flash-lite", firstByteTimeoutMs: undefined },
+    ]);
+    expect(events.find((event) => event.type === "fallback")).toMatchObject({
+      type: "fallback",
+      model: "gemini-3.5-flash-lite",
+      provider: "gemini",
+      fallbackFrom: "gemini-3.8-flash",
+      fallbackReason: "PROVIDER_RATE_LIMITED|429|quota_exceeded",
+    });
+  });
+
+  it("skips a cooled-down 3.8 hop and copies the caller's token budget onto Lite", async () => {
+    listPublicModels.mockResolvedValue([
+      {
+        id: "gemini-3.8-flash",
+        providerId: "gemini",
+        name: "Gemini 3.8 Flash",
+        capabilities: ["text", "streaming"],
+        enabled: true,
+        available: true,
+      },
+      {
+        id: "gemini-3.5-flash-lite",
+        providerId: "gemini",
+        name: "Gemini 3.5 Flash Lite",
+        capabilities: ["text", "streaming"],
+        enabled: true,
+        available: true,
+      },
+    ]);
+    resolveCredentials.mockResolvedValue({
+      providerId: "gemini",
+      name: "Google Gemini",
+      type: "gemini",
+      apiKey: "test-gemini-key-zzzz",
+      enabled: true,
+      configured: true,
+      source: "environment",
+      capabilities: ["text"],
+    });
+    rememberModelSkip(
+      "gemini",
+      "gemini-3.8-flash",
+      new AppError("Provider rate limit reached.", {
+        statusCode: 429,
+        code: "PROVIDER_RATE_LIMITED",
+        extra: { httpStatus: 429, errorClass: "quota_exceeded", retryAfterMs: 49_391 },
+      }),
+    );
+
+    const hops: Array<{ modelId: string; maxTokens?: number; reasoningEffort?: string }> = [];
+    fakeAdapter.stream = async function* (request: {
+      modelId: string;
+      maxTokens?: number;
+      reasoningEffort?: string;
+    }) {
+      hops.push(request);
+      yield { type: "chunk", text: "There is" };
+      yield {
+        type: "complete",
+        response: { content: "There is", model: request.modelId, provider: "gemini", finishReason: "stop" },
+      };
+    };
+
+    const { AIProviderManager } = await import("./AIProviderManager.js");
+    const manager = new AIProviderManager();
+    const events: StreamEvent[] = [];
+    for await (const event of manager.stream({
+      providerId: "gemini",
+      modelId: "gemini-3.8-flash",
+      messages: [{ role: "user", content: "Hi" }],
+      skipAvailabilityCheck: true,
+      maxTokens: 1024,
+      reasoningEffort: "none",
+    })) {
+      events.push(event);
+    }
+
+    expect(hops).toEqual([
+      expect.objectContaining({
+        modelId: "gemini-3.5-flash-lite",
+        maxTokens: 1024,
+        reasoningEffort: "none",
+      }),
+    ]);
+    expect(hops[0]).not.toHaveProperty("firstByteTimeoutMs");
+    expect(events[0]).toMatchObject({
+      type: "fallback",
+      model: "gemini-3.5-flash-lite",
+      fallbackFrom: "gemini-3.8-flash",
+    });
+  });
+
+  it("sends the Lite default straight to Gemini without a 3.8 first-byte abort", async () => {
+    listPublicModels.mockResolvedValue([
+      {
+        id: "gemini-3.5-flash-lite",
+        providerId: "gemini",
+        name: "Gemini 3.5 Flash Lite",
+        capabilities: ["text", "streaming"],
+        enabled: true,
+        available: true,
+      },
+      {
+        id: "gemini-3.8-flash",
+        providerId: "gemini",
+        name: "Gemini 3.8 Flash",
+        capabilities: ["text", "streaming"],
+        enabled: true,
+        available: true,
+      },
+    ]);
+    resolveCredentials.mockResolvedValue({
+      providerId: "gemini",
+      name: "Google Gemini",
+      type: "gemini",
+      apiKey: "test-gemini-key-zzzz",
+      enabled: true,
+      configured: true,
+      source: "environment",
+      capabilities: ["text"],
+    });
+
+    const attempted: Array<{ modelId: string; firstByteTimeoutMs?: number }> = [];
+    fakeAdapter.stream = async function* (request: { modelId: string; firstByteTimeoutMs?: number }) {
+      attempted.push({ modelId: request.modelId, firstByteTimeoutMs: request.firstByteTimeoutMs });
+      yield { type: "start", model: request.modelId, provider: "gemini" };
+      yield { type: "chunk", text: "There is" };
+      yield {
+        type: "complete",
+        response: { content: "There is", model: request.modelId, provider: "gemini", finishReason: "stop" },
+      };
+    };
+
+    const { AIProviderManager } = await import("./AIProviderManager.js");
+    const manager = new AIProviderManager();
+    for await (const _event of manager.stream({
+      providerId: "gemini",
+      modelId: "gemini-3.5-flash-lite",
+      messages: [{ role: "user", content: "Hi" }],
+      skipAvailabilityCheck: true,
+    })) {
+      /* drain */
+    }
+
+    expect(attempted).toEqual([{ modelId: "gemini-3.5-flash-lite", firstByteTimeoutMs: undefined }]);
   });
 });

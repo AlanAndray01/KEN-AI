@@ -36,8 +36,13 @@ vi.mock("../services/auth/authService.js", () => ({
 
 const { app } = await import("../app.js");
 
-function stateFromLocation(location: string): string {
-  return new URL(location).searchParams.get("state") ?? "";
+function stateFromStart(response: { headers: Record<string, unknown>; text?: string }): string {
+  const cookie = stateCookie(response);
+  if (cookie) {
+    return decodeURIComponent(cookie.slice("Ken_oauth_state=".length).split(";")[0] ?? "");
+  }
+  const match = String(response.text ?? "").match(/[?&]state=([^&"'<]+)/);
+  return match?.[1] ?? "";
 }
 
 function stateCookie(response: { headers: Record<string, unknown> }): string | undefined {
@@ -50,8 +55,10 @@ describe("Google OAuth CSRF state", () => {
   it("issues a random state and stores it in an httpOnly cookie", async () => {
     const response = await request(app).get("/api/auth/google");
 
-    expect(response.status).toBe(302);
-    const state = stateFromLocation(String(response.headers.location));
+    expect(response.status).toBe(200);
+    expect(String(response.headers["content-type"])).toMatch(/html/);
+    expect(response.text).toContain("accounts.google.com");
+    const state = stateFromStart(response);
     expect(state.length).toBeGreaterThan(20);
 
     const cookie = stateCookie(response);
@@ -65,15 +72,13 @@ describe("Google OAuth CSRF state", () => {
     const first = await request(app).get("/api/auth/google");
     const second = await request(app).get("/api/auth/google");
 
-    expect(stateFromLocation(String(first.headers.location))).not.toBe(
-      stateFromLocation(String(second.headers.location)),
-    );
+    expect(stateFromStart(first)).not.toBe(stateFromStart(second));
   });
 
   it("completes sign-in when the state matches the cookie", async () => {
     const agent = request.agent(app);
     const start = await agent.get("/api/auth/google");
-    const state = stateFromLocation(String(start.headers.location));
+    const state = stateFromStart(start);
 
     const callback = await agent.get("/api/auth/google/callback").query({ code: "valid-code", state });
 
@@ -100,7 +105,7 @@ describe("Google OAuth CSRF state", () => {
 
   it("rejects a callback that carries a state but no cookie", async () => {
     const start = await request(app).get("/api/auth/google");
-    const state = stateFromLocation(String(start.headers.location));
+    const state = stateFromStart(start);
 
     const response = await request(app).get("/api/auth/google/callback").query({ code: "valid-code", state });
 
@@ -110,7 +115,7 @@ describe("Google OAuth CSRF state", () => {
   it("clears the state cookie so it cannot be replayed", async () => {
     const agent = request.agent(app);
     const start = await agent.get("/api/auth/google");
-    const state = stateFromLocation(String(start.headers.location));
+    const state = stateFromStart(start);
 
     await agent.get("/api/auth/google/callback").query({ code: "valid-code", state });
 
@@ -127,7 +132,7 @@ describe("Google OAuth CSRF state", () => {
   it("requires an authorization code even when the state is valid", async () => {
     const agent = request.agent(app);
     const start = await agent.get("/api/auth/google");
-    const state = stateFromLocation(String(start.headers.location));
+    const state = stateFromStart(start);
 
     const response = await agent.get("/api/auth/google/callback").query({ state });
 

@@ -621,6 +621,29 @@ html.dark .hljs-type {
   min-height: 2.75rem;
 }
 
+.assistant-turn {
+  min-height: 2.75rem;
+}
+
+.chat-empty-title {
+  min-height: 2.25rem;
+}
+
+.markdown-stream,
+.markdown-placeholder {
+  margin: 0;
+  min-height: 1.5em;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.markdown img,
+.markdown video {
+  max-width: 100%;
+  height: auto;
+  background: color-mix(in srgb, var(--surface-muted) 80%, transparent);
+}
+
 /*
  * The word stays a flat, quiet grey: the dots carry the colour, and two things
  * shifting hue at once reads as noise. Each word remounts, so the fade plays on
@@ -773,10 +796,20 @@ html.dark .hljs-type {
    Chat turns are not: a message can hold code, KaTeX, or a rich widget that
    settles after mount, and the skipped placeholder shows up as an empty box
    mid-layout-shift. The list is already windowed to CHAT_MESSAGE_WINDOW, so
-   the containment bought nothing here. */
+   the containment bought nothing here. Off-screen turns skip the markdown
+   pipeline instead of using content-visibility. */
 .chat-history-item {
   content-visibility: auto;
   contain-intrinsic-size: auto 4.5rem;
+}
+
+.message-avatar {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+.model-selector-trigger {
+  min-height: 2.25rem;
 }
 
 /* Long user turns collapse so a pasted log cannot push the reply off screen.

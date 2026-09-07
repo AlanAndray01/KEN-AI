@@ -25,6 +25,7 @@ import type {
   PublicCredentialTest,
   PublicVoiceStatus,
 } from "@Ken/shared";
+import { resolveApiBaseUrl, resolveAuthBaseUrl } from "@/utils/apiBaseUrl";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -83,7 +84,7 @@ export interface OkResponse {
 }
 
 export interface ChatStreamEvent {
-  type: "start" | "chunk" | "complete" | "aborted" | "error";
+  type: "start" | "chunk" | "complete" | "aborted" | "error" | "timing" | "model";
   conversation?: PublicConversation;
   userMessage?: PublicMessage;
   assistantMessage?: PublicMessage;
@@ -91,6 +92,17 @@ export interface ChatStreamEvent {
   text?: string;
   message?: string;
   code?: string;
+  requestId?: string;
+  requestedModel?: string;
+  activeModel?: string;
+  fallbackFrom?: string;
+  fallbackReason?: string;
+  ttfbMs?: number;
+  googleConnectMs?: number;
+  firstVisibleChunkMs?: number;
+  completeMs?: number;
+  model?: string;
+  provider?: string;
 }
 
 async function* streamRequest(path: string, body: unknown, signal?: AbortSignal): AsyncGenerator<ChatStreamEvent> {
@@ -199,7 +211,12 @@ function createIdleWatchdog(
   };
 }
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:5000/api";
+const API_BASE_URL = resolveApiBaseUrl(import.meta.env);
+const AUTH_BASE_URL = resolveAuthBaseUrl(import.meta.env);
+
+function apiUrl(path: string): string {
+  return `${path.startsWith("/auth/") ? AUTH_BASE_URL : API_BASE_URL}${path}`;
+}
 
 /**
  * Endpoints that establish or clear a session. A 401 from these is a real
@@ -227,7 +244,7 @@ export function onUnauthorized(listener: () => void): () => void {
 
 async function performRefresh(): Promise<boolean> {
   try {
-    const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+    const response = await fetch(apiUrl("/auth/refresh"), {
       method: "POST",
       credentials: "include",
       headers: { Accept: "application/json" },
@@ -255,7 +272,7 @@ function refreshSession(): Promise<boolean> {
  */
 async function authedFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const requestInit: RequestInit = { ...init, credentials: "include" };
-  const response = await fetch(`${API_BASE_URL}${path}`, requestInit);
+  const response = await fetch(apiUrl(path), requestInit);
 
   if (response.status !== 401 || SESSION_ENDPOINTS.has(path)) {
     return response;
@@ -266,7 +283,7 @@ async function authedFetch(path: string, init: RequestInit = {}): Promise<Respon
     return response;
   }
 
-  return fetch(`${API_BASE_URL}${path}`, requestInit);
+  return fetch(apiUrl(path), requestInit);
 }
 
 function apiErrorFromBody(
@@ -397,7 +414,7 @@ export const api = {
       request<OkResponse>("/auth/reset-password", { method: "POST", body: JSON.stringify(body) }),
     changePassword: (body: { currentPassword: string; newPassword: string }) =>
       request<OkResponse>("/auth/change-password", { method: "POST", body: JSON.stringify(body) }),
-    googleStartUrl: `${API_BASE_URL}/auth/google`,
+    googleStartUrl: `${AUTH_BASE_URL}/auth/google`,
   },
   models: {
     list: () => request<{ models: PublicAIModel[] }>("/models"),

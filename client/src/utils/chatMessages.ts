@@ -31,7 +31,7 @@ export function appendChunk(messages: PublicMessage[], text: string): PublicMess
 }
 
 /** Keep the latest N messages mounted so long threads stay at 60 FPS. */
-export const CHAT_MESSAGE_WINDOW = 48;
+export const CHAT_MESSAGE_WINDOW = 32;
 
 export function upsertMessage(messages: PublicMessage[], next: PublicMessage): PublicMessage[] {
   const copy = [...messages];
@@ -125,6 +125,26 @@ export function startTurn(
     );
   }
   return dedupeMessages(next);
+}
+
+/** Updates the executing model on the live assistant row without touching its text. */
+export function applyAssistantModel(
+  messages: PublicMessage[],
+  next: { model?: string; provider?: string; messageId?: string },
+): PublicMessage[] {
+  const copy = [...messages];
+  for (let index = copy.length - 1; index >= 0; index -= 1) {
+    const message = copy[index];
+    if (!message || message.role !== "assistant") continue;
+    if (next.messageId && message.id !== next.messageId) continue;
+    copy[index] = {
+      ...message,
+      ...(next.model ? { model: next.model } : {}),
+      ...(next.provider ? { provider: next.provider } : {}),
+    };
+    return copy;
+  }
+  return copy;
 }
 
 export function markLastAssistant(messages: PublicMessage[], status: MessageStatus): PublicMessage[] {

@@ -1,16 +1,13 @@
-import { memo, useMemo } from "react";
+import { memo, useEffect, useMemo, useState, type ComponentProps } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
-import rehypeHighlight from "rehype-highlight";
-import rehypeKatex from "rehype-katex";
 import type { Components } from "react-markdown";
 import { stripReasoning } from "@Ken/shared";
 import { CodeBlock } from "@/components/CodeBlock";
 import { MathBlock } from "@/components/MathBlock";
 import { normalizeLatex } from "@/utils/latexNormalize";
+import { sourceNeedsHighlight, sourceNeedsMath } from "@/utils/markdownNeeds";
 import { rehypeMathBlock } from "@/utils/rehypeMathBlock";
-import "katex/dist/katex.min.css";
 
 const components: Components = {
   pre({ children }) {
@@ -63,6 +60,15 @@ interface MarkdownContentProps {
   children: string;
 }
 
+type HighlightPlugin = (typeof import("rehype-highlight"))["default"];
+type RemarkMathPlugin = (typeof import("remark-math"))["default"];
+type RehypeKatexPlugin = (typeof import("rehype-katex"))["default"];
+
+interface MathPlugins {
+  remarkMath: RemarkMathPlugin;
+  rehypeKatex: RehypeKatexPlugin;
+}
+
 /**
  * Memoised on `children`: a streaming turn re-renders the message list on every
  * animation frame, and without this every mounted message would re-run the full
@@ -79,17 +85,69 @@ export const MarkdownContent = memo(function MarkdownContent({ children }: Markd
     return normalizeLatex(visible);
   }, [children]);
 
+  const needsMath = useMemo(() => sourceNeedsMath(source), [source]);
+  const needsHighlight = useMemo(() => sourceNeedsHighlight(source), [source]);
+  const [highlightPlugin, setHighlightPlugin] = useState<HighlightPlugin | null>(null);
+  const [mathPlugins, setMathPlugins] = useState<MathPlugins | null>(null);
+
+  useEffect(() => {
+    if (!needsHighlight) {
+      setHighlightPlugin(null);
+      return;
+    }
+    let cancelled = false;
+    void import("rehype-highlight").then((mod) => {
+      if (!cancelled) setHighlightPlugin(() => mod.default);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [needsHighlight]);
+
+  useEffect(() => {
+    if (!needsMath) {
+      setMathPlugins(null);
+      return;
+    }
+    let cancelled = false;
+    void Promise.all([import("remark-math"), import("rehype-katex"), import("katex/dist/katex.min.css")]).then(
+      ([remarkMath, rehypeKatex]) => {
+        if (!cancelled) {
+          setMathPlugins({
+            remarkMath: remarkMath.default,
+            rehypeKatex: rehypeKatex.default,
+          });
+        }
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [needsMath]);
+
+  const remarkPlugins = useMemo(
+    () => (mathPlugins ? [remarkGfm, mathPlugins.remarkMath] : [remarkGfm]),
+    [mathPlugins],
+  );
+
+  const rehypePlugins = useMemo(() => {
+    const plugins: NonNullable<ComponentProps<typeof Markdown>["rehypePlugins"]> = [];
+    if (mathPlugins) {
+      plugins.push(mathPlugins.rehypeKatex, rehypeMathBlock);
+    }
+    if (highlightPlugin) {
+      plugins.push(highlightPlugin);
+    }
+    return plugins;
+  }, [highlightPlugin, mathPlugins]);
+
   if (!children) {
     return <span className="text-fg-muted">…</span>;
   }
 
   return (
     <div className="markdown">
-      <Markdown
-        remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeKatex, rehypeMathBlock, rehypeHighlight]}
-        components={components}
-      >
+      <Markdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={components}>
         {source}
       </Markdown>
     </div>

@@ -4,7 +4,10 @@ import {
   DEFAULT_CEREBRAS_MODEL_ID,
   DEFAULT_CLOUDFLARE_MODEL_ID,
   DEFAULT_DEEPSEEK_MODEL_ID,
+  DEFAULT_GEMINI_MODEL_ID,
   DEFAULT_GROQ_MODEL_ID,
+  GEMINI_FLASH_2_MODEL_ID,
+  GEMINI_FLASH_MODEL_ID,
   GROQ_OSS_20B_MODEL_ID,
   GROQ_QUALITY_MODEL_ID,
 } from "@Ken/shared";
@@ -22,7 +25,40 @@ export interface BuiltInProviderDefinition {
 
 const TEXT_STREAM: ModelCapability[] = ["text", "streaming"];
 
+const GEMINI_CAPS: ModelCapability[] = ["text", "vision", "streaming", "tools"];
+
 export const BUILT_IN_PROVIDERS: BuiltInProviderDefinition[] = [
+  {
+    providerId: "gemini",
+    name: "Google Gemini",
+    type: "gemini",
+    envKey: "GEMINI_API_KEY",
+    defaultBaseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
+    capabilities: GEMINI_CAPS,
+    models: [
+      {
+        id: DEFAULT_GEMINI_MODEL_ID,
+        name: "Gemini 3.5 Flash Lite",
+        description: "Default Ken model. Fast Gemini Flash Lite on the Google AI Studio free tier.",
+        capabilities: GEMINI_CAPS,
+        contextWindow: 1_000_000,
+      },
+      {
+        id: GEMINI_FLASH_MODEL_ID,
+        name: "Gemini 3.8 Flash",
+        description: "Higher-quality Gemini Flash. Existing threads that saved this id keep using it.",
+        capabilities: GEMINI_CAPS,
+        contextWindow: 1_000_000,
+      },
+      {
+        id: GEMINI_FLASH_2_MODEL_ID,
+        name: "Gemini 3.6 Flash",
+        description: "Google's documented successor to Gemini 2.5 Flash, on the same AI Studio key.",
+        capabilities: GEMINI_CAPS,
+        contextWindow: 1_000_000,
+      },
+    ],
+  },
   {
     providerId: "groq",
     name: "Groq",
@@ -87,7 +123,22 @@ export const BUILT_IN_PROVIDERS: BuiltInProviderDefinition[] = [
       {
         id: "claude-sonnet-4-5",
         name: "Claude Sonnet 4.5",
+        description: "Official Anthropic API. Requires ANTHROPIC_API_KEY — there is no public free Claude proxy in Ken.",
         capabilities: ["text", "vision", "streaming", "tools", "reasoning"],
+        contextWindow: 200_000,
+      },
+      {
+        id: "claude-opus-4-1",
+        name: "Claude Opus 4.1",
+        description: "Highest-quality official Anthropic model. Paid developer tier.",
+        capabilities: ["text", "vision", "streaming", "tools", "reasoning"],
+        contextWindow: 200_000,
+      },
+      {
+        id: "claude-haiku-4-5",
+        name: "Claude Haiku 4.5",
+        description: "Fast official Anthropic model. Same ANTHROPIC_API_KEY as Sonnet and Opus.",
+        capabilities: ["text", "vision", "streaming", "tools"],
         contextWindow: 200_000,
       },
     ],

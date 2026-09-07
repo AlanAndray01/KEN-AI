@@ -84,8 +84,11 @@ export function ChatComposer({
   useEffect(() => {
     const element = textareaRef.current;
     if (!element) return;
-    element.style.height = "auto";
-    element.style.height = `${Math.min(element.scrollHeight, COMPOSER_MAX_PX)}px`;
+    const frame = window.requestAnimationFrame(() => {
+      element.style.height = "auto";
+      element.style.height = `${Math.min(element.scrollHeight, COMPOSER_MAX_PX)}px`;
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [value]);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>): void {
@@ -211,7 +214,8 @@ export function ChatComposer({
           placeholder={placeholder}
           aria-label="Message"
           aria-autocomplete="list"
-          aria-expanded={mentionOpen}
+          aria-haspopup={onMention ? "listbox" : undefined}
+          aria-controls={mentionOpen ? "composer-mentions" : undefined}
           className="composer-input max-h-[96px] min-h-[48px] w-full resize-none overflow-y-auto bg-transparent px-4 pt-3 pb-2 text-sm outline-none ring-0 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
           id="composer-input"
           onChange={(event) => {
@@ -224,6 +228,7 @@ export function ChatComposer({
         />
         {mentionOpen ? (
           <ul
+            id="composer-mentions"
             role="listbox"
             aria-label="Mention a GPT"
             className="mx-3 mb-2 max-h-48 overflow-y-auto rounded-xl border border-border bg-canvas py-1"

@@ -1,10 +1,39 @@
 import path from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
+import { loadEnv } from "vite";
 import { defineConfig } from "vitest/config";
 
-export default defineConfig({
-  plugins: [react(), tailwindcss()],
+export default defineConfig(({ command, mode }) => {
+  const viteEnv = loadEnv(mode, __dirname, "VITE_");
+  if (command === "build" && (process.env.VERCEL || process.env.CI)) {
+    const apiUrl = viteEnv.VITE_API_BASE_URL || viteEnv.VITE_API_URL;
+    if (!apiUrl) {
+      throw new Error(
+        "Set VITE_API_BASE_URL or VITE_API_URL for a Vercel/CI client build (example: https://api.ken-ai.tech/api).",
+      );
+    }
+    if (/localhost|127\.0\.0\.1/i.test(apiUrl)) {
+      throw new Error("VITE_API_BASE_URL must not point at localhost on Vercel/CI.");
+    }
+  }
+
+  return {
+  plugins: [
+    react(),
+    tailwindcss(),
+    {
+      name: "katex-font-display-swap",
+      transform(code, id) {
+        const moduleId = id.replaceAll("\\", "/");
+        if (!moduleId.includes("/katex/dist/katex.min.css")) return;
+        return {
+          code: code.replaceAll("font-display:block", "font-display:swap"),
+          map: null,
+        };
+      },
+    },
+  ],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "src"),
@@ -32,36 +61,39 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
-          if (!id.includes("node_modules")) return;
+          // Vite reports module ids with `/` even on Windows. Matching
+          // `path.sep` here split `react` and `katex` into more than one chunk.
+          const moduleId = id.replaceAll("\\", "/");
+          if (!moduleId.includes("/node_modules/")) return;
           if (
-            id.includes("react-dom") ||
-            id.includes(`${path.sep}react${path.sep}`) ||
-            id.includes("react-router") ||
-            id.includes("scheduler")
+            /\/react-dom(?:\/|$)/.test(moduleId) ||
+            /\/node_modules\/react(?:\/|$)/.test(moduleId) ||
+            moduleId.includes("/react-router") ||
+            /\/scheduler(?:\/|$)/.test(moduleId) ||
+            moduleId.includes("/@tanstack/")
           ) {
             return "react";
           }
           if (
-            id.includes("highlight.js") ||
-            id.includes("react-markdown") ||
-            id.includes("rehype") ||
-            id.includes("remark") ||
-            id.includes("katex") ||
-            id.includes("unified") ||
-            id.includes("mdast") ||
-            id.includes("hast") ||
-            id.includes("micromark") ||
-            id.includes("unist") ||
-            id.includes("vfile") ||
-            id.includes("character-entities") ||
-            id.includes("comma-separated-tokens") ||
-            id.includes("space-separated-tokens") ||
-            id.includes("property-information")
+            moduleId.includes("highlight.js") ||
+            moduleId.includes("react-markdown") ||
+            moduleId.includes("/rehype") ||
+            moduleId.includes("/remark") ||
+            moduleId.includes("/katex") ||
+            moduleId.includes("/unified") ||
+            moduleId.includes("/mdast") ||
+            moduleId.includes("/hast") ||
+            moduleId.includes("/micromark") ||
+            moduleId.includes("/unist") ||
+            moduleId.includes("/vfile") ||
+            moduleId.includes("character-entities") ||
+            moduleId.includes("comma-separated-tokens") ||
+            moduleId.includes("space-separated-tokens") ||
+            moduleId.includes("property-information")
           ) {
             return "markdown";
           }
-          if (id.includes("@tanstack")) return "react";
-          if (id.includes("zustand") || id.includes("clsx") || id.includes("tailwind-merge")) {
+          if (moduleId.includes("zustand") || moduleId.includes("clsx") || moduleId.includes("tailwind-merge")) {
             return "vendor";
           }
           return;
@@ -74,4 +106,5 @@ export default defineConfig({
     setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
   },
+};
 });

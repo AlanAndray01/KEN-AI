@@ -32,6 +32,24 @@ export function writeSseDone(res: ExpressResponse): void {
   flushSse(res);
 }
 
+/** Visible in DevTools; no secrets, no prompt text. */
+export interface SseTiming {
+  type: "timing";
+  requestId?: string;
+  requestedModel: string;
+  activeModel: string;
+  fallbackFrom?: string;
+  fallbackReason?: string;
+  ttfbMs?: number;
+  googleConnectMs?: number;
+  firstVisibleChunkMs?: number;
+  completeMs?: number;
+}
+
+export function buildSseTiming(fields: Omit<SseTiming, "type">): SseTiming {
+  return { type: "timing", ...fields };
+}
+
 function flushSse(res: ExpressResponse): void {
   (res as FlushableResponse).flush?.();
 }

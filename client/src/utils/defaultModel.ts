@@ -1,8 +1,13 @@
 import {
+  DEFAULT_GEMINI_MODEL_ID,
   DEFAULT_GROQ_MODEL_ID,
   DEFAULT_OPENAI_MODEL_ID,
+  GEMINI_FLASH_2_MODEL_ID,
+  GEMINI_FLASH_MODEL_ID,
   GROQ_OSS_20B_MODEL_ID,
   GROQ_QUALITY_MODEL_ID,
+  isLlamaModelId,
+  resolveGeminiModelId,
   resolveGroqModelId,
   type PublicAIModel,
 } from "@Ken/shared";
@@ -13,11 +18,15 @@ export function pickDefaultModel(models: PublicAIModel[]): PublicAIModel | undef
     available.find((model) => model.providerId === providerId && model.id === id);
 
   return (
+    pick("gemini", DEFAULT_GEMINI_MODEL_ID) ??
+    pick("gemini", GEMINI_FLASH_MODEL_ID) ??
+    pick("gemini", GEMINI_FLASH_2_MODEL_ID) ??
+    available.find((model) => model.providerId === "gemini") ??
     pick("groq", DEFAULT_GROQ_MODEL_ID) ??
     pick("groq", GROQ_OSS_20B_MODEL_ID) ??
     pick("groq", GROQ_QUALITY_MODEL_ID) ??
     pick("openai", DEFAULT_OPENAI_MODEL_ID) ??
-    available.find((model) => model.providerId !== "gemini") ??
+    available.find((model) => !isLlamaModelId(model.id)) ??
     available[0] ??
     models[0]
   );
@@ -25,12 +34,13 @@ export function pickDefaultModel(models: PublicAIModel[]): PublicAIModel | undef
 
 export function shouldReplaceStoredModel(
   stored: { providerId: string; modelId: string },
-  defaultModel: PublicAIModel,
+  _defaultModel: PublicAIModel,
   models: PublicAIModel[],
 ): boolean {
   if (!stored.providerId || !stored.modelId) return true;
-  if (stored.providerId === "gemini") return true;
   if (stored.providerId === "groq" && resolveGroqModelId(stored.modelId) !== stored.modelId) return true;
+  if (stored.providerId === "gemini" && resolveGeminiModelId(stored.modelId) !== stored.modelId) return true;
+  if (isLlamaModelId(stored.modelId)) return true;
   const exists = models.some((model) => model.providerId === stored.providerId && model.id === stored.modelId);
   if (!exists) return true;
   return false;

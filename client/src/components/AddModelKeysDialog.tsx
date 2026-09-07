@@ -1,14 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useState, type FormEvent } from "react";
 import { X } from "lucide-react";
-import { DEFAULT_GROQ_MODEL_ID } from "@Ken/shared";
+import { DEFAULT_GEMINI_MODEL_ID } from "@Ken/shared";
 import { ApiError, api } from "@/services/api";
 
 const PROVIDERS = [
+  { id: "gemini", label: "Google Gemini" },
   { id: "groq", label: "Groq" },
   { id: "openai", label: "OpenAI" },
   { id: "openrouter", label: "OpenRouter" },
-  { id: "anthropic", label: "Anthropic" },
+  { id: "anthropic", label: "Anthropic (Claude)" },
   { id: "ollama", label: "Ollama" },
 ] as const;
 
@@ -21,8 +22,8 @@ export function AddModelKeysDialog({ open, onClose }: AddModelKeysDialogProps) {
   const queryClient = useQueryClient();
   const titleId = useId();
   const [label, setLabel] = useState("");
-  const [providerId, setProviderId] = useState("groq");
-  const [modelId, setModelId] = useState(DEFAULT_GROQ_MODEL_ID);
+  const [providerId, setProviderId] = useState("gemini");
+  const [modelId, setModelId] = useState(DEFAULT_GEMINI_MODEL_ID);
   const [apiKey, setApiKey] = useState("");
   const [error, setError] = useState("");
   const [testResult, setTestResult] = useState("");
@@ -97,7 +98,7 @@ export function AddModelKeysDialog({ open, onClose }: AddModelKeysDialogProps) {
             </h2>
             <p className="mt-1 text-sm text-fg-muted">
               Keys are encrypted on the server and never returned to the browser. This does not write `.env`.
-              Gemini is not in this catalog.
+              Gemini uses a Google AI Studio key. Claude requires an official Anthropic key.
             </p>
           </div>
           <button
@@ -166,7 +167,7 @@ export function AddModelKeysDialog({ open, onClose }: AddModelKeysDialogProps) {
             <input
               value={modelId}
               onChange={(event) => setModelId(event.target.value)}
-              placeholder={DEFAULT_GROQ_MODEL_ID}
+              placeholder={DEFAULT_GEMINI_MODEL_ID}
               className="mt-1 w-full rounded-xl border border-border bg-canvas px-3 py-2"
             />
           </label>

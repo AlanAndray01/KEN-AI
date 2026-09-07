@@ -6,10 +6,11 @@ import { ApiError, api } from "@/services/api";
 import { QUERY_STALE_MS } from "@/query";
 
 const BYOK_PROVIDERS = [
+  { id: "gemini", label: "Google Gemini" },
   { id: "groq", label: "Groq Cloud" },
   { id: "openrouter", label: "OpenRouter" },
   { id: "openai", label: "OpenAI" },
-  { id: "anthropic", label: "Anthropic" },
+  { id: "anthropic", label: "Anthropic (Claude)" },
   { id: "ollama", label: "Ollama (local)" },
 ] as const;
 
@@ -25,7 +26,7 @@ export function SettingsModelsPage() {
     queryFn: () => api.me.credentials.list(),
     staleTime: QUERY_STALE_MS,
   });
-  const [providerId, setProviderId] = useState("groq");
+  const [providerId, setProviderId] = useState("gemini");
   const [apiKey, setApiKey] = useState("");
   const [error, setError] = useState("");
   const [testResult, setTestResult] = useState("");
@@ -85,7 +86,8 @@ export function SettingsModelsPage() {
         </p>
       </div>
       <p className="rounded-xl border border-border bg-surface px-4 py-3 text-sm text-fg-muted">
-        Google AI Studio / Gemini is not in this catalog. Use Groq, OpenRouter, OpenAI, or Anthropic.
+        Gemini is the default when a Google AI Studio key is saved. Claude (Sonnet, Opus, Haiku) uses
+        an official Anthropic key — Ken does not call unofficial free Claude proxies.
       </p>
       {modelsQuery.isLoading ? <p className="text-fg-muted">Loading models…</p> : null}
       {modelsQuery.isError ? <p className="text-danger">Unable to load models.</p> : null}

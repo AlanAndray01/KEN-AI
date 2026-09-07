@@ -29,25 +29,35 @@ export function useStickToBottom<T extends HTMLElement>(): {
     setPinned(next);
   }, []);
 
-  const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
+  const frameRef = useRef<number | null>(null);
+
+  const writeScrollTop = useCallback((behavior: ScrollBehavior = "auto") => {
     const element = containerRef.current;
     if (!element) return;
-    // `scrollTo` is absent in jsdom and in a few older engines; the direct
-    // assignment below is the equivalent instant jump.
-    if (typeof element.scrollTo === "function") {
-      element.scrollTo({ top: element.scrollHeight, behavior });
+    // Read geometry in the same frame as the write so we do not invalidate
+    // layout and then query it again.
+    const { scrollHeight } = element;
+    if (behavior !== "auto" && typeof element.scrollTo === "function") {
+      element.scrollTo({ top: scrollHeight, behavior });
       return;
     }
-    element.scrollTop = element.scrollHeight;
+    element.scrollTop = scrollHeight;
   }, []);
+
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
+    writeScrollTop(behavior);
+  }, [writeScrollTop]);
 
   /** Follow new content only while the reader has not scrolled away. */
   const stickToBottom = useCallback(() => {
     if (!pinnedRef.current) return;
-    const element = containerRef.current;
-    if (!element) return;
-    element.scrollTop = element.scrollHeight;
-  }, []);
+    if (frameRef.current != null) return;
+    frameRef.current = window.requestAnimationFrame(() => {
+      frameRef.current = null;
+      if (!pinnedRef.current) return;
+      writeScrollTop();
+    });
+  }, [writeScrollTop]);
 
   /** Re-attach to the bottom, e.g. after the reader sends a new message. */
   const pin = useCallback(() => {
@@ -60,13 +70,18 @@ export function useStickToBottom<T extends HTMLElement>(): {
     if (!element) return undefined;
 
     const onScroll = (): void => {
-      const distanceFromBottom =
-        element.scrollHeight - element.scrollTop - element.clientHeight;
-      setPinnedState(distanceFromBottom <= BOTTOM_THRESHOLD_PX);
+      const { scrollHeight, scrollTop, clientHeight } = element;
+      setPinnedState(scrollHeight - scrollTop - clientHeight <= BOTTOM_THRESHOLD_PX);
     };
 
     element.addEventListener("scroll", onScroll, { passive: true });
-    return () => element.removeEventListener("scroll", onScroll);
+    return () => {
+      element.removeEventListener("scroll", onScroll);
+      if (frameRef.current != null) {
+        window.cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
+    };
   }, [setPinnedState]);
 
   return { containerRef, pinned, stickToBottom, scrollToBottom, pin };

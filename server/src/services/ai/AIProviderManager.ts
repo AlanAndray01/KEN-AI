@@ -1,5 +1,11 @@
 import type { ChatToolId, ModelCapability, PublicAnalysisJob, PublicTool } from "@Ken/shared";
-import { CLOUDFLARE_VISION_MODEL_ID, resolveDeepSeekModelId, resolveGroqModelId } from "@Ken/shared";
+import {
+  CLOUDFLARE_VISION_MODEL_ID,
+  DEFAULT_GEMINI_MODEL_ID,
+  resolveDeepSeekModelId,
+  resolveGeminiModelId,
+  resolveGroqModelId,
+} from "@Ken/shared";
 import { env } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
 import { AppError } from "../../utils/AppError.js";
@@ -9,14 +15,16 @@ import {
   type ToolExecuteResult,
   type ToolManager,
 } from "../tools/ToolManager.js";
-import { withKenIdentity } from "../chat/identity.js";
+import { describeSelectedModel, withKenIdentity } from "../chat/identity.js";
 import type { AIProvider, AIResponse, GenerateRequest, StreamEvent } from "./AIProvider.js";
 import { createProviderAdapter } from "./createProviderAdapter.js";
 import { requireConfigured, resolveCredentials, envKeyCount } from "./credentials.js";
 import { consumePlatformChatQuota } from "./platformChatQuota.js";
 import { isProviderQuotaError, isRetryableProviderError } from "./fallback.js";
+import { formatFallbackReason, nextOpenGeminiModelId, peekModelSkip, rememberModelSkip } from "./modelSkip.js";
 import { modelRegistry } from "./ModelRegistry.js";
 import { FREE_FALLBACK_CHAIN, pickConfiguredModel, preferredIdsForProvider } from "./primaryModel.js";
+import { GEMINI_FIRST_BYTE_TIMEOUT_MS } from "./providers/OpenAICompatibleProvider.js";
 
 export interface AIProviderManagerOptions {
   fallbackProviderId?: string;
@@ -63,39 +71,62 @@ export class AIProviderManager {
   }
 
   async generate(request: GenerateRequest): Promise<AIResponse> {
+    const skip = peekModelSkip(request.providerId, request.modelId);
+    if (skip) {
+      logger.warn(
+        {
+          requestId: request.requestId,
+          providerId: request.providerId,
+          modelId: request.modelId,
+          fallbackReason: skip.reason,
+        },
+        "Skipping cooled-down model",
+      );
+      return this.generateFromError(
+        request,
+        new AppError("Provider rate limit reached.", {
+          statusCode: skip.code === "PROVIDER_UNAVAILABLE" ? 503 : 429,
+          code: skip.code,
+          extra: { errorClass: skip.reason },
+        }),
+        false,
+      );
+    }
     try {
-      return await this.generateOnce(request);
+      return await this.generateOnce(this.withPrimaryFirstByteTimeout(request));
     } catch (error) {
-      let last: unknown = error;
-      if (isProviderQuotaError(error) && envKeyCount(request.providerId) > 1) {
-        try {
-          return await this.generateOnce(request);
-        } catch (rotated) {
-          last = rotated;
-        }
-      }
-      if (!isRetryableProviderError(last)) throw last;
-      const hops = await this.fallbackHops(request);
-      for (const hop of hops) {
-        logger.warn(
-          { primary: request.providerId, fallback: hop.providerId, fallbackModel: hop.modelId },
-          "Primary provider failed; failing over immediately",
-        );
-        try {
-          return await this.generateOnce(hop);
-        } catch (next) {
-          last = next;
-          if (!isRetryableProviderError(next)) throw next;
-        }
-      }
-      throw last;
+      rememberModelSkip(request.providerId, request.modelId, error);
+      return this.generateFromError(request, error, true);
     }
   }
 
   async *stream(request: GenerateRequest): AsyncIterable<StreamEvent> {
+    const skip = peekModelSkip(request.providerId, request.modelId);
+    if (skip) {
+      logger.warn(
+        {
+          requestId: request.requestId,
+          providerId: request.providerId,
+          modelId: request.modelId,
+          fallbackReason: skip.reason,
+        },
+        "Skipping cooled-down model",
+      );
+      yield* this.streamFromError(
+        request,
+        new AppError("Provider rate limit reached.", {
+          statusCode: skip.code === "PROVIDER_UNAVAILABLE" ? 503 : 429,
+          code: skip.code,
+        }),
+        false,
+        skip.reason,
+      );
+      return;
+    }
+
     let yieldedOutput = false;
     try {
-      for await (const event of this.streamOnce(request)) {
+      for await (const event of this.streamOnce(this.withPrimaryFirstByteTimeout(request))) {
         if (event.type === "error" && !yieldedOutput) {
           throw new AppError(event.message, {
             statusCode: 502,
@@ -109,32 +140,174 @@ export class AIProviderManager {
       }
     } catch (error) {
       if (yieldedOutput) throw error;
-      let last: unknown = error;
-      if (isProviderQuotaError(error) && envKeyCount(request.providerId) > 1) {
-        try {
-          yield* this.streamOnce(request);
-          return;
-        } catch (rotated) {
-          last = rotated;
-        }
-      }
-      if (!isRetryableProviderError(last)) throw last;
-      const hops = await this.fallbackHops(request);
-      for (const hop of hops) {
-        logger.warn(
-          { primary: request.providerId, fallback: hop.providerId, fallbackModel: hop.modelId },
-          "Primary provider failed; failing over immediately",
-        );
-        try {
-          yield* this.streamOnce(hop);
-          return;
-        } catch (next) {
-          last = next;
-          if (!isRetryableProviderError(next)) throw next;
-        }
-      }
-      throw last;
+      rememberModelSkip(request.providerId, request.modelId, error);
+      yield* this.streamFromError(request, error, true);
     }
+  }
+
+  private async generateFromError(
+    request: GenerateRequest,
+    error: unknown,
+    allowKeyRotate: boolean,
+  ): Promise<AIResponse> {
+    let last: unknown = error;
+    if (allowKeyRotate && isProviderQuotaError(error) && envKeyCount(request.providerId) > 1) {
+      try {
+        return await this.generateOnce(request);
+      } catch (rotated) {
+        last = rotated;
+        rememberModelSkip(request.providerId, request.modelId, rotated);
+      }
+    }
+    if (!isRetryableProviderError(last)) throw last;
+    for (const hop of this.geminiCatalogHops(request)) {
+      this.logFallback(request, hop, last);
+      try {
+        return await this.generateOnce(hop);
+      } catch (next) {
+        last = next;
+        rememberModelSkip(hop.providerId, hop.modelId, next);
+        if (!isRetryableProviderError(next)) throw next;
+      }
+    }
+    for (const hop of await this.remainingHops(request)) {
+      if (peekModelSkip(hop.providerId, hop.modelId)) continue;
+      this.logFallback(request, hop, last);
+      try {
+        return await this.generateOnce(hop);
+      } catch (next) {
+        last = next;
+        rememberModelSkip(hop.providerId, hop.modelId, next);
+        if (!isRetryableProviderError(next)) throw next;
+      }
+    }
+    throw last;
+  }
+
+  private async *streamFromError(
+    request: GenerateRequest,
+    error: unknown,
+    allowKeyRotate: boolean,
+    reasonOverride?: string,
+  ): AsyncIterable<StreamEvent> {
+    let last: unknown = error;
+    if (allowKeyRotate && isProviderQuotaError(error) && envKeyCount(request.providerId) > 1) {
+      try {
+        yield* this.streamOnce(request);
+        return;
+      } catch (rotated) {
+        last = rotated;
+        rememberModelSkip(request.providerId, request.modelId, rotated);
+      }
+    }
+    if (!isRetryableProviderError(last)) throw last;
+    const tryHop = async function* (this: AIProviderManager, hop: GenerateRequest): AsyncIterable<StreamEvent> {
+      const fallbackReason = reasonOverride ?? formatFallbackReason(last);
+      this.logFallback(request, hop, last);
+      yield {
+        type: "fallback",
+        model: hop.modelId,
+        provider: hop.providerId,
+        fallbackFrom: request.modelId,
+        fallbackReason,
+      };
+      yield* this.streamOnce(hop);
+    };
+
+    for (const hop of this.geminiCatalogHops(request)) {
+      try {
+        yield* tryHop.call(this, hop);
+        return;
+      } catch (next) {
+        last = next;
+        rememberModelSkip(hop.providerId, hop.modelId, next);
+        if (!isRetryableProviderError(next)) throw next;
+      }
+    }
+    for (const hop of await this.remainingHops(request)) {
+      if (peekModelSkip(hop.providerId, hop.modelId)) continue;
+      try {
+        yield* tryHop.call(this, hop);
+        return;
+      } catch (next) {
+        last = next;
+        rememberModelSkip(hop.providerId, hop.modelId, next);
+        if (!isRetryableProviderError(next)) throw next;
+      }
+    }
+    throw last;
+  }
+
+  private logFallback(request: GenerateRequest, hop: GenerateRequest, error: unknown): void {
+    logger.warn(
+      {
+        requestId: request.requestId,
+        primary: request.providerId,
+        primaryModel: request.modelId,
+        fallback: hop.providerId,
+        fallbackModel: hop.modelId,
+        fallbackReason: formatFallbackReason(error),
+      },
+      "Primary provider failed; failing over immediately",
+    );
+  }
+
+  /**
+   * Gemini hops come from the catalog (no registry fan-out) so a known 3.8
+   * skip can start Lite on the same tick. Other providers load only if Gemini
+   * is actually exhausted.
+   */
+  private async hopsFor(request: GenerateRequest): Promise<GenerateRequest[]> {
+    const catalog = this.geminiCatalogHops(request);
+    if (request.providerId === "gemini") {
+      const rest = (await this.fallbackHops(request)).filter((hop) => hop.providerId !== "gemini");
+      return [...catalog, ...rest];
+    }
+    return this.orderHops(request, await this.fallbackHops(request));
+  }
+
+  private geminiCatalogHops(request: GenerateRequest): GenerateRequest[] {
+    if (request.providerId !== "gemini") return [];
+    const hops: GenerateRequest[] = [];
+    let next = nextOpenGeminiModelId(request.modelId);
+    const seen = new Set<string>();
+    while (next && !seen.has(next)) {
+      seen.add(next);
+      const { firstByteTimeoutMs: _timeout, ...rest } = request;
+      hops.push({ ...rest, providerId: "gemini", modelId: next });
+      next = nextOpenGeminiModelId(next);
+    }
+    return hops;
+  }
+
+  private async remainingHops(request: GenerateRequest): Promise<GenerateRequest[]> {
+    const hops = await this.fallbackHops(request);
+    if (request.providerId === "gemini") {
+      return hops.filter((hop) => hop.providerId !== "gemini");
+    }
+    return this.orderHops(request, hops);
+  }
+
+  /**
+   * A Gemini-selected chat stays on Gemini hops first. Groq (and the rest of
+   * the free chain) only run after every configured Gemini model has failed.
+   */
+  private orderHops(request: GenerateRequest, hops: GenerateRequest[]): GenerateRequest[] {
+    if (request.providerId !== "gemini") return hops;
+    return [
+      ...hops.filter((hop) => hop.providerId === "gemini"),
+      ...hops.filter((hop) => hop.providerId !== "gemini"),
+    ];
+  }
+
+  /**
+   * Short first-byte budget on slower Gemini hops (3.8 / 3.6) only.
+   * The Lite default is allowed to think so we do not bounce new chats onto 3.8.
+   */
+  private withPrimaryFirstByteTimeout(request: GenerateRequest): GenerateRequest {
+    if (request.providerId !== "gemini" || request.firstByteTimeoutMs !== undefined) return request;
+    if (request.modelId === DEFAULT_GEMINI_MODEL_ID) return request;
+    return { ...request, firstByteTimeoutMs: GEMINI_FIRST_BYTE_TIMEOUT_MS };
   }
 
   private async generateOnce(request: GenerateRequest): Promise<AIResponse> {
@@ -176,9 +349,15 @@ export class AIProviderManager {
    * no matter which route built the prompt.
    */
   private prepareRequest(request: GenerateRequest): GenerateRequest {
-    const resolved = this.withVisionModel(request);
-    const messages = withKenIdentity(resolved.messages);
+    const aliased = this.withAliasedModel(request);
+    const resolved = this.withVisionModel(aliased);
+    const messages = withKenIdentity(resolved.messages, describeSelectedModel(resolved.modelId));
     return messages === resolved.messages ? resolved : { ...resolved, messages };
+  }
+
+  private withAliasedModel(request: GenerateRequest): GenerateRequest {
+    const modelId = resolveRetiredModelId(request.providerId, request.modelId);
+    return modelId === request.modelId ? request : { ...request, modelId };
   }
 
   private withVisionModel(request: GenerateRequest): GenerateRequest {
@@ -190,7 +369,7 @@ export class AIProviderManager {
   }
 
   private async fallbackHops(request: GenerateRequest): Promise<GenerateRequest[]> {
-    const models = await modelRegistry.listPublicModels(request.userId);
+    const models = await modelRegistry.listRoutableModels(request.userId);
     const hops: GenerateRequest[] = [];
     const seen = new Set([`${request.providerId}:${request.modelId}`]);
 
@@ -200,14 +379,12 @@ export class AIProviderManager {
       const key = `${match.providerId}:${match.id}`;
       if (seen.has(key)) return;
       seen.add(key);
-      const hop: GenerateRequest = {
+      const { firstByteTimeoutMs: _primaryTimeout, ...rest } = request;
+      hops.push({
+        ...rest,
         providerId: match.providerId,
         modelId: match.id,
-        messages: request.messages,
-      };
-      if (request.userId) hop.userId = request.userId;
-      if (request.abortSignal) hop.abortSignal = request.abortSignal;
-      hops.push(hop);
+      });
     };
 
     if (this.options.fallbackProviderId !== undefined) {
@@ -277,6 +454,7 @@ export class AIProviderManager {
 /** Map a provider's retired model ids onto their supported replacements. */
 function resolveRetiredModelId(providerId: string, modelId: string): string {
   if (providerId === "groq") return resolveGroqModelId(modelId);
+  if (providerId === "gemini") return resolveGeminiModelId(modelId);
   if (providerId === "deepseek") return resolveDeepSeekModelId(modelId);
   return modelId;
 }

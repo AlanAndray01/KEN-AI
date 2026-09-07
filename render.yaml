@@ -24,9 +24,7 @@ services:
       - key: NODE_ENV
         value: production
 
-      # Render injects its own PORT; server.ts must bind to it.
-      - key: PORT
-        value: 10000
+      # Render injects PORT. server.ts binds to process.env.PORT via env.PORT.
 
       # Comma-separated list of allowed browser origins (see config/cors.ts).
       # Both apex and www are listed because Vercel serves both.
@@ -58,12 +56,18 @@ services:
       - key: ENCRYPTION_KEY
         sync: false
 
-      # ---- Chat engine. Without a Groq key the app returns provider errors. ----
+      # ---- Chat engine. Gemini is the default; Groq is the next hop. ----
+      - key: GEMINI_API_KEY
+        sync: false
       - key: GROQ_API_KEY
         sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
 
-      # ---- Optional: email, extra providers, first admin ----
+      # ---- Email verification + password reset (required to boot) ----
       - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
         sync: false
       - key: RESEND_FROM_EMAIL
         sync: false

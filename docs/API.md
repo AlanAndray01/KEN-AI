@@ -65,7 +65,7 @@ Rate limited (`RATE_LIMIT_AUTH`, default 10 / 60s) except logout, me, and Google
 
 | Method | Path | Auth | Notes |
 | --- | --- | --- | --- |
-| `POST` | `/api/auth/register` | No | Body: `{ name, email, password }`. Creates an unverified user, emails a hashed 6-digit code (15-minute TTL), and does **not** set cookies. Response: `{ requiresVerification: true, email, emailSent }`. In test/`ENABLE_DEV_AUTH_TOOLS` only, `verificationCode` is included. |
+| `POST` | `/api/auth/register` | No | Body: `{ name, email, password }`. Creates an unverified user, emails a hashed 6-digit code (15-minute TTL), and does **not** set cookies. Response: `{ requiresVerification: true, email, emailSent }`. In test/`ENABLE_DEV_AUTH_TOOLS` only, `verificationCode` is included. Production returns `503 EMAIL_UNAVAILABLE` if Resend is missing or delivery fails; the account is not marked verified. |
 | `POST` | `/api/auth/verify-email` | No | Body: `{ email, code }`. On success sets cookies and marks `isVerified: true`. |
 | `POST` | `/api/auth/resend-code` | No | Body: `{ email }`. Always `{ ok: true }` (no email enumeration). Sends a new code only if that local account is unverified. |
 | `POST` | `/api/auth/login` | No | Body: `{ email, password }`. Sets cookies when the account is verified. If credentials are valid but `isVerified` is false: `403 EMAIL_NOT_VERIFIED` with `requiresVerification: true` and a new code is sent. |

@@ -4,6 +4,7 @@ import { CLIENT_ROUTES, passwordSchema } from "@Ken/shared";
 import { AuthField } from "@/components/AuthField";
 import { OtpInput } from "@/components/OtpInput";
 import { ApiError, api } from "@/services/api";
+import { toast } from "@/stores/toastStore";
 import { emailFieldTone } from "@/utils/authFieldTone";
 
 export function ResetPasswordPage() {
@@ -26,9 +27,14 @@ export function ResetPasswordPage() {
     setPending(true);
     try {
       await api.auth.resetPassword({ email, code, password });
+      toast("Password updated. Sign in with your new password.", "success");
       void navigate(CLIENT_ROUTES.login);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to reset password");
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : "Unable to reset password. The code may be invalid or expired.",
+      );
     } finally {
       setPending(false);
     }

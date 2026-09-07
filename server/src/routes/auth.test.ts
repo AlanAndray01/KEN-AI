@@ -356,6 +356,40 @@ describe("auth API", () => {
     expect(newLogin.body.user).not.toHaveProperty("passwordHash");
   });
 
+  it("rejects an expired or unknown reset code", async () => {
+    const agent = request.agent(app);
+    await registerAndVerify(agent, {
+      name: "Alan Turing",
+      email: "alan@example.com",
+      password,
+    });
+
+    const forgot = await request(app)
+      .post("/api/auth/forgot-password")
+      .send({ email: "alan@example.com" });
+
+    for (const reset of resets.values()) {
+      reset.expiresAt = new Date(Date.now() - 1000);
+    }
+
+    const expired = await request(app).post("/api/auth/reset-password").send({
+      email: "alan@example.com",
+      token: forgot.body.resetToken,
+      password: "New-password-123!",
+    });
+    expect(expired.status).toBe(400);
+    expect(expired.body.error.code).toBe("RESET_TOKEN_INVALID");
+    expect(expired.body.error.message).toMatch(/invalid or has expired/i);
+
+    const unknown = await request(app).post("/api/auth/reset-password").send({
+      email: "alan@example.com",
+      code: "000000",
+      password: "New-password-123!",
+    });
+    expect(unknown.status).toBe(400);
+    expect(unknown.body.error.code).toBe("RESET_TOKEN_INVALID");
+  });
+
   it("resends a verification code without revealing whether the email exists", async () => {
     const agent = request.agent(app);
     await agent.post("/api/auth/register").send({

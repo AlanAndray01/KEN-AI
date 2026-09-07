@@ -114,12 +114,6 @@ export async function testMyCredential(req: Request, res: Response): Promise<voi
 
 export async function saveSettingsKey(req: Request, res: Response): Promise<void> {
   const body = saveProviderKeySchema.parse(req.body);
-  if (body.providerId === "gemini") {
-    throw new AppError("Gemini is no longer supported. Use Groq or an OpenAI-compatible provider.", {
-      statusCode: 400,
-      code: "PROVIDER_REMOVED",
-    });
-  }
   const credential = await upsertUserCredential(requireUserId(req), body.providerId, { apiKey: body.apiKey });
   res.status(200).json({ credential });
 }

@@ -1,9 +1,10 @@
 import type { ProviderType } from "@Ken/shared";
 import { logger } from "../../../config/logger.js";
 import { AppError } from "../../../utils/AppError.js";
-import { isAbortError } from "../../../utils/abort.js";
+import { combineAbortSignals, isAbortError } from "../../../utils/abort.js";
 import { redactSensitive, toSafeError } from "../../../utils/redact.js";
 import { iterateSseData } from "../../../utils/sse.js";
+import { classifyProviderMessage, parseRetryAfterMs } from "../modelSkip.js";
 import type {
   AIProvider,
   CredentialValidation,
@@ -17,6 +18,9 @@ import { getBuiltInProvider } from "../catalog.js";
 import { normalizeAIResponse, compactUsage } from "../normalizers/normalize.js";
 import { createReasoningFilter, stripReasoning } from "@Ken/shared";
 import { buildCompatibleChatBody } from "./groqChatBody.js";
+
+/** Fail over before a hung Gemini connect burns the whole turn. */
+export const GEMINI_FIRST_BYTE_TIMEOUT_MS = 2_500;
 
 export class OpenAICompatibleProvider implements AIProvider {
   readonly id: string;
@@ -78,11 +82,11 @@ export class OpenAICompatibleProvider implements AIProvider {
         },
         body: JSON.stringify(buildCompatibleChatBody(request, { stream: false, providerId: this.id })),
       };
-      if (request.abortSignal) init.signal = request.abortSignal;
-      const response = await fetch(`${baseUrl}/chat/completions`, init);
+      const fetched = await fetchChatCompletion(baseUrl, init, request.abortSignal, request.firstByteTimeoutMs);
+      const response = fetched.response;
 
       if (!response.ok) {
-        await throwProviderHttpError(response, this.id);
+        await throwProviderHttpError(response, this.id, { connectMs: fetched.connectMs, modelId: request.modelId });
       }
 
       const body = (await response.json()) as {
@@ -133,11 +137,12 @@ export class OpenAICompatibleProvider implements AIProvider {
         },
         body: JSON.stringify(buildCompatibleChatBody(request, { stream: true, providerId: this.id })),
       };
-      if (request.abortSignal) init.signal = request.abortSignal;
-      const response = await fetch(`${baseUrl}/chat/completions`, init);
+      const fetched = await fetchChatCompletion(baseUrl, init, request.abortSignal, request.firstByteTimeoutMs);
+      const response = fetched.response;
       if (!response.ok) {
-        await throwProviderHttpError(response, this.id);
+        await throwProviderHttpError(response, this.id, { connectMs: fetched.connectMs, modelId: request.modelId });
       }
+      yield { type: "connected", model: request.modelId, provider: this.id, connectMs: fetched.connectMs };
 
       for await (const payload of iterateSseData(response, request.abortSignal)) {
         if (request.abortSignal?.aborted) break;
@@ -226,45 +231,139 @@ export class OpenAICompatibleProvider implements AIProvider {
   }
 }
 
-export function parseProviderHttpError(status: number, bodyText: string, providerId: string): AppError {
-  let providerMessage: string | undefined;
-  let providerCode: string | undefined;
+function extractProviderError(bodyText: string): { message?: string; code?: string } {
   try {
-    const parsed = JSON.parse(bodyText) as {
-      error?: { message?: string; code?: string; type?: string };
+    const parsed = JSON.parse(bodyText) as unknown;
+    const obj = Array.isArray(parsed) ? parsed[0] : parsed;
+    if (!obj || typeof obj !== "object" || !("error" in obj)) {
+      return {};
+    }
+    const error = (obj as { error?: { message?: string; code?: string; type?: string; status?: string } }).error;
+    return {
+      ...(error?.message ? { message: error.message } : {}),
+      ...(error?.code || error?.type || error?.status
+        ? { code: error.code ?? error.type ?? error.status }
+        : {}),
     };
-    providerMessage = parsed.error?.message;
-    providerCode = parsed.error?.code ?? parsed.error?.type;
   } catch {
-    if (bodyText.trim()) providerMessage = bodyText.slice(0, 500);
+    return bodyText.trim() ? { message: bodyText.slice(0, 500) } : {};
   }
+}
+
+export function parseProviderHttpError(
+  status: number,
+  bodyText: string,
+  providerId: string,
+  meta?: { connectMs?: number; modelId?: string },
+): AppError {
+  const extracted = extractProviderError(bodyText);
+  const providerMessage = extracted.message;
+  const providerCode = extracted.code;
+  const errorClass = classifyProviderMessage(providerMessage);
+  const retryAfterMs = parseRetryAfterMs(providerMessage);
+  const extra: Record<string, unknown> = {
+    httpStatus: status,
+    ...(providerCode ? { providerCode } : {}),
+    ...(errorClass ? { errorClass } : {}),
+    ...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
+    ...(meta?.connectMs !== undefined ? { connectMs: meta.connectMs } : {}),
+    ...(meta?.modelId ? { modelId: meta.modelId } : {}),
+  };
 
   logger.warn(
     {
       providerId,
       status,
       providerCode,
+      errorClass,
+      retryAfterMs,
+      ...(meta?.connectMs !== undefined ? { connectMs: meta.connectMs } : {}),
+      ...(meta?.modelId ? { modelId: meta.modelId } : {}),
       providerMessage: providerMessage ? redactSensitive(providerMessage) : undefined,
     },
     "Provider HTTP error",
   );
 
   if (status === 401 || status === 403) {
-    return new AppError("Invalid credentials", { statusCode: 401, code: "PROVIDER_INVALID_CREDENTIALS" });
+    return new AppError("Invalid credentials", {
+      statusCode: 401,
+      code: "PROVIDER_INVALID_CREDENTIALS",
+      extra,
+    });
   }
   if (status === 429) {
-    return new AppError("Provider rate limit reached.", { statusCode: 429, code: "PROVIDER_RATE_LIMITED" });
+    return new AppError("Provider rate limit reached.", {
+      statusCode: 429,
+      code: "PROVIDER_RATE_LIMITED",
+      extra,
+    });
   }
   const retired =
-    Boolean(providerMessage) &&
-    /decommissioned|does not exist|unknown model|not found|model_decommissioned/i.test(providerMessage ?? "");
+    status === 404 ||
+    (Boolean(providerMessage) &&
+      /decommissioned|does not exist|unknown model|not found|no longer available|model_decommissioned/i.test(
+        providerMessage ?? "",
+      ));
   if (retired) {
-    return new AppError(providerMessage ?? "Model unavailable", { statusCode: 404, code: "MODEL_UNAVAILABLE" });
+    return new AppError(providerMessage ?? "Model unavailable", {
+      statusCode: 404,
+      code: "MODEL_UNAVAILABLE",
+      extra,
+    });
   }
-  return new AppError(providerMessage || "Provider request failed", { statusCode: 502, code: "PROVIDER_ERROR" });
+  if (status === 503) {
+    return new AppError(providerMessage || "Provider unavailable", {
+      statusCode: 503,
+      code: "PROVIDER_UNAVAILABLE",
+      extra,
+    });
+  }
+  return new AppError(providerMessage || "Provider request failed", {
+    statusCode: 502,
+    code: "PROVIDER_ERROR",
+    extra,
+  });
 }
 
-async function throwProviderHttpError(response: Response, providerId: string): Promise<never> {
+async function throwProviderHttpError(
+  response: Response,
+  providerId: string,
+  meta?: { connectMs?: number; modelId?: string },
+): Promise<never> {
   const bodyText = await response.text();
-  throw parseProviderHttpError(response.status, bodyText, providerId);
+  throw parseProviderHttpError(response.status, bodyText, providerId, meta);
+}
+
+async function fetchChatCompletion(
+  baseUrl: string,
+  init: RequestInit,
+  abortSignal: AbortSignal | undefined,
+  firstByteTimeoutMs?: number,
+): Promise<{ response: Response; connectMs: number }> {
+  const started = Date.now();
+  const firstByte = new AbortController();
+  const timer =
+    firstByteTimeoutMs && firstByteTimeoutMs > 0
+      ? setTimeout(() => {
+          firstByte.abort(Object.assign(new Error("Provider first-byte timeout"), { name: "TimeoutError" }));
+        }, firstByteTimeoutMs)
+      : undefined;
+  try {
+    const response = await fetch(`${baseUrl}/chat/completions`, {
+      ...init,
+      signal: combineAbortSignals(abortSignal, firstByte.signal),
+    });
+    return { response, connectMs: Date.now() - started };
+  } catch (error) {
+    if (firstByte.signal.aborted && !abortSignal?.aborted) {
+      throw new AppError("Provider did not respond in time.", {
+        statusCode: 503,
+        code: "PROVIDER_UNAVAILABLE",
+        extra: { httpStatus: 503, errorClass: "first_byte_timeout", connectMs: Date.now() - started },
+      });
+    }
+    throw error;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }

@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { buildResponsePolicyMessage, buildResponsePolicyMessages, detectTaskSignals, replyMaxTokens } from "./responsePolicy.js";
+import {
+  buildResponsePolicyMessage,
+  buildResponsePolicyMessages,
+  detectTaskSignals,
+  isLowThinkingTurn,
+  replyMaxTokens,
+} from "./responsePolicy.js";
 
 describe("detectTaskSignals", () => {
   it("caps decode length to the turn's reply budget", () => {
@@ -30,6 +36,13 @@ describe("detectTaskSignals", () => {
   it("keeps a tiny real question short rather than minimal", () => {
     expect(detectTaskSignals("What is Ken?").budget).toBe("short");
     expect(detectTaskSignals("What is Ken?").needsMath).toBe(false);
+  });
+
+  it("treats a short factual question as low-thinking, not a medium essay", () => {
+    const signals = detectTaskSignals("So Whose the father of science?");
+    expect(signals.budget).toBe("short");
+    expect(isLowThinkingTurn(signals)).toBe(true);
+    expect(replyMaxTokens(signals.budget)).toBe(1024);
   });
 
   it("does not treat a greeting that carries a real request as small talk", () => {
@@ -73,7 +86,9 @@ describe("detectTaskSignals", () => {
       buildResponsePolicyMessage("who made you?", { skipProtocol: true }),
     ]) {
       expect(message.content).toContain("You are Ken AI");
-      expect(message.content).toContain("provided by Groq");
+      expect(message.content).toContain("the selected model");
+      expect(message.content).toContain("I am Ken AI powered by the selected model");
+      expect(message.content).not.toContain("provided by Groq");
       expect(message.content).toContain("Never identify as ChatGPT");
     }
   });

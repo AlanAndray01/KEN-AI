@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import type { PublicUser } from "@Ken/shared";
 import { AuthContext, type AuthUser } from "@/contexts/auth-context";
+import { prefetchSignedInWorkspace } from "@/query";
 import { ApiError, api, onUnauthorized } from "@/services/api";
 import { hydrateModelSelection } from "@/stores/modelStore";
 import { readCachedAuthUser, writeCachedAuthUser } from "@/utils/authCache";
@@ -27,8 +29,14 @@ function hydrateFromCache(): AuthUser | null {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const [user, setUser] = useState<AuthUser | null>(hydrateFromCache);
   const [isLoading, setIsLoading] = useState(() => !readCachedAuthUser());
+
+  useEffect(() => {
+    if (!user) return;
+    prefetchSignedInWorkspace(queryClient);
+  }, [queryClient, user]);
 
   const commitUser = useCallback((next: AuthUser | null) => {
     writeCachedAuthUser(next);
@@ -47,7 +55,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
       .catch((error: unknown) => {
         if (cancelled) return;
-        if (error instanceof ApiError && error.status === 401) {
+        if (
+          error instanceof ApiError &&
+          (error.status === 401 || error.code === "EMAIL_NOT_VERIFIED")
+        ) {
           commitUser(null);
           return;
         }

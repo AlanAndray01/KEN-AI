@@ -1,4 +1,4 @@
-import { GROQ_MODEL_ALIASES, type PublicAIModel } from "@Ken/shared";
+import { GEMINI_MODEL_ALIASES, GROQ_MODEL_ALIASES, isLlamaModelId, type PublicAIModel } from "@Ken/shared";
 import { AppError } from "../../utils/AppError.js";
 import { AIModel } from "../../models/AIModel.js";
 import { BUILT_IN_PROVIDERS, getBuiltInProvider } from "./catalog.js";
@@ -16,13 +16,27 @@ interface ModelRecord {
   enabled: boolean;
 }
 
+const LIST_CACHE_MS = 15_000;
+
 export class ModelRegistry {
+  private listCache = new Map<string, { at: number; models: PublicAIModel[] }>();
+
   async listPublicModels(userId?: string): Promise<PublicAIModel[]> {
+    const models = await this.listAllModels(userId);
+    return models.filter((model) => model.enabled && model.available && !isLlamaModelId(model.id));
+  }
+
+  /** Configured models including Llama hops used only as silent fallback. */
+  async listRoutableModels(userId?: string): Promise<PublicAIModel[]> {
     const models = await this.listAllModels(userId);
     return models.filter((model) => model.enabled && model.available);
   }
 
   async listAllModels(userId?: string): Promise<PublicAIModel[]> {
+    const cacheKey = userId ?? "";
+    const hit = this.listCache.get(cacheKey);
+    if (hit && Date.now() - hit.at < LIST_CACHE_MS) return hit.models;
+
     const [providers, stored] = await Promise.all([this.providerAvailability(userId), this.loadStoredModels()]);
     const merged = new Map<string, PublicAIModel>();
 
@@ -63,16 +77,18 @@ export class ModelRegistry {
     }
 
     for (const model of stored) {
-      if (isRetiredGroqModel(model.providerId, model.modelId)) continue;
+      if (isRetiredCatalogModel(model.providerId, model.modelId)) continue;
       const availability = providers.get(model.providerId) ?? { enabled: false, configured: false };
       merged.set(key(model.providerId, model.modelId), toPublicModel(model, availability));
     }
 
-    return [...merged.values()].sort((a, b) => {
+    const models = [...merged.values()].sort((a, b) => {
       const byRank = providerRank(a.providerId) - providerRank(b.providerId);
       if (byRank !== 0) return byRank;
       return catalogIndex(a.providerId, a.id) - catalogIndex(b.providerId, b.id);
     });
+    this.listCache.set(cacheKey, { at: Date.now(), models });
+    return models;
   }
 
   async assertModelAvailable(providerId: string, modelId: string, userId?: string): Promise<PublicAIModel> {
@@ -124,8 +140,10 @@ export class ModelRegistry {
   }
 }
 
-function isRetiredGroqModel(providerId: string, modelId: string): boolean {
-  return providerId === "groq" && modelId in GROQ_MODEL_ALIASES;
+function isRetiredCatalogModel(providerId: string, modelId: string): boolean {
+  if (providerId === "groq") return modelId in GROQ_MODEL_ALIASES;
+  if (providerId === "gemini") return modelId in GEMINI_MODEL_ALIASES;
+  return false;
 }
 
 function key(providerId: string, modelId: string): string {
@@ -138,12 +156,14 @@ function catalogIndex(providerId: string, modelId: string): number {
 }
 
 function providerRank(providerId: string): number {
-  if (providerId === "groq") return 0;
-  if (providerId === "cerebras") return 1;
-  if (providerId === "deepseek") return 2;
-  if (providerId === "cloudflare") return 3;
-  if (providerId === "openai") return 4;
-  return 5;
+  if (providerId === "gemini") return 0;
+  if (providerId === "groq") return 1;
+  if (providerId === "anthropic") return 2;
+  if (providerId === "cerebras") return 3;
+  if (providerId === "deepseek") return 4;
+  if (providerId === "cloudflare") return 5;
+  if (providerId === "openai") return 6;
+  return 7;
 }
 
 function toPublicModel(

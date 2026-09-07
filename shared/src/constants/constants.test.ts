@@ -4,10 +4,14 @@ import {
   API_ROUTES,
   AUTH_PROVIDERS,
   CLIENT_ROUTES,
+  DEFAULT_GEMINI_MODEL_ID,
   DEFAULT_GROQ_MODEL_ID,
   DEFAULT_OPENAI_MODEL_ID,
+  GEMINI_FLASH_LITE_MODEL_ID,
   GROQ_QUALITY_MODEL_ID,
   estimatePromptTokens,
+  isLlamaModelId,
+  resolveGeminiModelId,
   resolveGroqModelId,
   USER_ROLES,
 } from "./index.js";
@@ -17,10 +21,19 @@ describe("shared constants", () => {
     expect(APP_NAME).toBe("Ken AI");
   });
 
-  it("defaults chat inference to Groq Qwen 3.6 27B, with OpenAI as the documented hop", () => {
+  it("defaults chat inference to Gemini 3.5 Flash Lite, with Groq Qwen as the documented hop", () => {
+    expect(DEFAULT_GEMINI_MODEL_ID).toBe("gemini-3.5-flash-lite");
+    expect(GEMINI_FLASH_LITE_MODEL_ID).toBe("gemini-3.5-flash-lite");
+    expect(resolveGeminiModelId("gemini-2.5-flash")).toBe("gemini-3.5-flash-lite");
+    expect(resolveGeminiModelId("gemini-2.5-flash-lite")).toBe("gemini-3.5-flash-lite");
+    expect(resolveGeminiModelId("gemini-2.0-flash")).toBe("gemini-3.6-flash");
+    expect(resolveGeminiModelId("gemini-3.8-flash")).toBe("gemini-3.8-flash");
+    expect(resolveGeminiModelId("gemini-3.5-flash-lite")).toBe("gemini-3.5-flash-lite");
     expect(DEFAULT_GROQ_MODEL_ID).toBe("qwen/qwen3.6-27b");
     expect(GROQ_QUALITY_MODEL_ID).toBe("openai/gpt-oss-120b");
     expect(DEFAULT_OPENAI_MODEL_ID).toBe("gpt-4o-mini");
+    expect(isLlamaModelId("llama-3.3-70b")).toBe(true);
+    expect(isLlamaModelId("qwen/qwen3.6-27b")).toBe(false);
     expect(resolveGroqModelId("llama-3.3-70b-versatile")).toBe("openai/gpt-oss-120b");
     expect(resolveGroqModelId("llama-3.1-8b-instant")).toBe("qwen/qwen3.6-27b");
     expect(resolveGroqModelId("openai/gpt-oss-20b")).toBe("openai/gpt-oss-20b");

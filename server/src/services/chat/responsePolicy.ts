@@ -1,5 +1,5 @@
 import type { ChatMessage } from "../ai/AIProvider.js";
-import { KEN_IDENTITY } from "./identity.js";
+import { buildKenIdentity } from "./identity.js";
 import { LANGUAGE_RULE } from "./languageRule.js";
 import { ANSWER_PROTOCOL } from "./answerProtocol.js";
 
@@ -101,6 +101,11 @@ export function detectTaskSignals(content: string): TaskSignals {
   return { budget, needsMath, needsCode, needsQuotes, needsStructure, needsInteractive };
 }
 
+/** Short factual turns and greetings should not wait on a thinking phase. */
+export function isLowThinkingTurn(signals: TaskSignals): boolean {
+  return signals.budget === "minimal" || signals.budget === "short";
+}
+
 /**
  * Decode ceilings. GPT-OSS counts reasoning tokens against this budget, so
  * even a greeting needs more than a handful of tokens after `reasoning_effort`
@@ -126,10 +131,10 @@ export function replyMaxTokens(budget: ReplyBudget): number {
  */
 export function buildResponsePolicyMessages(
   content: string,
-  options?: { skipProtocol?: boolean },
+  options?: { skipProtocol?: boolean; modelName?: string },
 ): ChatMessage[] {
   const signals = detectTaskSignals(content);
-  const stable = [KEN_IDENTITY, LANGUAGE_RULE];
+  const stable = [buildKenIdentity(options?.modelName ?? "the selected model"), LANGUAGE_RULE];
   // Greetings skip the long protocol so prefill stays tiny and the first token
   // can land in under a second.
   if (!options?.skipProtocol && signals.budget !== "minimal") stable.push(ANSWER_PROTOCOL);

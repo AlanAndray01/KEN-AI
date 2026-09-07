@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { AppError } from "../../utils/AppError.js";
 import { createProviderAdapter } from "./createProviderAdapter.js";
+import { GeminiProvider } from "./providers/GeminiProvider.js";
 
 vi.mock("./providers/MockProvider.js", () => ({
   isMockAiAllowed: () => false,
@@ -8,24 +8,14 @@ vi.mock("./providers/MockProvider.js", () => ({
 }));
 
 describe("createProviderAdapter", () => {
-  it("refuses leftover Gemini provider configs", () => {
-    expect(() =>
-      createProviderAdapter({
-        id: "gemini",
-        name: "Google Gemini",
-        type: "gemini",
-        credentials: {},
-      }),
-    ).toThrow(AppError);
-    try {
-      createProviderAdapter({
-        id: "gemini",
-        name: "Google Gemini",
-        type: "gemini",
-        credentials: {},
-      });
-    } catch (error) {
-      expect(error).toMatchObject({ code: "PROVIDER_REMOVED" });
-    }
+  it("builds a Gemini adapter for leftover and new Gemini configs", () => {
+    const adapter = createProviderAdapter({
+      id: "gemini",
+      name: "Google Gemini",
+      type: "gemini",
+      credentials: { apiKey: "test-key" },
+    });
+    expect(adapter).toBeInstanceOf(GeminiProvider);
+    expect(adapter.type).toBe("gemini");
   });
 });

@@ -32,6 +32,7 @@ const redactPaths = [
   "GOOGLE_CLIENT_SECRET",
   "uri",
   "MONGODB_URI",
+  "MONGO_URI",
   "req.body.password",
   "req.body.currentPassword",
   "req.body.newPassword",

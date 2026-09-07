@@ -11,6 +11,17 @@ dotenv.config({ path: path.join(serverDir, ".env") });
 const emptyToUndefined = (value: unknown): unknown =>
   value === "" || value === undefined ? undefined : value;
 
+/**
+ * Hosts often set MONGO_URI (Atlas / Render) while Ken's canonical name is
+ * MONGODB_URI. Prefer the canonical value when both are present.
+ */
+export function applyEnvAliases(source: Record<string, unknown>): Record<string, unknown> {
+  const mongodb = typeof source.MONGODB_URI === "string" ? source.MONGODB_URI.trim() : "";
+  const mongo = typeof source.MONGO_URI === "string" ? source.MONGO_URI.trim() : "";
+  if (mongodb || !mongo) return source;
+  return { ...source, MONGODB_URI: mongo };
+}
+
 const fromAddressSchema = z.string().trim().min(3).max(320).refine((value) => {
   const named = /<([^<>]+)>$/.exec(value);
   const candidate = (named?.[1] ?? value).trim();
@@ -104,6 +115,20 @@ export const envSchema = baseEnvSchema.superRefine((value, ctx) => {
       message: "MONGODB_URI is required in production",
     });
   }
+  if (!value.RESEND_API_KEY) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["RESEND_API_KEY"],
+      message: "RESEND_API_KEY is required in production for email verification and password reset",
+    });
+  }
+  if (!value.EMAIL_FROM && !value.RESEND_FROM_EMAIL) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["EMAIL_FROM"],
+      message: "EMAIL_FROM or RESEND_FROM_EMAIL is required in production",
+    });
+  }
   if (value.ENABLE_DEV_AUTH_TOOLS === "true") {
     ctx.addIssue({
       code: "custom",
@@ -120,7 +145,8 @@ export const envSchema = baseEnvSchema.superRefine((value, ctx) => {
   }
 });
 
-const parsed = envSchema.safeParse(process.env);
+// Render injects PORT; Gemini and Mongo come from process.env as named below.
+const parsed = envSchema.safeParse(applyEnvAliases(process.env));
 
 if (!parsed.success) {
   const issues = parsed.error.issues

@@ -12,62 +12,77 @@ function model(partial: Partial<PublicAIModel> & Pick<PublicAIModel, "id" | "pro
 }
 
 describe("pickDefaultModel", () => {
-  it("prefers Groq Qwen 3.6 27B when that model is available", () => {
+  it("prefers Gemini 3.5 Flash Lite over 3.8 Flash when both are available", () => {
+    const lite = model({ id: "gemini-3.5-flash-lite", providerId: "gemini", name: "Gemini 3.5 Flash Lite" });
+    const flash = model({ id: "gemini-3.8-flash", providerId: "gemini", name: "Gemini 3.8 Flash" });
     const qwen = model({ id: "qwen/qwen3.6-27b", providerId: "groq", name: "Qwen 3.6 27B" });
-    const groq20 = model({ id: "openai/gpt-oss-20b", providerId: "groq", name: "GPT OSS 20B" });
-    const groq120 = model({ id: "openai/gpt-oss-120b", providerId: "groq", name: "GPT OSS 120B" });
-    const openai = model({ id: "gpt-4o-mini", providerId: "openai", name: "GPT-4o mini" });
+    const llama = model({ id: "llama-3.3-70b", providerId: "cerebras", name: "Llama 3.3 70B (Cerebras)" });
 
-    expect(pickDefaultModel([openai, groq120, groq20, qwen])).toEqual(qwen);
+    expect(pickDefaultModel([llama, qwen, flash, lite])).toEqual(lite);
   });
 
-  it("falls back to Groq OSS, then OpenAI, when Qwen is missing", () => {
-    const groq20 = model({ id: "openai/gpt-oss-20b", providerId: "groq", name: "GPT OSS 20B" });
-    const groq120 = model({ id: "openai/gpt-oss-120b", providerId: "groq", name: "GPT OSS 120B" });
-    const openai = model({ id: "gpt-4o-mini", providerId: "openai", name: "GPT-4o mini" });
+  it("falls back to Gemini 3.8 Flash when Lite is missing", () => {
+    const flash = model({ id: "gemini-3.8-flash", providerId: "gemini", name: "Gemini 3.8 Flash" });
+    const qwen = model({ id: "qwen/qwen3.6-27b", providerId: "groq", name: "Qwen 3.6 27B" });
 
-    expect(pickDefaultModel([openai, groq120, groq20])).toEqual(groq20);
-    expect(pickDefaultModel([openai, groq120])).toEqual(groq120);
-    expect(pickDefaultModel([openai])).toEqual(openai);
+    expect(pickDefaultModel([qwen, flash])).toEqual(flash);
   });
 
-  it("ignores Groq when the provider is not configured", () => {
-    const groq20 = model({
-      id: "openai/gpt-oss-20b",
-      providerId: "groq",
-      name: "GPT OSS 20B",
+  it("falls back to Groq Qwen, never Llama, when Gemini is missing", () => {
+    const qwen = model({ id: "qwen/qwen3.6-27b", providerId: "groq", name: "Qwen 3.6 27B" });
+    const llama = model({ id: "llama-3.3-70b", providerId: "cerebras", name: "Llama 3.3 70B (Cerebras)" });
+    const openai = model({ id: "gpt-4o-mini", providerId: "openai", name: "GPT-4o mini" });
+
+    expect(pickDefaultModel([llama, openai, qwen])).toEqual(qwen);
+    expect(pickDefaultModel([llama, openai])).toEqual(openai);
+  });
+
+  it("ignores Gemini when the provider is not configured", () => {
+    const gemini = model({
+      id: "gemini-3.5-flash-lite",
+      providerId: "gemini",
+      name: "Gemini 3.5 Flash Lite",
       available: false,
     });
-    const openai = model({ id: "gpt-4o-mini", providerId: "openai", name: "GPT-4o mini" });
+    const qwen = model({ id: "qwen/qwen3.6-27b", providerId: "groq", name: "Qwen 3.6 27B" });
 
-    expect(pickDefaultModel([groq20, openai])).toEqual(openai);
+    expect(pickDefaultModel([gemini, qwen])).toEqual(qwen);
   });
 });
 
 describe("shouldReplaceStoredModel", () => {
-  const groq20 = model({ id: "openai/gpt-oss-20b", providerId: "groq", name: "GPT OSS 20B" });
-  const openai = model({ id: "gpt-4o-mini", providerId: "openai", name: "GPT-4o mini" });
+  const lite = model({ id: "gemini-3.5-flash-lite", providerId: "gemini", name: "Gemini 3.5 Flash Lite" });
+  const flash = model({ id: "gemini-3.8-flash", providerId: "gemini", name: "Gemini 3.8 Flash" });
+  const qwen = model({ id: "qwen/qwen3.6-27b", providerId: "groq", name: "Qwen 3.6 27B" });
 
-  it("replaces an empty or leftover Gemini selection when Groq is the default", () => {
-    expect(shouldReplaceStoredModel({ providerId: "", modelId: "" }, groq20, [groq20, openai])).toBe(true);
+  it("replaces an empty or leftover retired Llama selection", () => {
+    expect(shouldReplaceStoredModel({ providerId: "", modelId: "" }, lite, [lite, flash, qwen])).toBe(true);
     expect(
-      shouldReplaceStoredModel({ providerId: "gemini", modelId: "gemini-flash-latest" }, groq20, [groq20, openai]),
+      shouldReplaceStoredModel({ providerId: "groq", modelId: "llama-3.3-70b-versatile" }, qwen, [qwen]),
+    ).toBe(true);
+    expect(
+      shouldReplaceStoredModel({ providerId: "cerebras", modelId: "llama-3.3-70b" }, qwen, [
+        qwen,
+        model({ id: "llama-3.3-70b", providerId: "cerebras", name: "Llama 3.3 70B (Cerebras)" }),
+      ]),
     ).toBe(true);
   });
 
-  it("replaces retired Groq Llama IDs even if they were previously stored", () => {
+  it("keeps an existing Gemini 3.8 thread so stored conversations still load", () => {
     expect(
-      shouldReplaceStoredModel(
-        { providerId: "groq", modelId: "llama-3.3-70b-versatile" },
-        groq20,
-        [groq20, openai],
-      ),
-    ).toBe(true);
-  });
-
-  it("keeps an explicit non-Gemini model that still exists", () => {
-    expect(
-      shouldReplaceStoredModel({ providerId: "openai", modelId: "gpt-4o-mini" }, groq20, [groq20, openai]),
+      shouldReplaceStoredModel({ providerId: "gemini", modelId: "gemini-3.8-flash" }, lite, [lite, flash, qwen]),
     ).toBe(false);
+  });
+
+  it("replaces a retired Gemini 2.5 selection so the picker moves to Flash Lite", () => {
+    expect(
+      shouldReplaceStoredModel({ providerId: "gemini", modelId: "gemini-2.5-flash" }, lite, [lite, flash, qwen]),
+    ).toBe(true);
+  });
+
+  it("keeps an explicit Groq pick that still exists", () => {
+    expect(shouldReplaceStoredModel({ providerId: "groq", modelId: "qwen/qwen3.6-27b" }, lite, [lite, flash, qwen])).toBe(
+      false,
+    );
   });
 });

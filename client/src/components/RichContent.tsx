@@ -1,6 +1,6 @@
 import { memo, useMemo, useState } from "react";
 import { ChevronRight, ListChecks, Network, Sparkles, Zap } from "lucide-react";
-import { LazyMarkdown } from "@/components/LazyMarkdown";
+import { DeferredMarkdown } from "@/components/DeferredMarkdown";
 import {
   parseRichContent,
   type MindMapNode,
@@ -10,14 +10,20 @@ import {
 } from "@/utils/parseRichContent";
 
 /** Memoised on `content` so unrelated turns stay idle while another is streaming. */
-export const AssistantRichBody = memo(function AssistantRichBody({ content }: { content: string }) {
+export const AssistantRichBody = memo(function AssistantRichBody({
+  content,
+  eager = true,
+}: {
+  content: string;
+  eager?: boolean;
+}) {
   const parsed = useMemo(() => parseRichContent(content), [content]);
   if (!parsed.text && parsed.blocks.length === 0) {
-    return <LazyMarkdown>{content}</LazyMarkdown>;
+    return <DeferredMarkdown eager={eager}>{content}</DeferredMarkdown>;
   }
   return (
     <div className="flex flex-col gap-4">
-      {parsed.text ? <LazyMarkdown>{parsed.text}</LazyMarkdown> : null}
+      {parsed.text ? <DeferredMarkdown eager={eager}>{parsed.text}</DeferredMarkdown> : null}
       {parsed.blocks.map((block, index) => (
         <RichBlockCard key={`${block.type}-${index}`} block={block} />
       ))}
@@ -100,7 +106,7 @@ function FlashCards({ title, cards }: { title: string; cards: { front: string; b
       >
         <p className="text-xs font-semibold tracking-wide text-fg-muted">{flipped ? "Answer" : "Question"}</p>
         <div className="mt-2 text-sm">
-          <LazyMarkdown>{flipped ? card.back : card.front}</LazyMarkdown>
+          <DeferredMarkdown eager>{flipped ? card.back : card.front}</DeferredMarkdown>
         </div>
       </button>
       <div className="mt-3 flex justify-between">
@@ -160,7 +166,7 @@ function Quiz({ title, questions }: { title: string; questions: QuizQuestion[] }
               <div className="flex gap-2 text-sm font-medium">
                 <span className="text-fg-muted">{questionIndex + 1}.</span>
                 <div className="min-w-0 flex-1">
-                  <LazyMarkdown>{question.question}</LazyMarkdown>
+                  <DeferredMarkdown eager>{question.question}</DeferredMarkdown>
                 </div>
               </div>
               <div className="mt-2 grid gap-2">
@@ -184,7 +190,7 @@ function Quiz({ title, questions }: { title: string; questions: QuizQuestion[] }
                     >
                       <span className="font-semibold">{letters[optionIndex]}.</span>
                       <span className="min-w-0 flex-1">
-                        <LazyMarkdown>{option}</LazyMarkdown>
+                        <DeferredMarkdown eager>{option}</DeferredMarkdown>
                       </span>
                     </button>
                   );
@@ -192,7 +198,7 @@ function Quiz({ title, questions }: { title: string; questions: QuizQuestion[] }
               </div>
               {isAnswered && question.explanation ? (
                 <div className="mt-2 rounded-xl border border-border bg-surface-muted px-3 py-2 text-sm text-fg-muted">
-                  <LazyMarkdown>{question.explanation}</LazyMarkdown>
+                  <DeferredMarkdown eager>{question.explanation}</DeferredMarkdown>
                 </div>
               ) : null}
             </li>
@@ -339,7 +345,7 @@ function QuickRevision({ title, units }: { title: string; units: RevisionUnit[] 
                 <ul className="list-disc space-y-1 px-3 pb-3 pl-8 text-sm text-fg-muted">
                   {unit.points.map((point, pointIndex) => (
                     <li key={`${point}-${pointIndex}`}>
-                      <LazyMarkdown>{point}</LazyMarkdown>
+                      <DeferredMarkdown eager>{point}</DeferredMarkdown>
                     </li>
                   ))}
                 </ul>

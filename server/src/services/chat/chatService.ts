@@ -1,7 +1,13 @@
 import { randomUUID } from "node:crypto";
 import mongoose from "mongoose";
 import type { ChatToolId, PublicConversation, PublicMessage } from "@Ken/shared";
-import { DEFAULT_GROQ_MODEL_ID, resolveDeepSeekModelId, resolveGroqModelId } from "@Ken/shared";
+import {
+  DEFAULT_GEMINI_MODEL_ID,
+  DEFAULT_GROQ_MODEL_ID,
+  resolveDeepSeekModelId,
+  resolveGeminiModelId,
+  resolveGroqModelId,
+} from "@Ken/shared";
 import { logger } from "../../config/logger.js";
 import { AppError } from "../../utils/AppError.js";
 import { isAbortError, isTimeoutAbort } from "../../utils/abort.js";
@@ -14,7 +20,10 @@ import { Message } from "../../models/Message.js";
 import { contextManager, estimateContextTokens, MAX_HISTORY_MESSAGES } from "./ContextManager.js";
 import { findOwnedConversation, titleFromContent, capStoredTurns, conversationExpiry } from "./conversationService.js";
 import { generateChatTitle } from "./chatTitle.js";
-import { buildResponsePolicyMessages, detectTaskSignals, replyMaxTokens } from "./responsePolicy.js";
+import { describeSelectedModel } from "./identity.js";
+import { nextOpenGeminiModelId, peekModelSkip } from "../ai/modelSkip.js";
+import { buildResponsePolicyMessages, detectTaskSignals, isLowThinkingTurn, replyMaxTokens } from "./responsePolicy.js";
+import { buildSseTiming, type SseTiming } from "../../utils/sse.js";
 import { generationRegistry } from "./generationRegistry.js";
 import { toPublicConversation, toPublicMessage } from "./toPublic.js";
 import { recordUsage } from "./usageService.js";
@@ -35,6 +44,7 @@ export interface PreparedGeneration {
   generationId: string;
   providerId: string;
   modelId: string;
+  modelName: string;
   userMessage: PublicMessage;
   assistantMessage: PublicMessage;
   conversation: PublicConversation;
@@ -45,7 +55,7 @@ export interface PreparedGeneration {
 }
 
 export interface ChatStreamEvent {
-  type: "start" | "chunk" | "complete" | "aborted" | "error";
+  type: "start" | "chunk" | "complete" | "aborted" | "error" | "timing" | "model";
   conversation?: PublicConversation;
   userMessage?: PublicMessage;
   assistantMessage?: PublicMessage;
@@ -53,6 +63,22 @@ export interface ChatStreamEvent {
   text?: string;
   message?: string;
   code?: string;
+  requestId?: string;
+  requestedModel?: string;
+  activeModel?: string;
+  fallbackFrom?: string;
+  fallbackReason?: string;
+  ttfbMs?: number;
+  googleConnectMs?: number;
+  firstVisibleChunkMs?: number;
+  completeMs?: number;
+  model?: string;
+  provider?: string;
+}
+
+export interface GenerationRuntime {
+  requestId?: string;
+  startedAt?: number;
 }
 
 export async function prepareSend(input: {
@@ -85,12 +111,15 @@ export async function prepareSend(input: {
     requestedProviderId,
     requestedModelId,
   );
-  const toolOutcome = await aiProviderManager.applyEnabledTools({
-    content: input.content,
-    userId: input.userId,
-    capabilities: model.capabilities,
-    ...(input.enabledTools ? { enabledTools: input.enabledTools } : {}),
-  });
+  const toolOutcome =
+    input.enabledTools && input.enabledTools.length > 0
+      ? await aiProviderManager.applyEnabledTools({
+          content: input.content,
+          userId: input.userId,
+          capabilities: model.capabilities,
+          enabledTools: input.enabledTools,
+        })
+      : { systemMessages: [], files: [] };
   const fileIds = [...(input.attachmentIds ?? []), ...toolOutcome.files.map((file) => file.id)];
   const files = fileIds.length > 0 ? await loadOwnedFiles(input.userId, fileIds) : [];
   if (files.length > 0) {
@@ -171,7 +200,7 @@ export async function prepareSend(input: {
     owned.title = titleFromContent(titleSource);
   }
   await owned.save();
-  await capStoredTurns(String(owned._id), input.userId);
+  void capStoredTurns(String(owned._id), input.userId);
 
   const { signal } = generationRegistry.start(input.userId, String(owned._id), generationId);
   return {
@@ -180,6 +209,7 @@ export async function prepareSend(input: {
     generationId,
     providerId,
     modelId,
+    modelName: describeSelectedModel(modelId, model.name),
     userMessage: toPublicMessage(userDoc, publicAttachments),
     assistantMessage: toPublicMessage(assistantDoc),
     conversation: toPublicConversation(owned),
@@ -293,6 +323,7 @@ export async function prepareEdit(input: {
     generationId,
     providerId,
     modelId,
+    modelName: describeSelectedModel(modelId, model.name),
     userMessage: toPublicMessage(userDoc, attachments),
     assistantMessage: toPublicMessage(assistantDoc),
     conversation: toPublicConversation(conversation),
@@ -392,6 +423,7 @@ export async function prepareRegenerate(input: {
     generationId,
     providerId,
     modelId,
+    modelName: describeSelectedModel(modelId, model.name),
     userMessage: toPublicMessage(userMessage),
     assistantMessage: toPublicMessage(assistantDoc),
     conversation: toPublicConversation(conversation),
@@ -406,15 +438,12 @@ export async function runGeneration(
   emit: (event: ChatStreamEvent) => void,
   route: string,
   preloaded?: { history: ChatMessage[]; persona: ChatMessage[] },
+  runtime?: GenerationRuntime,
 ): Promise<void> {
   const started = Date.now();
-  emit({
-    type: "start",
-    conversation: prepared.conversation,
-    userMessage: prepared.userMessage,
-    assistantMessage: prepared.assistantMessage,
-    generationId: prepared.generationId,
-  });
+  const clock = runtime?.startedAt ?? started;
+  const requestId = runtime?.requestId;
+  const ttfbMs = Date.now() - clock;
 
   let partial = "";
   let inputTokens: number | undefined;
@@ -424,10 +453,69 @@ export async function runGeneration(
   let errorMessage: string | undefined;
   let executedProviderId = prepared.providerId;
   let executedModelId = prepared.modelId;
+  let fallbackFrom: string | undefined;
+  let fallbackReason: string | undefined;
+  let streamProviderId = prepared.providerId;
+  let streamModelId = prepared.modelId;
+
+  const skip = peekModelSkip(prepared.providerId, prepared.modelId);
+  if (skip && prepared.providerId === "gemini") {
+    const next = nextOpenGeminiModelId(prepared.modelId);
+    if (next) {
+      streamModelId = next;
+      executedModelId = next;
+      fallbackFrom = prepared.modelId;
+      fallbackReason = skip.reason;
+    }
+  }
+
+  const startAssistant =
+    executedModelId !== prepared.modelId
+      ? { ...prepared.assistantMessage, model: executedModelId, provider: executedProviderId }
+      : prepared.assistantMessage;
+
+  emit({
+    type: "start",
+    conversation: prepared.conversation,
+    userMessage: prepared.userMessage,
+    assistantMessage: startAssistant,
+    generationId: prepared.generationId,
+  });
+  if (fallbackFrom) {
+    emit({
+      type: "model",
+      model: executedModelId,
+      provider: executedProviderId,
+      activeModel: executedModelId,
+      fallbackFrom,
+      assistantMessage: startAssistant,
+      ...(fallbackReason ? { fallbackReason } : {}),
+    });
+  }
+  let googleConnectMs: number | undefined;
+  let firstVisibleChunkMs: number | undefined;
+
+  const emitTiming = (extra: Partial<SseTiming> = {}): void => {
+    const payload = buildSseTiming({
+      requestedModel: prepared.modelId,
+      activeModel: executedModelId,
+      ttfbMs,
+      ...(requestId ? { requestId } : {}),
+      ...(fallbackFrom ? { fallbackFrom } : {}),
+      ...(fallbackReason ? { fallbackReason } : {}),
+      ...(googleConnectMs !== undefined ? { googleConnectMs } : {}),
+      ...(firstVisibleChunkMs !== undefined ? { firstVisibleChunkMs } : {}),
+      ...extra,
+    });
+    logger.info({ ...payload, requestId }, "chat stream timing");
+    emit(payload);
+  };
+  if (fallbackFrom) emitTiming();
 
   try {
     const signals = detectTaskSignals(prepared.userMessage.content);
     const casual = signals.budget === "minimal";
+    const lowThinking = isLowThinkingTurn(signals);
     const [history, persona] = casual
       ? [[], []]
       : preloaded
@@ -439,12 +527,15 @@ export async function runGeneration(
     const messages = contextManager.build({
       messages: casual
         ? [
-            ...buildResponsePolicyMessages(prepared.userMessage.content),
+            ...buildResponsePolicyMessages(prepared.userMessage.content, {
+              modelName: prepared.modelName,
+            }),
             { role: "user", content: prepared.userMessage.content },
           ]
         : [
             ...buildResponsePolicyMessages(prepared.userMessage.content, {
               skipProtocol: Boolean(prepared.customGptId),
+              modelName: prepared.modelName,
             }),
             ...persona,
             ...(prepared.toolSystemMessages ?? []),
@@ -468,20 +559,52 @@ export async function runGeneration(
     let chunks = 0;
     const maxTokens = replyMaxTokens(signals.budget);
     for await (const event of aiProviderManager.stream({
-      providerId: prepared.providerId,
-      modelId: prepared.modelId,
+      providerId: streamProviderId,
+      modelId: streamModelId,
       messages,
       userId: prepared.userId,
       abortSignal: prepared.abortSignal,
       maxTokens,
       skipAvailabilityCheck: true,
-      ...(casual ? { reasoningEffort: "none" as const } : {}),
+      ...(requestId ? { requestId } : {}),
+      ...(lowThinking ? { reasoningEffort: "none" as const } : {}),
     })) {
       if (prepared.abortSignal.aborted) {
         finishStatus = "aborted";
         break;
       }
+      if (event.type === "fallback") {
+        executedModelId = event.model;
+        executedProviderId = event.provider;
+        fallbackFrom = event.fallbackFrom;
+        fallbackReason = event.fallbackReason;
+        emit({
+          type: "model",
+          model: event.model,
+          provider: event.provider,
+          activeModel: event.model,
+          fallbackFrom: event.fallbackFrom,
+          fallbackReason: event.fallbackReason,
+          assistantMessage: {
+            ...prepared.assistantMessage,
+            model: event.model,
+            provider: event.provider,
+          },
+        });
+        emitTiming();
+        void Message.updateOne(
+          { _id: prepared.assistantMessage.id },
+          { $set: { model: event.model, provider: event.provider } },
+        );
+      }
+      if (event.type === "connected") {
+        googleConnectMs = event.connectMs;
+      }
       applyStreamEvent(event, (text) => {
+        if (firstVisibleChunkMs === undefined) {
+          firstVisibleChunkMs = Date.now() - clock;
+          emitTiming({ firstVisibleChunkMs });
+        }
         partial += text;
         emit({ type: "chunk", text });
       });
@@ -524,6 +647,7 @@ export async function runGeneration(
       errorMessage = error instanceof AppError ? error.message : "Provider request failed";
       logger.warn(
         {
+          requestId,
           providerId: prepared.providerId,
           modelId: prepared.modelId,
           errorCode,
@@ -577,6 +701,7 @@ export async function runGeneration(
   });
 
   const publicAssistant = assistant ? toPublicMessage(assistant) : prepared.assistantMessage;
+  emitTiming({ completeMs: Date.now() - clock });
 
   if (finishStatus === "aborted") {
     emit({ type: "aborted", assistantMessage: { ...publicAssistant, content: partial, status: "aborted" } });
@@ -599,7 +724,12 @@ export async function runGeneration(
 
   // Naming is a second Groq round-trip. Waiting for it kept the SSE open
   // (and the stop button up) after the user already had the full reply.
-  void maybeUpgradeTitle(conversation, prepared, partial, finishStatus);
+  void maybeUpgradeTitle(
+    conversation,
+    { ...prepared, providerId: executedProviderId, modelId: executedModelId },
+    partial,
+    finishStatus,
+  );
 }
 
 /**
@@ -702,15 +832,21 @@ async function resolveExecutionModel(
   const executionModelId =
     providerId === "groq"
       ? resolveGroqModelId(modelId)
-      : providerId === "deepseek"
-        ? resolveDeepSeekModelId(modelId)
-        : modelId;
+      : providerId === "gemini"
+        ? resolveGeminiModelId(modelId)
+        : providerId === "deepseek"
+          ? resolveDeepSeekModelId(modelId)
+          : modelId;
   try {
     const model = await modelRegistry.assertModelAvailable(providerId, executionModelId, userId);
     return { providerId, modelId: executionModelId, model };
   } catch (error) {
     if (!(error instanceof AppError) || error.code !== "MODEL_UNAVAILABLE") throw error;
     const models = await modelRegistry.listPublicModels(userId);
+    const gemini =
+      models.find((model) => model.providerId === "gemini" && model.id === DEFAULT_GEMINI_MODEL_ID) ??
+      models.find((model) => model.providerId === "gemini");
+    if (gemini) return { providerId: gemini.providerId, modelId: gemini.id, model: gemini };
     const groq =
       models.find((model) => model.providerId === "groq" && model.id === DEFAULT_GROQ_MODEL_ID) ??
       models.find((model) => model.providerId === "groq");

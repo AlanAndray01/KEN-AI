@@ -224,6 +224,7 @@ async function streamFromPrepare(
   route: string,
   hint?: { userId: string; conversationId?: string; customGptId?: string },
 ): Promise<void> {
+  const startedAt = Date.now();
   writeSseHeaders(res);
   const persistP = prepare();
   const contextP = (async () => {
@@ -265,6 +266,10 @@ async function streamFromPrepare(
       },
       route,
       preloaded ? { history: preloaded[0], persona: preloaded[1] } : undefined,
+      {
+        startedAt,
+        ...(req.requestId ? { requestId: req.requestId } : {}),
+      },
     );
   } catch (error) {
     const failure = error instanceof AppError ? error : new AppError("Generation failed", { code: "PROVIDER_ERROR" });

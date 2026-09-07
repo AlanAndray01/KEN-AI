@@ -28,6 +28,7 @@ if (!rootElement) {
 
 if (window.location.pathname.startsWith("/chat")) {
   void import("@/pages/ChatPage");
+  void import("@/components/MarkdownContent");
 }
 
 createRoot(rootElement).render(

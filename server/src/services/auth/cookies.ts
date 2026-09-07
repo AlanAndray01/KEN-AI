@@ -10,8 +10,8 @@ import { ACCESS_COOKIE, OAUTH_STATE_COOKIE, REFRESH_COOKIE } from "./config.js";
  * client share a site. Cross-subdomain deploys set COOKIE_DOMAIN and need
  * SameSite=None; Secure so the SPA can send credentials.
  *
- * The OAuth state cookie stays Lax: Google's top-level redirect back to
- * /api/auth/google/callback is cross-site and would drop a Strict cookie.
+ * The OAuth state cookie inherits that SameSite so the Google callback
+ * (a cross-site top-level GET) still receives it after accounts.google.com.
  */
 export function sessionCookieOptions(): CookieOptions {
   const crossSubdomain = Boolean(env.COOKIE_DOMAIN);
@@ -28,9 +28,11 @@ export function sessionCookieOptions(): CookieOptions {
 }
 
 function oauthStateCookieOptions(): CookieOptions {
+  const options = sessionCookieOptions();
   return {
-    ...sessionCookieOptions(),
-    sameSite: "lax",
+    ...options,
+    // Strict would drop the cookie when Google returns from another site.
+    sameSite: options.sameSite === "strict" ? "lax" : options.sameSite,
     path: "/api/auth",
   };
 }

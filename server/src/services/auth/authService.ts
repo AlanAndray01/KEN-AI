@@ -7,7 +7,12 @@ import { VerificationToken } from "../../models/VerificationToken.js";
 import { AppError } from "../../utils/AppError.js";
 import { generateNumericCode, hashPassword, hashesMatch, hashToken, verifyPassword } from "./crypto.js";
 import { assertLoginNotLocked, recordFailedLogin } from "./loginLockout.js";
-import { sendPasswordResetEmail, sendVerificationEmail } from "./emailService.js";
+import {
+  deliverPasswordResetEmail,
+  deliverVerificationEmail,
+  emailUnavailableError,
+  isEmailConfigured,
+} from "./emailService.js";
 import type { GoogleProfile } from "./googleAuthService.js";
 import {
   createSession,
@@ -74,13 +79,17 @@ async function issueVerificationCode(userId: string, email: string): Promise<Pen
     codeHash: hashToken(code),
     expiresAt: new Date(Date.now() + VERIFICATION_TTL_MS),
   });
-  const emailSent = await sendVerificationEmail(email, code);
+  const emailSent = await deliverVerificationEmail(email, code);
   return pendingVerification(email, emailSent, code);
 }
 
 export async function registerUser(
   input: { name: string; email: string; password: string },
 ): Promise<PendingVerification> {
+  if (env.NODE_ENV === "production" && !isEmailConfigured()) {
+    throw emailUnavailableError();
+  }
+
   const email = input.email.toLowerCase();
   const passwordHash = await hashPassword(input.password);
 
@@ -258,11 +267,8 @@ export async function forgotPassword(email: string): Promise<string | undefined>
     expiresAt: new Date(Date.now() + 15 * 60 * 1000),
   });
 
-  await sendPasswordResetEmail(user.email, code);
-
-  return env.NODE_ENV !== "production" && (env.NODE_ENV === "test" || env.ENABLE_DEV_AUTH_TOOLS)
-    ? code
-    : undefined;
+  await deliverPasswordResetEmail(user.email, code);
+  return maybeRevealCode(code);
 }
 
 export async function resetPassword(input: {
@@ -305,6 +311,8 @@ export async function resetPassword(input: {
 
   account.passwordHash = await hashPassword(input.password);
   account.authProvider = "local";
+  // The inbox code is proof of address ownership, same as email OTP.
+  account.isVerified = true;
   await account.save();
   reset.usedAt = new Date();
   await reset.save();

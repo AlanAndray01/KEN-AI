@@ -3,7 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Menu } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
-  DEFAULT_GROQ_MODEL_ID,
+  DEFAULT_GEMINI_MODEL_ID,
+  GEMINI_FLASH_MODEL_ID,
   type PublicConversation,
   type PublicFile,
   type PublicMessage,
@@ -31,7 +32,7 @@ import {
   speakWithBrowser,
   stopBrowserSpeech,
 } from "@/utils/browserSpeech";
-import { appendChunk, applyFeedback, CHAT_MESSAGE_WINDOW, markLastAssistant, optimisticTurn, startTurn, truncateFromMessage, upsertMessage } from "@/utils/chatMessages";
+import { appendChunk, applyAssistantModel, applyFeedback, CHAT_MESSAGE_WINDOW, markLastAssistant, optimisticTurn, startTurn, truncateFromMessage, upsertMessage } from "@/utils/chatMessages";
 import { pickDefaultModel, shouldReplaceStoredModel } from "@/utils/defaultModel";
 import type { MentionCandidate } from "@/utils/mentions";
 
@@ -72,6 +73,7 @@ export function ChatPage() {
   const abortRef = useRef<AbortController | null>(null);
   const streamConversationRef = useRef<string | undefined>(undefined);
   const appliedConversationRef = useRef<string | undefined>(undefined);
+  const userPickedModelRef = useRef(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recognitionRef = useRef<{ stop: () => void } | null>(null);
   const mediaChunksRef = useRef<Blob[]>([]);
@@ -105,8 +107,8 @@ export function ChatPage() {
   const conversations = conversationsQuery.data?.conversations ?? [];
   const currentConversation = conversations.find((conversation) => conversation.id === conversationId);
 
-  const providerId = storedProviderId || defaultModel?.providerId || "groq";
-  const modelId = storedModelId || defaultModel?.id || DEFAULT_GROQ_MODEL_ID;
+  const providerId = storedProviderId || defaultModel?.providerId || "gemini";
+  const modelId = storedModelId || defaultModel?.id || DEFAULT_GEMINI_MODEL_ID;
   const selectedModel = models.find((model) => model.providerId === providerId && model.id === modelId) ?? defaultModel;
   const capabilities = selectedModel?.capabilities ?? [];
 
@@ -187,15 +189,27 @@ export function ChatPage() {
           name: gpt.name,
           ...(gpt.description ? { description: gpt.description } : {}),
         });
-        if (gpt.providerId && gpt.modelId) setSelection(gpt.providerId, gpt.modelId);
+        if (gpt.providerId && gpt.modelId) {
+          userPickedModelRef.current = true;
+          setSelection(gpt.providerId, gpt.modelId);
+        }
         setSearchParams({}, { replace: true });
       })
       .catch(() => toast("GPT not found", "error"));
   }, [gptParam, setSearchParams, setSelection]);
 
   useEffect(() => {
-    if (!defaultModel || models.length === 0 || currentConversation) return;
-    if (!shouldReplaceStoredModel({ providerId, modelId }, defaultModel, models)) return;
+    if (currentConversation) {
+      userPickedModelRef.current = false;
+      return;
+    }
+    if (!defaultModel || models.length === 0) return;
+    const leftoverPreviousDefault = providerId === "gemini" && modelId === GEMINI_FLASH_MODEL_ID;
+    if (!shouldReplaceStoredModel({ providerId, modelId }, defaultModel, models) && !leftoverPreviousDefault) {
+      return;
+    }
+    // Keep an explicit picker change (including 3.8) for this new thread.
+    if (userPickedModelRef.current) return;
     if (defaultModel.providerId === providerId && defaultModel.id === modelId) return;
     setSelection(defaultModel.providerId, defaultModel.id);
   }, [currentConversation, defaultModel, modelId, models, providerId, setSelection]);
@@ -228,6 +242,9 @@ export function ChatPage() {
     [liveMessages, messagesQuery.data?.messages],
   );
   messagesRef.current = messages;
+  const waitingForMessages =
+    Boolean(conversationId) && messagesQuery.isPending && liveMessages === null;
+  const skeletonCount = Math.min(4, Math.max(2, currentConversation?.messageCount || 2));
 
   const { push: pushChunk, flush: flushChunks, reset: resetChunks } = useStreamBuffer((text) => {
     startTransition(() => {
@@ -242,7 +259,8 @@ export function ChatPage() {
 
   // Slice rather than react-window: turns have variable height (markdown,
   // KaTeX, streaming caret) so a fixed-size virtualizer would jump the scroll
-  // position. 48 mounted nodes is the budget for low-spec hardware.
+  // position. 32 mounted nodes is the budget; older ones stay as plain text
+  // until they scroll near the viewport.
   const hiddenCount =
     showAllMessages || messages.length <= CHAT_MESSAGE_WINDOW ? 0 : messages.length - CHAT_MESSAGE_WINDOW;
   const visibleMessages = hiddenCount > 0 ? messages.slice(-CHAT_MESSAGE_WINDOW) : messages;
@@ -275,6 +293,9 @@ export function ChatPage() {
       generationId?: string;
       text?: string;
       message?: string;
+      model?: string;
+      provider?: string;
+      activeModel?: string;
     }>,
   ): Promise<void> {
     setStreaming(true);
@@ -303,6 +324,18 @@ export function ChatPage() {
             return startTurn(base, event.userMessage, event.assistantMessage);
           });
           void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+        }
+        if (event.type === "model" && (event.model || event.assistantMessage?.model)) {
+          const model = event.model ?? event.assistantMessage?.model;
+          const provider = event.provider ?? event.assistantMessage?.provider;
+          if (!model) return;
+          setLiveMessages((current) =>
+            applyAssistantModel(current ?? messages, {
+              model,
+              ...(provider ? { provider } : {}),
+              ...(event.assistantMessage?.id ? { messageId: event.assistantMessage.id } : {}),
+            }),
+          );
         }
         if (event.type === "chunk" && event.text) {
           pushChunk(event.text);
@@ -685,7 +718,11 @@ export function ChatPage() {
             providerId={providerId}
             modelId={modelId}
             disabled={streaming}
-            onChange={(nextProvider, nextModel) => setSelection(nextProvider, nextModel)}
+            loading={modelsQuery.isPending}
+            onChange={(nextProvider, nextModel) => {
+              userPickedModelRef.current = true;
+              setSelection(nextProvider, nextModel);
+            }}
             onAddModel={() => setKeysPanelOpen(true)}
           />
           {conversationId ? <ShareExportMenu conversationId={conversationId} /> : null}
@@ -696,9 +733,22 @@ export function ChatPage() {
         className="chat-messages relative flex-1 overflow-y-auto px-4 py-6"
         aria-label="Messages"
         aria-live="polite"
-        aria-busy={streaming}
+        aria-busy={streaming || waitingForMessages}
       >
-        {messages.length === 0 ? (
+        {waitingForMessages ? (
+          <div
+            className="mx-auto flex w-full max-w-3xl flex-col gap-6"
+            aria-busy="true"
+            aria-label="Loading messages"
+          >
+            {Array.from({ length: skeletonCount }, (_, index) => (
+              <article key={index} className="chat-message flex gap-3" aria-hidden="true">
+                <span className="message-avatar mt-0.5 size-7 shrink-0 rounded-lg border border-border bg-surface-muted" />
+                <div className="chat-message-slot min-h-[4.5rem] flex-1 rounded-xl border border-border bg-surface/60" />
+              </article>
+            ))}
+          </div>
+        ) : messages.length === 0 ? (
           <div className="mx-auto flex h-full max-w-2xl flex-col items-center justify-center gap-2 text-center">
             <p className="chat-empty-title text-3xl font-semibold tracking-tight">
               {activeGpt ? `Chat with ${activeGpt.name}` : "Where should we begin?"}
@@ -759,10 +809,11 @@ export function ChatPage() {
                 Show {hiddenCount} earlier messages
               </button>
             ) : null}
-            {visibleMessages.map((message) => (
+            {visibleMessages.map((message, index) => (
               <ChatTurn
                 key={message.id}
                 message={message}
+                eagerMarkdown={index >= visibleMessages.length - 3}
                 streaming={streaming}
                 ttsConfigured={ttsConfigured}
                 ttsUnavailableReason={ttsUnavailableReason}
