@@ -32,7 +32,6 @@ import {
   verifyEmailCode,
 } from "../services/auth/authService.js";
 import { exchangeGoogleCode, getGoogleAuthUrl, verifyGoogleIdToken } from "../services/auth/googleAuthService.js";
-import { googleHandoffHtml } from "../services/auth/googleHandoff.js";
 
 function sendUser(
   res: Response,
@@ -129,8 +128,8 @@ export async function googleStart(_req: Request, res: Response): Promise<void> {
   // callback forged by another site cannot sign the victim into an account.
   const state = randomBytes(32).toString("base64url");
   setOAuthStateCookie(res, state);
-  res.setHeader("Cache-Control", "no-store, private");
-  res.status(200).type("html").send(googleHandoffHtml(getGoogleAuthUrl(state)));
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+  res.redirect(302, getGoogleAuthUrl(state));
 }
 
 function statesMatch(received: unknown, expected: unknown): boolean {

@@ -36,12 +36,12 @@ vi.mock("../services/auth/authService.js", () => ({
 
 const { app } = await import("../app.js");
 
-function stateFromStart(response: { headers: Record<string, unknown>; text?: string }): string {
+function stateFromStart(response: { headers: Record<string, unknown> }): string {
   const cookie = stateCookie(response);
   if (cookie) {
     return decodeURIComponent(cookie.slice("Ken_oauth_state=".length).split(";")[0] ?? "");
   }
-  const match = String(response.text ?? "").match(/[?&]state=([^&"'<]+)/);
+  const match = String(response.headers.location ?? "").match(/[?&]state=([^&]+)/);
   return match?.[1] ?? "";
 }
 
@@ -55,11 +55,12 @@ describe("Google OAuth CSRF state", () => {
   it("issues a random state and stores it in an httpOnly cookie", async () => {
     const response = await request(app).get("/api/auth/google");
 
-    expect(response.status).toBe(200);
-    expect(String(response.headers["content-type"])).toMatch(/html/);
-    expect(response.text).toContain("accounts.google.com");
+    expect(response.status).toBe(302);
+    const location = String(response.headers.location);
+    expect(location).toMatch(/^https:\/\/accounts\.google\.com\//);
     const state = stateFromStart(response);
     expect(state.length).toBeGreaterThan(20);
+    expect(location).toContain(`state=${state}`);
 
     const cookie = stateCookie(response);
     expect(cookie).toBeDefined();

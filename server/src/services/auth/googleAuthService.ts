@@ -23,12 +23,38 @@ function getClient(): OAuth2Client {
 
 export function getGoogleAuthUrl(state?: string): string {
   const client = getClient();
-  return client.generateAuthUrl({
-    access_type: "online",
-    prompt: "select_account",
-    scope: ["openid", "email", "profile"],
-    ...(state ? { state } : {}),
-  });
+  return assertGoogleAuthorizeUrl(
+    client.generateAuthUrl({
+      access_type: "online",
+      prompt: "select_account",
+      scope: ["openid", "email", "profile"],
+      ...(state ? { state } : {}),
+    }),
+  );
+}
+
+/** Refuse open redirects if the Google client ever produced a non-Google URL. */
+export function assertGoogleAuthorizeUrl(authorizeUrl: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(authorizeUrl);
+  } catch {
+    throw new AppError("Invalid Google authorization URL", {
+      statusCode: 500,
+      code: "GOOGLE_INVALID",
+      expose: false,
+    });
+  }
+
+  if (parsed.protocol !== "https:" || parsed.hostname !== "accounts.google.com") {
+    throw new AppError("Invalid Google authorization URL", {
+      statusCode: 500,
+      code: "GOOGLE_INVALID",
+      expose: false,
+    });
+  }
+
+  return authorizeUrl;
 }
 
 export async function exchangeGoogleCode(code: string): Promise<GoogleProfile> {
