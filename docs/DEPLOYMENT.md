@@ -110,8 +110,12 @@ VITE_API_BASE_URL = https://api.ken-ai.tech/api
 Vercel — the production client build refuses that fallback.
 
 The trailing `/api` matters — `API_BASE_URL` in `client/src/services/api.ts` is
-used as a prefix for paths like `/auth/login`. Vite inlines `VITE_*` variables
-at build time, so changing it requires a redeploy, not just a restart.
+used as a prefix for paths like `/auth/login`. Login, signup, Google start, and
+chat all call `https://api.ken-ai.tech/api/...` directly. Do not send auth to
+`https://ken-ai.tech/api/...`: Vercel has no Express app, and the SPA rewrite
+in `vercel.json` turns those POSTs into `405` + `index.html`. Vite inlines
+`VITE_*` variables at build time, so changing it requires a redeploy, not just
+a restart.
 
 Email signup and password reset require `RESEND_API_KEY` and a verified From
 address (`EMAIL_FROM` or `RESEND_FROM_EMAIL`) on Render. Production will not

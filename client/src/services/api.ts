@@ -25,7 +25,7 @@ import type {
   PublicCredentialTest,
   PublicVoiceStatus,
 } from "@Ken/shared";
-import { resolveApiBaseUrl, resolveAuthBaseUrl } from "@/utils/apiBaseUrl";
+import { resolveApiBaseUrl } from "@/utils/apiBaseUrl";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -212,10 +212,9 @@ function createIdleWatchdog(
 }
 
 const API_BASE_URL = resolveApiBaseUrl(import.meta.env);
-const AUTH_BASE_URL = resolveAuthBaseUrl(import.meta.env);
 
 function apiUrl(path: string): string {
-  return `${path.startsWith("/auth/") ? AUTH_BASE_URL : API_BASE_URL}${path}`;
+  return `${API_BASE_URL}${path}`;
 }
 
 /**
@@ -414,7 +413,7 @@ export const api = {
       request<OkResponse>("/auth/reset-password", { method: "POST", body: JSON.stringify(body) }),
     changePassword: (body: { currentPassword: string; newPassword: string }) =>
       request<OkResponse>("/auth/change-password", { method: "POST", body: JSON.stringify(body) }),
-    googleStartUrl: `${AUTH_BASE_URL}/auth/google`,
+    googleStartUrl: `${API_BASE_URL}/auth/google`,
   },
   models: {
     list: () => request<{ models: PublicAIModel[] }>("/models"),
