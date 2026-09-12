@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -153,5 +153,100 @@ describe("site.webmanifest", () => {
     const parsed = JSON.parse(manifest) as { name: string; start_url: string };
     expect(parsed.name).toBe("Ken AI");
     expect(parsed.start_url).toBe("/");
+  });
+
+  it("declares square icons that exist on disk", () => {
+    const parsed = JSON.parse(manifest) as {
+      icons: Array<{ src: string; sizes: string }>;
+    };
+    expect(parsed.icons.length).toBeGreaterThan(0);
+    for (const icon of parsed.icons) {
+      // A non-square icon is rejected outright, which is what a 1200x630 card
+      // used to be doing here — it made the app uninstallable.
+      const [w, h] = icon.sizes.split("x");
+      expect(w, icon.src).toBe(h);
+      expect(
+        existsSync(path.join(clientDir, "public", icon.src.replace(/^\//, ""))),
+        `${icon.src} is declared in the manifest but missing from client/public`,
+      ).toBe(true);
+    }
+  });
+});
+
+/**
+ * The guard for the bug that put this file here in the first place.
+ *
+ * Excluding a path from the SPA rewrite stops it falling through to index.html.
+ * That is the whole point — but if no real file sits at that path, the exclusion
+ * turns a harmless 200 into a hard 404. Adding `favicon.ico` to the lookahead
+ * without shipping a favicon is exactly how Search Console started reporting
+ * "Not found (404)".
+ */
+describe("vercel rewrite exclusions", () => {
+  const vercel = JSON.parse(
+    readFileSync(path.resolve(clientDir, "..", "vercel.json"), "utf8"),
+  ) as { rewrites: Array<{ source: string; destination: string }> };
+
+  const source = vercel.rewrites[0]?.source ?? "";
+  /** The literal filenames listed inside the negative lookahead. */
+  const excluded = [...source.matchAll(/([\w-]+\\\.[a-z0-9]+)/g)].map((match) =>
+    (match[1] ?? "").replace(/\\/g, ""),
+  );
+
+  it("excludes at least the SEO and icon assets", () => {
+    expect(excluded).toEqual(
+      expect.arrayContaining([
+        "robots.txt",
+        "sitemap.xml",
+        "og-image.png",
+        "site.webmanifest",
+        "favicon.ico",
+      ]),
+    );
+  });
+
+  it("ships a real file for every excluded path", () => {
+    for (const name of excluded) {
+      expect(
+        existsSync(path.join(clientDir, "public", name)),
+        `/${name} is excluded from the SPA rewrite but no file exists in client/public — it will 404`,
+      ).toBe(true);
+    }
+  });
+
+  it("still rewrites application routes to index.html", () => {
+    const re = new RegExp(`^${source}$`);
+    for (const route of ["/", "/login", "/register", "/privacy", "/terms", "/chat/abc"]) {
+      expect(re.test(route), `${route} should rewrite to index.html`).toBe(true);
+    }
+  });
+
+  it("lets every excluded path bypass the rewrite", () => {
+    const re = new RegExp(`^${source}$`);
+    for (const name of excluded) {
+      expect(re.test(`/${name}`), `/${name} should be served as a file`).toBe(false);
+    }
+  });
+});
+
+describe("icons referenced by index.html", () => {
+  it("ships every icon the document links to by path", () => {
+    const hrefs = [...html.matchAll(/<link[^>]*rel="(?:icon|apple-touch-icon)"[^>]*>/g)]
+      .map((match) => /href="([^"]+)"/.exec(match[0])?.[1] ?? "")
+      .filter((href) => href.startsWith("/"));
+    expect(hrefs.length).toBeGreaterThan(0);
+    for (const href of hrefs) {
+      expect(
+        existsSync(path.join(clientDir, "public", href.replace(/^\//, ""))),
+        `${href} is linked from index.html but missing from client/public`,
+      ).toBe(true);
+    }
+  });
+
+  it("ships a favicon.ico that is actually an ICO", () => {
+    const ico = readFileSync(path.join(clientDir, "public", "favicon.ico"));
+    expect(ico.readUInt16LE(0), "reserved field").toBe(0);
+    expect(ico.readUInt16LE(2), "image type (1 = icon)").toBe(1);
+    expect(ico.readUInt16LE(4), "entry count").toBeGreaterThan(0);
   });
 });

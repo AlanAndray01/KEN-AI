@@ -125,19 +125,29 @@
     <link rel="dns-prefetch" href="https://api.ken-ai.tech" />
 
     <!--
+      /favicon.ico is requested by crawlers and by browsers regardless of what
+      is declared here, so the file has to exist: Search Console reported it as
+      a 404 when only the data URI below was present. Declared first, and
+      overridden by the SVG in browsers that support one.
+    -->
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+
+    <!--
       The KEN mark: smoky-white stem, brand-green arm. Inlined as a data URI so
       the tab icon is present on first paint with no extra request.
     -->
     <link
+      type="image/svg+xml"
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%23121212'/%3E%3Crect x='1.6' y='1.6' width='96.8' height='96.8' rx='22.4' fill='none' stroke='%2300FF41' stroke-opacity='.42' stroke-width='2.4'/%3E%3Cg transform='translate(50 50) scale(.72) translate(-50 -50)'%3E%3Cg transform='translate(1 0) skewX(-7)'%3E%3Cpath d='M27 10h7v80H20V19z' fill='%23F5F5F5'/%3E%3Cpath d='M27 24h3v62h-3z' fill='%23121212' fill-opacity='.6'/%3E%3Cpath d='M86 10 42 50l42 40' fill='none' stroke='%2300FF41' stroke-width='14'/%3E%3Cpath d='M86 10 42 50l42 40' fill='none' stroke='%23121212' stroke-width='3.4' stroke-opacity='.5'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E"
     />
 
-    <!-- Square, unrounded variant: iOS applies its own mask to home-screen icons. -->
-    <link
-      rel="apple-touch-icon"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='0' fill='%23121212'/%3E%3Cg transform='translate(50 50) scale(.62) translate(-50 -50)'%3E%3Cg transform='translate(1 0) skewX(-7)'%3E%3Cpath d='M27 10h7v80H20V19z' fill='%23F5F5F5'/%3E%3Cpath d='M27 24h3v62h-3z' fill='%23121212' fill-opacity='.6'/%3E%3Cpath d='M86 10 42 50l42 40' fill='none' stroke='%2300FF41' stroke-width='14'/%3E%3Cpath d='M86 10 42 50l42 40' fill='none' stroke='%23121212' stroke-width='3.4' stroke-opacity='.5'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E"
-    />
+    <!--
+      Square PNG: iOS applies its own mask to home-screen icons, and it does not
+      support an SVG apple-touch-icon at all - the data URI that used to be here
+      silently failed on every iPhone.
+    -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
