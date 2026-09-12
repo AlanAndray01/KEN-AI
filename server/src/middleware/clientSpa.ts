@@ -9,12 +9,23 @@ function clientDistDir(): string {
   return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../client/dist");
 }
 
+/**
+ * Whether this process will also serve the built client.
+ *
+ * Render builds only `shared` and `server`, so `client/dist` is absent there and
+ * the process is an API host alone. Callers use this to decide whether the host
+ * should describe itself and send `noindex` — see `mountApiHost`.
+ */
+export function clientSpaAvailable(): boolean {
+  if (!isProduction) return false;
+  return fs.existsSync(path.join(clientDistDir(), "index.html"));
+}
+
 export function mountClientSpa(app: Express): void {
-  if (!isProduction) return;
+  if (!clientSpaAvailable()) return;
 
   const dist = clientDistDir();
   const indexHtml = path.join(dist, "index.html");
-  if (!fs.existsSync(indexHtml)) return;
 
   app.use(express.static(dist, { index: false }));
   app.use((req: Request, res: Response, next: NextFunction) => {

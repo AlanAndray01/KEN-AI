@@ -7,7 +7,8 @@ import { API_PREFIX } from "@Ken/shared";
 import { corsOptions } from "./config/cors.js";
 import { isProduction } from "./config/env.js";
 import { logger } from "./config/logger.js";
-import { mountClientSpa } from "./middleware/clientSpa.js";
+import { mountApiHost } from "./middleware/apiHost.js";
+import { clientSpaAvailable, mountClientSpa } from "./middleware/clientSpa.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { notFoundHandler } from "./middleware/notFound.js";
 import { requestId } from "./middleware/requestId.js";
@@ -56,6 +57,12 @@ app.use(
     },
   }),
 );
+
+// Mounted before the API router so its noindex header covers every response.
+// Skipped when this process also serves the website, which must stay indexable.
+if (!clientSpaAvailable()) {
+  mountApiHost(app);
+}
 
 app.use(API_PREFIX, apiRouter);
 mountClientSpa(app);
