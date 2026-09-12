@@ -2,6 +2,7 @@ import { useRef } from "react";
 import { Link } from "react-router-dom";
 import { CLIENT_ROUTES } from "@Ken/shared";
 import { useAuth } from "@/hooks/useAuth";
+import { FAQS } from "./landing/faqs";
 import { useLandingScenes } from "./landing/useLandingScenes";
 import "./landing/landing.css";
 
@@ -161,7 +162,7 @@ export function HomePage() {
         {/* S2 — INTRODUCING KEN */}
         <section className="sec split" id="product">
           <div>
-            <p className="eyebrow rv">Introducing KEN</p>
+            <p className="eyebrow rv">Introducing Ken AI</p>
             <h2 className="h2 rv rv-d1">
               One intelligence.
               <br />
@@ -1187,37 +1188,4 @@ const MODELS = [
   },
 ] as const;
 
-const FAQS = [
-  {
-    q: "What is KEN AI?",
-    a: "KEN is an AI assistant and platform. You can chat with it in the app, upload files and images for it to read, ask it to write or debug code, and call the same models from your own software through the API.",
-  },
-  {
-    q: "How does KEN compare to other AI assistants?",
-    a: "KEN is built around one workspace rather than a series of disconnected chats. Models, files, memory, and tools stay in the same thread, so switching from a quick answer to deep work does not mean starting over. The honest answer on quality is to try it on your own work.",
-  },
-  {
-    q: "Which models does KEN support?",
-    a: "Four in the KEN family: Fast for everyday conversation, Reason for complex problems, Vision for images and visual input, and Code for engineering work. You can switch between them mid-conversation from the model selector.",
-  },
-  {
-    q: "Can KEN analyze files?",
-    a: "Yes. Attach documents, spreadsheets, code, and images, and KEN reads them in context. It can summarise, compare, extract structured data, or answer specific questions against what you uploaded.",
-  },
-  {
-    q: "Can KEN write code?",
-    a: "KEN Code writes, reviews, and explains code across common languages and frameworks. It can work from an error message, a file you paste in, or a description of what you want to build.",
-  },
-  {
-    q: "Does KEN remember conversations?",
-    a: "On paid plans KEN can remember context you choose to keep — how you like your code formatted, what you are working on, who your team is. You can review what it remembers and delete any of it at any time.",
-  },
-  {
-    q: "Is KEN available through an API?",
-    a: "Yes. The API exposes the full model family with streaming, tool calling, and structured outputs, with SDKs for TypeScript, Python, and Go.",
-  },
-  {
-    q: "Is there a free plan?",
-    a: "There is. The Free plan includes KEN Fast, file uploads, and history, with a daily message limit. No card required to start.",
-  },
-] as const;
+

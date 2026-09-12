@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { FAQS } from "./pages/landing/faqs";
 
 /**
  * Guards the search-engine surface of the app.
@@ -20,8 +21,15 @@ const html = read("index.html");
 const robots = read("public/robots.txt");
 const sitemap = read("public/sitemap.xml");
 const manifest = read("public/site.webmanifest");
+const homePage = read("src/pages/HomePage.tsx");
 
 const ORIGIN = "https://ken-ai.tech";
+
+/** The @graph nodes from the JSON-LD block in index.html. */
+function parseGraph(): Array<Record<string, unknown>> {
+  const block = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(html)?.[1] ?? "";
+  return (JSON.parse(block) as { "@graph": Array<Record<string, unknown>> })["@graph"];
+}
 
 describe("index.html metadata", () => {
   it("names the brand in the title", () => {
@@ -83,6 +91,32 @@ describe("index.html metadata", () => {
     expect(org?.alternateName).toEqual(expect.arrayContaining(["KEN AI", "ken-ai.tech"]));
   });
 
+  it("leads the title with the brand and the tagline", () => {
+    const title = /<title>([^<]+)<\/title>/.exec(html)?.[1] ?? "";
+    expect(title.startsWith("Ken AI"), `title should lead with the brand: ${title}`).toBe(true);
+    expect(title).toContain("Intelligence Without The Noise");
+  });
+
+  it("claims the brand spellings people actually type", () => {
+    const graph = parseGraph();
+    const org = graph.find((node) => node["@type"] === "Organization");
+    // "Ken AI" is winnable; "Ken" alone competes with every other Ken alive.
+    // Claiming the variations is still what ties the short form to this site.
+    expect(org?.alternateName).toEqual(
+      expect.arrayContaining(["KEN AI", "Ken", "Ken-AI", "ken-ai", "ken-ai.tech"]),
+    );
+    expect(org?.slogan).toContain("Intelligence without the noise");
+  });
+
+  it("declares the free plan as a real offer", () => {
+    const app = parseGraph().find((node) => node["@type"] === "SoftwareApplication") as
+      | { offers?: { price?: string; priceCurrency?: string; url?: string } }
+      | undefined;
+    expect(app?.offers?.price).toBe("0");
+    expect(app?.offers?.priceCurrency).toBe("USD");
+    expect(app?.offers?.url).toContain("ken-ai.tech");
+  });
+
   it("gives a non-rendering crawler real prose to read", () => {
     // There is more than one <noscript>: the first is the font stylesheet
     // fallback in <head>. Pick the one that actually carries body copy.
@@ -95,6 +129,57 @@ describe("index.html metadata", () => {
     expect(noscript).toContain("ken-ai.tech");
     // Enough copy to be a page, not a placeholder.
     expect(noscript.replace(/<[^>]+>/g, " ").trim().length).toBeGreaterThan(400);
+  });
+});
+
+/**
+ * Google requires FAQPage markup to match the question and answer text the page
+ * actually renders; markup describing FAQs a visitor cannot see is a guideline
+ * violation and can cost the rich result outright. The schema lives in static
+ * HTML while the copy lives in a module, so nothing but this test stops the two
+ * drifting apart.
+ */
+describe("FAQPage structured data matches the rendered FAQ", () => {
+  const faqNode = parseGraph().find((node) => node["@type"] === "FAQPage") as
+    | { mainEntity?: Array<{ name: string; acceptedAnswer: { text: string } }> }
+    | undefined;
+
+  it("is present and covers every question on the page", () => {
+    expect(faqNode?.mainEntity).toHaveLength(FAQS.length);
+  });
+
+  it("quotes each question and answer verbatim", () => {
+    FAQS.forEach((faq, index) => {
+      const entry = faqNode?.mainEntity?.[index];
+      expect(
+        entry?.name,
+        `FAQ ${index} drifted. Regenerate the JSON-LD in client/index.html from client/src/pages/landing/faqs.ts`,
+      ).toBe(faq.q);
+      expect(entry?.acceptedAnswer.text).toBe(faq.a);
+    });
+  });
+
+  it("answers the brand-name question first", () => {
+    // The query a person searching "Ken AI" is really asking.
+    expect(faqNode?.mainEntity?.[0]?.name).toBe("What is Ken AI?");
+    expect(faqNode?.mainEntity?.[0]?.acceptedAnswer.text).toContain("ken-ai.tech");
+  });
+});
+
+describe("landing page brand copy", () => {
+  it("puts the brand name in the h1's text, not only an aria-label", () => {
+    // The visible mark renders as two styled halves reading "KENAI"; a crawler
+    // extracts text, so the spaced form has to exist in the DOM.
+    expect(homePage).toMatch(/<span className="sr-only">Ken AI<\/span>/);
+  });
+
+  it("names the brand and domain in the hero copy", () => {
+    expect(homePage).toContain("Ken AI");
+    expect(homePage).toContain("ken-ai.tech");
+  });
+
+  it("keeps the tagline on the page", () => {
+    expect(homePage).toContain("Intelligence without the noise.");
   });
 });
 

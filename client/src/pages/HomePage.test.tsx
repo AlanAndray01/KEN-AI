@@ -46,7 +46,7 @@ describe("HomePage", () => {
     // One assertion per section, in page order. This is the guard against a
     // future edit quietly dropping a section the way an earlier revision did.
     const body = within(main());
-    expect(body.getByText("Introducing KEN")).toBeInTheDocument();
+    expect(body.getByText("Introducing Ken AI")).toBeInTheDocument();
     expect(body.getByText("The model")).toBeInTheDocument();
     expect(body.getByText("Model family")).toBeInTheDocument();
     expect(body.getByText("The interface")).toBeInTheDocument();
