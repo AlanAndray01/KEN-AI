@@ -45,7 +45,7 @@ HTTP API: [docs/API.md](docs/API.md).
 
 ## Prerequisites
 
-- Node.js 20 or newer (Node 24 is supported)
+- Node.js 24. Pinned via `engines.node` as `24.x`, which is what Vercel and Render both build with.
 - npm 10+
 - MongoDB (local, Docker, or Atlas)
 

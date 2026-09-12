@@ -24,10 +24,15 @@
     "test:e2e": "npm run test:e2e -w @Ken/client"
   },
   "engines": {
-    "node": ">=20"
+    "node": "24.x"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",
     "typescript": "^5.9.2"
+  },
+  "allowScripts": {
+    "argon2": true,
+    "esbuild": true,
+    "mongodb-memory-server": true
   }
 }
