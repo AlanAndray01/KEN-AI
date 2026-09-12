@@ -354,3 +354,68 @@ describe("chatService automatic titles", () => {
     expect(generate).not.toHaveBeenCalled();
   });
 });
+
+describe("chatService attachments", () => {
+  beforeEach(() => {
+    messages.clear();
+    conversations.clear();
+    stream.mockReset();
+    clearModelSkips();
+  });
+
+  it("sends image parts even when preloaded history missed the new turn", async () => {
+    const { loadOwnedFiles, materializeFilesForModel } = await import("../storage/fileService.js");
+    vi.mocked(loadOwnedFiles).mockResolvedValue([
+      {
+        _id: new Types.ObjectId(),
+        originalName: "shot.png",
+        mimeType: "image/png",
+        storageKey: "user/shot",
+      } as never,
+    ]);
+    vi.mocked(materializeFilesForModel).mockResolvedValue({
+      contentSuffix: "Attached file: shot.png",
+      parts: [{ type: "inline", mimeType: "image/png", data: "AAAA" }],
+    });
+    stream.mockImplementation(async function* () {
+      yield { type: "chunk", text: "A diagram" };
+      yield { type: "complete", response: { content: "A diagram", model: "mock-text", provider: "mock" } };
+    });
+
+    const { prepareSend, runGeneration } = await import("./chatService.js");
+    const prepared = await prepareSend({
+      userId: "000000000000000000000001",
+      content: "what is this",
+      providerId: "mock",
+      modelId: "mock-text",
+    });
+    prepared.userMessage = {
+      ...prepared.userMessage,
+      attachments: [
+        {
+          id: "att1",
+          fileId: "file1",
+          originalName: "shot.png",
+          mimeType: "image/png",
+          size: 12,
+          kind: "image",
+        },
+      ],
+    };
+
+    await runGeneration(prepared, () => undefined, "test", {
+      history: [
+        { role: "user", content: "hello" },
+        { role: "assistant", content: "Hi" },
+      ],
+      persona: [],
+    });
+
+    const input = stream.mock.calls[0]?.[0] as {
+      messages: Array<{ role: string; content: string; parts?: Array<{ mimeType: string }> }>;
+    };
+    const lastUser = [...(input.messages ?? [])].reverse().find((message) => message.role === "user");
+    expect(lastUser?.content).toContain("shot.png");
+    expect(lastUser?.parts).toEqual([{ type: "inline", mimeType: "image/png", data: "AAAA" }]);
+  });
+});

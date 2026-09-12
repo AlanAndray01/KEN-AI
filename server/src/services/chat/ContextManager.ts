@@ -48,8 +48,22 @@ export class ContextManager {
       kept.push(clampMessage(rest.at(-1)!, Math.max(32, budget - tokens)));
     }
 
-    return [...system, ...kept];
+    return ensureEndsWithUserTurn([...system, ...kept]);
   }
+}
+
+/**
+ * Gemini (native and OpenAI-compat) rejects histories that end on a model
+ * turn: "Requests ending with a model turn are not supported". The 6-turn
+ * window can land on an assistant reply; drop those trailing replies.
+ */
+export function ensureEndsWithUserTurn(messages: ChatMessage[]): ChatMessage[] {
+  const system = messages.filter((message) => message.role === "system");
+  const rest = messages.filter((message) => message.role !== "system");
+  while (rest.length > 0 && rest.at(-1)?.role === "assistant") {
+    rest.pop();
+  }
+  return [...system, ...rest];
 }
 
 function lookupContextWindow(providerId: string, modelId: string): number {

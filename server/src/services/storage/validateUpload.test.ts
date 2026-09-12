@@ -46,7 +46,28 @@ describe("assertAttachmentsAllowed", () => {
   it("blocks PDFs when the model cannot read files", () => {
     expect(() =>
       assertAttachmentsAllowed(["text", "streaming"], [{ mimeType: "application/pdf", originalName: "a.pdf" }]),
-    ).toThrow(/cannot read files/i);
+    ).toThrow(/cannot read pdfs/i);
+  });
+
+  it("blocks PDFs on a vision-only model", () => {
+    // `vision` used to satisfy the PDF check, but the normalizer then dropped
+    // the part and the model answered as if nothing was attached. Rejecting the
+    // upload turns that silent no-op into an error the user can act on.
+    expect(() =>
+      assertAttachmentsAllowed(
+        ["text", "vision", "streaming"],
+        [{ mimeType: "application/pdf", originalName: "a.pdf" }],
+      ),
+    ).toThrow(/cannot read pdfs/i);
+  });
+
+  it("allows PDFs on a file-capable model", () => {
+    expect(() =>
+      assertAttachmentsAllowed(
+        ["text", "vision", "files", "streaming"],
+        [{ mimeType: "application/pdf", originalName: "a.pdf" }],
+      ),
+    ).not.toThrow();
   });
 
   it("allows images on vision-capable models", () => {

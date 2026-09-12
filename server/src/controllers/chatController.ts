@@ -5,6 +5,7 @@ import {
   editMessageSchema,
   messageFeedbackSchema,
   patchConversationSchema,
+  regenerateMessageSchema,
   sendMessageSchema,
 } from "@Ken/shared";
 import { AppError } from "../utils/AppError.js";
@@ -154,6 +155,7 @@ export async function sendChatHandler(req: Request, res: Response): Promise<void
 
 export async function regenerateHandler(req: Request, res: Response): Promise<void> {
   const userId = requireUserId(req);
+  const body = regenerateMessageSchema.parse(req.body ?? {});
   await streamFromPrepare(
     req,
     res,
@@ -162,6 +164,8 @@ export async function regenerateHandler(req: Request, res: Response): Promise<vo
         userId,
         conversationId: req.params.id ?? "",
         messageId: req.params.messageId ?? "",
+        ...(body.providerId ? { providerId: body.providerId } : {}),
+        ...(body.modelId ? { modelId: body.modelId } : {}),
       }),
     "POST /conversations/:id/messages/:messageId/regenerate",
     {
@@ -183,6 +187,8 @@ export async function editMessageHandler(req: Request, res: Response): Promise<v
         conversationId: req.params.id ?? "",
         messageId: req.params.messageId ?? "",
         content: body.content,
+        ...(body.providerId ? { providerId: body.providerId } : {}),
+        ...(body.modelId ? { modelId: body.modelId } : {}),
       }),
     "POST /conversations/:id/messages/:messageId/edit",
     // Deliberately no preload hint. streamFromPrepare loads history in parallel

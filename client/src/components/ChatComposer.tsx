@@ -74,8 +74,6 @@ export function ChatComposer({
   const [cursor, setCursor] = useState(value.length);
   const [mentionIndex, setMentionIndex] = useState(0);
   const canSend = Boolean(value.trim() || attachments.length > 0);
-  const vision = capabilities.includes("vision");
-  const filesCapability = capabilities.includes("files");
   const busy = streaming || disabled || uploading || generatingImage;
   const mention = mentionTokenAt(value, cursor);
   const mentionMatches = mention ? filterMentions(mentionCandidates, mention.query) : [];
@@ -270,13 +268,7 @@ export function ChatComposer({
               type="button"
               className="rounded-lg p-2 text-fg-muted hover:bg-surface-muted hover:text-fg disabled:opacity-40"
               aria-label="Attach files"
-              title={
-                vision
-                  ? "Attach images or documents"
-                  : filesCapability
-                    ? "Attach documents. This model cannot analyze images."
-                    : "Attach text files. This model cannot analyze images or PDFs."
-              }
+              title="Attach images or documents. If this model cannot read them, Ken routes the turn to a vision-capable model."
               disabled={streaming || disabled || !onAddFiles}
               onClick={() => fileInputRef.current?.click()}
             >
@@ -357,11 +349,6 @@ export function ChatComposer({
           </div>
         </div>
       </div>
-      {!vision ? (
-        <p className="mt-2 px-2 text-[11px] text-fg-muted">
-          Image analysis is disabled for this model. Choose a vision-capable model to attach photos.
-        </p>
-      ) : null}
     </form>
   );
 }

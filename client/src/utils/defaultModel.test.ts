@@ -80,6 +80,15 @@ describe("shouldReplaceStoredModel", () => {
     ).toBe(true);
   });
 
+  it("replaces a retired Gemini 1.5 selection so the picker does not keep a shut-down id", () => {
+    expect(
+      shouldReplaceStoredModel({ providerId: "gemini", modelId: "gemini-1.5-flash" }, lite, [lite, flash, qwen]),
+    ).toBe(true);
+    expect(
+      shouldReplaceStoredModel({ providerId: "gemini", modelId: "gemini-1.5-pro" }, lite, [lite, flash, qwen]),
+    ).toBe(true);
+  });
+
   it("keeps an explicit Groq pick that still exists", () => {
     expect(shouldReplaceStoredModel({ providerId: "groq", modelId: "qwen/qwen3.6-27b" }, lite, [lite, flash, qwen])).toBe(
       false,

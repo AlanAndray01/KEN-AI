@@ -4,6 +4,7 @@ import {
   DEFAULT_OPENAI_MODEL_ID,
   GEMINI_FLASH_2_MODEL_ID,
   GEMINI_FLASH_MODEL_ID,
+  GEMINI_PRO_MODEL_ID,
   GROQ_OSS_20B_MODEL_ID,
   GROQ_QUALITY_MODEL_ID,
   isLlamaModelId,
@@ -21,6 +22,7 @@ export function pickDefaultModel(models: PublicAIModel[]): PublicAIModel | undef
     pick("gemini", DEFAULT_GEMINI_MODEL_ID) ??
     pick("gemini", GEMINI_FLASH_MODEL_ID) ??
     pick("gemini", GEMINI_FLASH_2_MODEL_ID) ??
+    pick("gemini", GEMINI_PRO_MODEL_ID) ??
     available.find((model) => model.providerId === "gemini") ??
     pick("groq", DEFAULT_GROQ_MODEL_ID) ??
     pick("groq", GROQ_OSS_20B_MODEL_ID) ??

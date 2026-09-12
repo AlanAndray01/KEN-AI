@@ -39,6 +39,7 @@ vi.mock("@/services/api", () => ({
       messages: mocks.listMessages,
       feedback: mocks.feedback,
       send: mocks.sendChat,
+      update: vi.fn().mockResolvedValue({ conversation: { id: "c1" } }),
       abort: vi.fn().mockResolvedValue({ ok: true, aborted: true }),
       regenerate: mocks.regenerate,
       editMessage: mocks.editMessage,
@@ -61,6 +62,14 @@ vi.mock("@/services/api", () => ({
             id: "gemini-3.8-flash",
             providerId: "gemini",
             name: "Gemini 3.8 Flash",
+            capabilities: ["text", "streaming"],
+            enabled: true,
+            available: true,
+          },
+          {
+            id: "gemini-3.1-pro-preview",
+            providerId: "gemini",
+            name: "Gemini 3.1 Pro",
             capabilities: ["text", "streaming"],
             enabled: true,
             available: true,
@@ -205,6 +214,137 @@ describe("ChatPage", () => {
     );
 
     expect(await screen.findByRole("button", { name: "Select model: Gemini 3.8 Flash" })).toBeInTheDocument();
+  });
+
+  it("keeps Gemini 3.1 Pro selected when opening a saved Pro thread", async () => {
+    vi.mocked(api.conversations.list).mockResolvedValue({
+      conversations: [
+        {
+          id: "c1",
+          title: "Pro thread",
+          modelId: "gemini-3.1-pro-preview",
+          providerId: "gemini",
+          archived: false,
+          pinned: false,
+          messageCount: 1,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={["/chat/c1"]}>
+          <Routes>
+            <Route path="/chat/:conversationId" element={<ChatPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByRole("button", { name: "Select model: Gemini 3.1 Pro" })).toBeInTheDocument();
+  });
+
+  it("sends the picker model and stamps that id on the live reply, not a default fallback", async () => {
+    vi.mocked(api.conversations.list).mockResolvedValue({
+      conversations: [
+        {
+          id: "c1",
+          title: "Lite thread",
+          modelId: "gemini-3.5-flash-lite",
+          providerId: "gemini",
+          archived: false,
+          pinned: false,
+          messageCount: 1,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+    mocks.sendChat.mockImplementation(async function* (_id, body) {
+      yield {
+        type: "start",
+        conversation: { id: "c1", modelId: body.modelId },
+        userMessage: {
+          id: "u-new",
+          conversationId: "c1",
+          role: "user",
+          content: body.content,
+          status: "complete",
+          createdAt: "2026-01-01T00:00:04.000Z",
+          updatedAt: "2026-01-01T00:00:04.000Z",
+        },
+        assistantMessage: {
+          id: "a-new",
+          conversationId: "c1",
+          role: "assistant",
+          content: "",
+          status: "streaming",
+          model: "gemini-3.5-flash-lite",
+          createdAt: "2026-01-01T00:00:05.000Z",
+          updatedAt: "2026-01-01T00:00:05.000Z",
+        },
+      };
+      yield { type: "chunk", text: "There is" };
+      yield {
+        type: "complete",
+        assistantMessage: {
+          id: "a-new",
+          conversationId: "c1",
+          role: "assistant",
+          content: "There is.",
+          status: "complete",
+          model: "gemini-3.5-flash-lite",
+          createdAt: "2026-01-01T00:00:05.000Z",
+          updatedAt: "2026-01-01T00:00:05.000Z",
+        },
+      };
+    });
+
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={["/chat/c1"]}>
+          <Routes>
+            <Route path="/chat/:conversationId" element={<ChatPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Select model: Gemini 3.5 Flash Lite" }));
+    fireEvent.click(screen.getByRole("option", { name: /Gemini 3.1 Pro/ }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Select model: Gemini 3.1 Pro" })).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(api.conversations.update).toHaveBeenCalledWith("c1", {
+        providerId: "gemini",
+        modelId: "gemini-3.1-pro-preview",
+      });
+    });
+
+    const textarea = await screen.findByRole("textbox", { name: "Message" });
+    fireEvent.change(textarea, { target: { value: "Who are you?" } });
+    fireEvent.submit(screen.getByRole("form", { name: "Send message" }));
+
+    await waitFor(() => {
+      expect(mocks.sendChat).toHaveBeenCalledWith(
+        "c1",
+        expect.objectContaining({
+          content: "Who are you?",
+          providerId: "gemini",
+          modelId: "gemini-3.1-pro-preview",
+        }),
+        expect.anything(),
+      );
+    });
+    expect(await screen.findByText("There is.")).toBeInTheDocument();
+    const label = document.querySelector("[data-active-model='gemini-3.1-pro-preview']");
+    expect(label).toHaveTextContent("Gemini 3.1 Pro");
+    expect(document.querySelector("[data-active-model='gemini-3.5-flash-lite']")).toBeNull();
   });
 
   it("reserves message space while a thread is loading instead of flashing the empty state", async () => {
@@ -544,7 +684,12 @@ describe("ChatPage message actions", () => {
     expect(screen.queryByText("first answer")).not.toBeInTheDocument();
     expect(screen.queryByText("second question")).not.toBeInTheDocument();
     expect(screen.queryByText("second answer")).not.toBeInTheDocument();
-    expect(mocks.regenerate).toHaveBeenCalledWith("c1", "a1", expect.anything());
+    expect(mocks.regenerate).toHaveBeenCalledWith(
+      "c1",
+      "a1",
+      expect.anything(),
+      { providerId: "gemini", modelId: "gemini-3.5-flash-lite" },
+    );
   });
 });
 
@@ -602,7 +747,13 @@ describe("ChatPage message editing", () => {
       expect(screen.getByText("answer to the edit")).toBeInTheDocument();
     });
     expect(screen.getByText("edited question")).toBeInTheDocument();
-    expect(mocks.editMessage).toHaveBeenCalledWith("c1", "u1", "edited question", expect.anything());
+    expect(mocks.editMessage).toHaveBeenCalledWith(
+      "c1",
+      "u1",
+      "edited question",
+      expect.anything(),
+      { providerId: "gemini", modelId: "gemini-3.5-flash-lite" },
+    );
   });
 
   it("keeps every earlier turn on screen", async () => {

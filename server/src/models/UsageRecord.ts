@@ -11,6 +11,8 @@ const usageRecordSchema = new mongoose.Schema(
     inputTokens: { type: Number, min: 0 },
     outputTokens: { type: Number, min: 0 },
     durationMs: { type: Number, min: 0 },
+    /** Deep code turns run materially longer, so they are timed as their own population. */
+    deepCode: { type: Boolean, default: false },
     success: { type: Boolean, default: true, required: true },
     errorCode: { type: String, trim: true },
     route: { type: String, trim: true },
@@ -22,6 +24,9 @@ usageRecordSchema.index({ userId: 1, createdAt: -1 });
 usageRecordSchema.index({ conversationId: 1, createdAt: -1 });
 usageRecordSchema.index({ providerId: 1, createdAt: -1 });
 usageRecordSchema.index({ createdAt: -1 });
+// Backs the duration lookup in generationEstimate: same model, successful runs,
+// newest first, optionally narrowed to deep-code turns.
+usageRecordSchema.index({ providerId: 1, modelId: 1, success: 1, deepCode: 1, createdAt: -1 });
 
 applyJsonTransform(usageRecordSchema);
 

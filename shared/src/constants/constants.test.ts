@@ -8,6 +8,7 @@ import {
   DEFAULT_GROQ_MODEL_ID,
   DEFAULT_OPENAI_MODEL_ID,
   GEMINI_FLASH_LITE_MODEL_ID,
+  GEMINI_IMAGE_MODEL_ID,
   GROQ_QUALITY_MODEL_ID,
   estimatePromptTokens,
   isLlamaModelId,
@@ -27,8 +28,11 @@ describe("shared constants", () => {
     expect(resolveGeminiModelId("gemini-2.5-flash")).toBe("gemini-3.5-flash-lite");
     expect(resolveGeminiModelId("gemini-2.5-flash-lite")).toBe("gemini-3.5-flash-lite");
     expect(resolveGeminiModelId("gemini-2.0-flash")).toBe("gemini-3.6-flash");
+    expect(resolveGeminiModelId("gemini-1.5-flash")).toBe("gemini-3.5-flash-lite");
+    expect(resolveGeminiModelId("gemini-1.5-pro")).toBe("gemini-3.1-pro-preview");
     expect(resolveGeminiModelId("gemini-3.8-flash")).toBe("gemini-3.8-flash");
     expect(resolveGeminiModelId("gemini-3.5-flash-lite")).toBe("gemini-3.5-flash-lite");
+    expect(GEMINI_IMAGE_MODEL_ID).toBe("gemini-3.1-flash-image");
     expect(DEFAULT_GROQ_MODEL_ID).toBe("qwen/qwen3.6-27b");
     expect(GROQ_QUALITY_MODEL_ID).toBe("openai/gpt-oss-120b");
     expect(DEFAULT_OPENAI_MODEL_ID).toBe("gpt-4o-mini");

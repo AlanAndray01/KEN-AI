@@ -56,27 +56,47 @@ export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 export const MAX_ATTACHMENTS_PER_MESSAGE = 8;
 
 /**
- * Google AI Studio default when GEMINI_API_KEY is present.
+ * Official Google AI Studio chat IDs (Gemini API models page, updated 2026-09-04).
  * Lite is the primary Ken model so new chats skip the slower 3.8 hop.
- * Gemini 2.5 Flash is retired for new keys (404 → "no longer available to new users").
+ * Gemini 1.5 / 2.0 / 2.5 Flash strings are retired for new keys — they alias below.
  */
 export const GEMINI_FLASH_LITE_MODEL_ID = "gemini-3.5-flash-lite";
 
 export const DEFAULT_GEMINI_MODEL_ID = GEMINI_FLASH_LITE_MODEL_ID;
 
-/** Still listed so existing 3.8 threads and an explicit picker choice keep working. */
+/** Current stable Flash. Existing threads that saved this id keep using it. */
 export const GEMINI_FLASH_MODEL_ID = "gemini-3.8-flash";
 
-/** Mid Flash generation; Google's documented successor to Gemini 2.5 Flash. */
+/** Previous-generation stable Flash; Google's documented successor to Gemini 2.5 Flash. */
 export const GEMINI_FLASH_2_MODEL_ID = "gemini-3.6-flash";
+
+/** Official Pro for deep context and harder reasoning (preview, no shutdown date). */
+export const GEMINI_PRO_MODEL_ID = "gemini-3.1-pro-preview";
+
+/**
+ * Official Gemini image-generation endpoint (Nano Banana 2). This is not a
+ * chat picker model — Ken calls it from the image_generation tool only.
+ */
+export const GEMINI_IMAGE_MODEL_ID = "gemini-3.1-flash-image";
 
 /**
  * Retired Gemini IDs mapped onto models still served on AI Studio.
  * One GEMINI_API_KEY unlocks every Gemini catalog entry; these aliases keep old chats on Google.
+ * `gemini-1.5-*` is not registered in the picker — those endpoints are shut down.
  */
 export const GEMINI_MODEL_ALIASES: Readonly<Record<string, string>> = {
+  "gemini-1.5-flash": DEFAULT_GEMINI_MODEL_ID,
+  "gemini-1.5-flash-latest": DEFAULT_GEMINI_MODEL_ID,
+  "gemini-1.5-flash-001": DEFAULT_GEMINI_MODEL_ID,
+  "gemini-1.5-flash-002": DEFAULT_GEMINI_MODEL_ID,
+  "gemini-1.5-pro": GEMINI_PRO_MODEL_ID,
+  "gemini-1.5-pro-latest": GEMINI_PRO_MODEL_ID,
+  "gemini-1.5-pro-001": GEMINI_PRO_MODEL_ID,
+  "gemini-1.5-pro-002": GEMINI_PRO_MODEL_ID,
+  "gemini-pro": GEMINI_PRO_MODEL_ID,
   "gemini-2.5-flash": DEFAULT_GEMINI_MODEL_ID,
   "gemini-2.5-flash-lite": GEMINI_FLASH_LITE_MODEL_ID,
+  "gemini-2.5-pro": GEMINI_PRO_MODEL_ID,
   "gemini-2.0-flash": GEMINI_FLASH_2_MODEL_ID,
 };
 

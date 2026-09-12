@@ -26,7 +26,7 @@ export class OpenAICompatibleProvider implements AIProvider {
   readonly id: string;
   readonly name: string;
   readonly type: ProviderType;
-  private readonly credentials: ProviderCredentials;
+  protected readonly credentials: ProviderCredentials;
 
   constructor(config: ProviderRuntimeConfig) {
     this.id = config.id;

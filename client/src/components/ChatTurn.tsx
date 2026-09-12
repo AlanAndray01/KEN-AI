@@ -2,6 +2,7 @@ import { memo } from "react";
 import { Copy, RotateCw, ThumbsDown, ThumbsUp, Volume2 } from "lucide-react";
 import type { PublicMessage } from "@Ken/shared";
 import { MessageAttachments } from "@/components/AttachmentChips";
+import { CodeGenerationTicker, type GenerationEstimate } from "@/components/CodeGenerationTicker";
 import { MessageAvatar } from "@/components/MessageAvatar";
 import { AssistantRichBody } from "@/components/RichContent";
 import { ThinkingPipeline } from "@/components/ThinkingPipeline";
@@ -13,6 +14,10 @@ interface ChatTurnProps {
   /** Parse markdown now. Older history waits until it is near the viewport. */
   eagerMarkdown?: boolean;
   streaming: boolean;
+  /** Set only on the turn currently streaming a deep-code reply. */
+  deepCode?: boolean;
+  /** Server-measured duration estimate for that turn, once it arrives. */
+  estimate?: GenerationEstimate;
   ttsConfigured: boolean;
   ttsUnavailableReason: string;
   feedbackPending: boolean;
@@ -21,6 +26,8 @@ interface ChatTurnProps {
   onCopy: (text: string) => void;
   onSpeak: (text: string) => void;
   onFeedback: (message: PublicMessage, rating: "up" | "down") => void;
+  /** Catalog display name for `message.model`; falls back to the raw id. */
+  modelCaption?: string;
 }
 
 /**
@@ -31,6 +38,8 @@ export const ChatTurn = memo(function ChatTurn({
   message,
   eagerMarkdown = true,
   streaming,
+  deepCode = false,
+  estimate,
   ttsConfigured,
   ttsUnavailableReason,
   feedbackPending,
@@ -39,6 +48,7 @@ export const ChatTurn = memo(function ChatTurn({
   onCopy,
   onSpeak,
   onFeedback,
+  modelCaption,
 }: ChatTurnProps) {
   if (message.role === "user") {
     return (
@@ -75,7 +85,11 @@ export const ChatTurn = memo(function ChatTurn({
               ) : null}
             </>
           ) : message.status === "streaming" ? (
-            <ThinkingPipeline />
+            deepCode ? (
+              <CodeGenerationTicker {...(estimate ? { estimate } : {})} />
+            ) : (
+              <ThinkingPipeline />
+            )
           ) : message.status === "error" ? (
             <div role="alert">
               <p className="font-medium">Generation failed</p>
@@ -99,7 +113,7 @@ export const ChatTurn = memo(function ChatTurn({
         </div>
         {message.model ? (
           <p className="mt-1 text-[11px] text-fg-muted" data-active-model={message.model}>
-            {message.model}
+            {modelCaption ?? message.model}
           </p>
         ) : null}
         <div className="assistant-actions mt-2 flex gap-1">
@@ -168,8 +182,13 @@ function chatTurnPropsAreEqual(prev: ChatTurnProps, next: ChatTurnProps): boolea
     prev.message === next.message &&
     prev.eagerMarkdown === next.eagerMarkdown &&
     prev.streaming === next.streaming &&
+    prev.deepCode === next.deepCode &&
+    // Identity compare is enough: ChatPage swaps this object only when the
+    // server's estimate event lands, never on a token.
+    prev.estimate === next.estimate &&
     prev.ttsConfigured === next.ttsConfigured &&
     prev.ttsUnavailableReason === next.ttsUnavailableReason &&
-    prev.feedbackPending === next.feedbackPending
+    prev.feedbackPending === next.feedbackPending &&
+    prev.modelCaption === next.modelCaption
   );
 }

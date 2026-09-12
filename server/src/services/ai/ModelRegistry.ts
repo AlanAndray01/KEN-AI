@@ -79,7 +79,22 @@ export class ModelRegistry {
     for (const model of stored) {
       if (isRetiredCatalogModel(model.providerId, model.modelId)) continue;
       const availability = providers.get(model.providerId) ?? { enabled: false, configured: false };
-      merged.set(key(model.providerId, model.modelId), toPublicModel(model, availability));
+      const catalogModel = getBuiltInProvider(model.providerId)?.models.find((item) => item.id === model.modelId);
+      merged.set(
+        key(model.providerId, model.modelId),
+        toPublicModel(
+          catalogModel
+            ? {
+                ...model,
+                name: catalogModel.name,
+                ...(catalogModel.description ? { description: catalogModel.description } : {}),
+                capabilities: catalogModel.capabilities,
+                ...(catalogModel.contextWindow ? { contextWindow: catalogModel.contextWindow } : {}),
+              }
+            : model,
+          availability,
+        ),
+      );
     }
 
     const models = [...merged.values()].sort((a, b) => {

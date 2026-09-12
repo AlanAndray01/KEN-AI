@@ -8,6 +8,7 @@ import {
   DEFAULT_GROQ_MODEL_ID,
   GEMINI_FLASH_2_MODEL_ID,
   GEMINI_FLASH_MODEL_ID,
+  GEMINI_PRO_MODEL_ID,
   GROQ_OSS_20B_MODEL_ID,
   GROQ_QUALITY_MODEL_ID,
 } from "@Ken/shared";
@@ -25,7 +26,11 @@ export interface BuiltInProviderDefinition {
 
 const TEXT_STREAM: ModelCapability[] = ["text", "streaming"];
 
-const GEMINI_CAPS: ModelCapability[] = ["text", "vision", "streaming", "tools"];
+/**
+ * Chat Gemini models understand images and PDFs (`inlineData`).
+ * Image *generation* is `GEMINI_IMAGE_MODEL_ID` via the image tool, not a chat id.
+ */
+const GEMINI_CAPS: ModelCapability[] = ["text", "vision", "files", "streaming", "tools"];
 
 export const BUILT_IN_PROVIDERS: BuiltInProviderDefinition[] = [
   {
@@ -39,21 +44,28 @@ export const BUILT_IN_PROVIDERS: BuiltInProviderDefinition[] = [
       {
         id: DEFAULT_GEMINI_MODEL_ID,
         name: "Gemini 3.5 Flash Lite",
-        description: "Default Ken model. Fast Gemini Flash Lite on the Google AI Studio free tier.",
+        description: "Default Ken model. Fast official Flash Lite on the Google AI Studio key — images and PDFs included.",
         capabilities: GEMINI_CAPS,
         contextWindow: 1_000_000,
       },
       {
         id: GEMINI_FLASH_MODEL_ID,
         name: "Gemini 3.8 Flash",
-        description: "Higher-quality Gemini Flash. Existing threads that saved this id keep using it.",
+        description: "Current stable Flash. Higher-quality multimodal chat on the same AI Studio key.",
         capabilities: GEMINI_CAPS,
         contextWindow: 1_000_000,
       },
       {
         id: GEMINI_FLASH_2_MODEL_ID,
         name: "Gemini 3.6 Flash",
-        description: "Google's documented successor to Gemini 2.5 Flash, on the same AI Studio key.",
+        description: "Previous-generation stable Flash. Google's documented successor to Gemini 2.5 Flash.",
+        capabilities: GEMINI_CAPS,
+        contextWindow: 1_000_000,
+      },
+      {
+        id: GEMINI_PRO_MODEL_ID,
+        name: "Gemini 3.1 Pro",
+        description: "Official Pro for complex reasoning and long context. Same GEMINI_API_KEY as Flash.",
         capabilities: GEMINI_CAPS,
         contextWindow: 1_000_000,
       },
@@ -101,13 +113,13 @@ export const BUILT_IN_PROVIDERS: BuiltInProviderDefinition[] = [
       {
         id: "gpt-4.1",
         name: "GPT-4.1",
-        capabilities: ["text", "vision", "streaming", "tools"],
+        capabilities: ["text", "vision", "files", "streaming", "tools"],
         contextWindow: 1_000_000,
       },
       {
         id: "gpt-4o-mini",
         name: "GPT-4o mini",
-        capabilities: ["text", "vision", "streaming", "tools"],
+        capabilities: ["text", "vision", "files", "streaming", "tools"],
         contextWindow: 128_000,
       },
     ],
@@ -124,21 +136,21 @@ export const BUILT_IN_PROVIDERS: BuiltInProviderDefinition[] = [
         id: "claude-sonnet-4-5",
         name: "Claude Sonnet 4.5",
         description: "Official Anthropic API. Requires ANTHROPIC_API_KEY — there is no public free Claude proxy in Ken.",
-        capabilities: ["text", "vision", "streaming", "tools", "reasoning"],
+        capabilities: ["text", "vision", "files", "streaming", "tools", "reasoning"],
         contextWindow: 200_000,
       },
       {
         id: "claude-opus-4-1",
         name: "Claude Opus 4.1",
         description: "Highest-quality official Anthropic model. Paid developer tier.",
-        capabilities: ["text", "vision", "streaming", "tools", "reasoning"],
+        capabilities: ["text", "vision", "files", "streaming", "tools", "reasoning"],
         contextWindow: 200_000,
       },
       {
         id: "claude-haiku-4-5",
         name: "Claude Haiku 4.5",
         description: "Fast official Anthropic model. Same ANTHROPIC_API_KEY as Sonnet and Opus.",
-        capabilities: ["text", "vision", "streaming", "tools"],
+        capabilities: ["text", "vision", "files", "streaming", "tools"],
         contextWindow: 200_000,
       },
     ],

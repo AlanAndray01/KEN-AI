@@ -11,6 +11,7 @@ export async function recordUsage(input: {
   inputTokens?: number;
   outputTokens?: number;
   durationMs: number;
+  deepCode?: boolean;
   success: boolean;
   errorCode?: string;
   route: string;
@@ -25,6 +26,7 @@ export async function recordUsage(input: {
       ...(input.inputTokens !== undefined ? { inputTokens: input.inputTokens } : {}),
       ...(input.outputTokens !== undefined ? { outputTokens: input.outputTokens } : {}),
       durationMs: input.durationMs,
+      deepCode: input.deepCode === true,
       success: input.success,
       ...(input.errorCode ? { errorCode: input.errorCode } : {}),
       route: input.route,

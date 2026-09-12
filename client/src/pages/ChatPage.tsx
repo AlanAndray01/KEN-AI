@@ -12,6 +12,7 @@ import {
 } from "@Ken/shared";
 import { ChatComposer } from "@/components/ChatComposer";
 import { ChatTurn } from "@/components/ChatTurn";
+import type { GenerationEstimate } from "@/components/CodeGenerationTicker";
 import { ModelSelector } from "@/components/ModelSelector";
 import { ShareExportMenu } from "@/components/ShareExportMenu";
 import { useAuth } from "@/hooks/useAuth";
@@ -24,6 +25,7 @@ import { useModelStore } from "@/stores/modelStore";
 import { toast } from "@/stores/toastStore";
 import { useUiStore } from "@/stores/uiStore";
 import { attachmentRejection } from "@/utils/attachmentGate";
+import { attachmentRoutedMessage, displayNameForRoutedModel } from "@/utils/attachmentRouteToast";
 import { describeApiError, logApiError } from "@/utils/apiErrors";
 import {
   canUseBrowserStt,
@@ -32,7 +34,7 @@ import {
   speakWithBrowser,
   stopBrowserSpeech,
 } from "@/utils/browserSpeech";
-import { appendChunk, applyAssistantModel, applyFeedback, CHAT_MESSAGE_WINDOW, markLastAssistant, optimisticTurn, startTurn, truncateFromMessage, upsertMessage } from "@/utils/chatMessages";
+import { appendChunk, applyAssistantModel, applyFeedback, CHAT_MESSAGE_WINDOW, markLastAssistant, optimisticTurn, pinTurnModel, startTurn, truncateFromMessage, upsertMessage } from "@/utils/chatMessages";
 import { pickDefaultModel, shouldReplaceStoredModel } from "@/utils/defaultModel";
 import type { MentionCandidate } from "@/utils/mentions";
 
@@ -69,11 +71,17 @@ export function ChatPage() {
   const [recording, setRecording] = useState(false);
   const [liveVoiceOpen, setLiveVoiceOpen] = useState(false);
   const [mentionedGpt, setMentionedGpt] = useState<MentionCandidate>();
+  /** True while the streaming turn was classified as a deep code request. */
+  const [deepCodeTurn, setDeepCodeTurn] = useState(false);
+  /** Server-measured duration estimate, absent until its event arrives. */
+  const [generationEstimate, setGenerationEstimate] = useState<GenerationEstimate>();
   const speakingAudioRef = useRef<HTMLAudioElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const streamConversationRef = useRef<string | undefined>(undefined);
   const appliedConversationRef = useRef<string | undefined>(undefined);
   const userPickedModelRef = useRef(false);
+  /** Model the current generation was launched with — not a later picker change. */
+  const turnSelectionRef = useRef<{ providerId: string; modelId: string } | undefined>(undefined);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recognitionRef = useRef<{ stop: () => void } | null>(null);
   const mediaChunksRef = useRef<Blob[]>([]);
@@ -199,10 +207,7 @@ export function ChatPage() {
   }, [gptParam, setSearchParams, setSelection]);
 
   useEffect(() => {
-    if (currentConversation) {
-      userPickedModelRef.current = false;
-      return;
-    }
+    if (currentConversation) return;
     if (!defaultModel || models.length === 0) return;
     const leftoverPreviousDefault = providerId === "gemini" && modelId === GEMINI_FLASH_MODEL_ID;
     if (!shouldReplaceStoredModel({ providerId, modelId }, defaultModel, models) && !leftoverPreviousDefault) {
@@ -215,9 +220,13 @@ export function ChatPage() {
   }, [currentConversation, defaultModel, modelId, models, providerId, setSelection]);
 
   useEffect(() => {
-    if (!currentConversation) return;
+    if (!currentConversation) {
+      appliedConversationRef.current = undefined;
+      return;
+    }
     if (appliedConversationRef.current === currentConversation.id) return;
     appliedConversationRef.current = currentConversation.id;
+    userPickedModelRef.current = false;
     if (
       defaultModel &&
       shouldReplaceStoredModel(
@@ -284,6 +293,25 @@ export function ChatPage() {
     pin();
   }, [conversationId, pin]);
 
+  function applyThreadSelection(nextProvider: string, nextModel: string): void {
+    userPickedModelRef.current = true;
+    setSelection(nextProvider, nextModel);
+    if (!conversationId) return;
+    queryClient.setQueryData<{ conversations: PublicConversation[] }>(["conversations"], (cached) => {
+      if (!cached) return cached;
+      return {
+        conversations: cached.conversations.map((conversation) =>
+          conversation.id === conversationId
+            ? { ...conversation, providerId: nextProvider, modelId: nextModel }
+            : conversation,
+        ),
+      };
+    });
+    void api.conversations.update(conversationId, { providerId: nextProvider, modelId: nextModel }).catch(() => {
+      // Local selection still applies; the next send carries the same ids.
+    });
+  }
+
   async function consumeStream(
     iterator: AsyncGenerator<{
       type: string;
@@ -296,12 +324,29 @@ export function ChatPage() {
       model?: string;
       provider?: string;
       activeModel?: string;
+      fallbackFrom?: string;
+      fallbackReason?: string;
+      modelName?: string;
+      deepCode?: boolean;
+      estimatedMs?: number;
+      estimateSamples?: number;
+      estimateMatchedMode?: boolean;
     }>,
   ): Promise<void> {
     setStreaming(true);
+    setDeepCodeTurn(false);
+    setGenerationEstimate(undefined);
     try {
       for await (const event of iterator) {
+        if (event.type === "estimate" && event.estimatedMs !== undefined) {
+          setGenerationEstimate({
+            estimatedMs: event.estimatedMs,
+            samples: event.estimateSamples ?? 0,
+            matchedMode: event.estimateMatchedMode === true,
+          });
+        }
         if (event.type === "start") {
+          setDeepCodeTurn(event.deepCode === true);
           if (event.generationId) setGenerationId(event.generationId);
           if (event.conversation) {
             streamConversationRef.current = event.conversation.id;
@@ -321,21 +366,47 @@ export function ChatPage() {
                 queryClient.getQueryData<{ messages: PublicMessage[] }>(["messages", conversationId])?.messages ??
                 [])
               : [];
-            return startTurn(base, event.userMessage, event.assistantMessage);
+            const pinned = turnSelectionRef.current
+              ? { model: turnSelectionRef.current.modelId, provider: turnSelectionRef.current.providerId }
+              : undefined;
+            return startTurn(
+              base,
+              event.userMessage,
+              event.assistantMessage ? pinTurnModel(event.assistantMessage, pinned) : event.assistantMessage,
+            );
           });
           void queryClient.invalidateQueries({ queryKey: ["conversations"] });
         }
         if (event.type === "model" && (event.model || event.assistantMessage?.model)) {
           const model = event.model ?? event.assistantMessage?.model;
           const provider = event.provider ?? event.assistantMessage?.provider;
-          if (!model) return;
-          setLiveMessages((current) =>
-            applyAssistantModel(current ?? messages, {
-              model,
-              ...(provider ? { provider } : {}),
-              ...(event.assistantMessage?.id ? { messageId: event.assistantMessage.id } : {}),
-            }),
-          );
+          if (!model) continue;
+          const attachmentHop =
+            Boolean(event.fallbackFrom) && String(event.fallbackReason ?? "").startsWith("ATTACHMENT_ROUTE");
+          if (attachmentHop) {
+            setLiveMessages((current) =>
+              applyAssistantModel(current ?? messages, {
+                model,
+                ...(provider ? { provider } : {}),
+                ...(event.assistantMessage?.id ? { messageId: event.assistantMessage.id } : {}),
+              }),
+            );
+            const name = displayNameForRoutedModel(model, models, event.modelName);
+            toast(attachmentRoutedMessage(name), "info");
+            if (provider) {
+              turnSelectionRef.current = { providerId: provider, modelId: model };
+              applyThreadSelection(provider, model);
+            }
+          } else if (turnSelectionRef.current) {
+            // Keep the picker id on the bubble; quota hops must not echo a default model.
+            setLiveMessages((current) =>
+              applyAssistantModel(current ?? messages, {
+                model: turnSelectionRef.current!.modelId,
+                provider: turnSelectionRef.current!.providerId,
+                ...(event.assistantMessage?.id ? { messageId: event.assistantMessage.id } : {}),
+              }),
+            );
+          }
         }
         if (event.type === "chunk" && event.text) {
           pushChunk(event.text);
@@ -343,7 +414,12 @@ export function ChatPage() {
         if (event.type === "complete" || event.type === "aborted" || event.type === "error") {
           flushChunks();
           if (event.assistantMessage) {
-            setLiveMessages((current) => upsertMessage(current ?? messages, event.assistantMessage!));
+            const pinned = turnSelectionRef.current
+              ? { model: turnSelectionRef.current.modelId, provider: turnSelectionRef.current.providerId }
+              : undefined;
+            setLiveMessages((current) =>
+              upsertMessage(current ?? messages, pinTurnModel(event.assistantMessage!, pinned)),
+            );
           } else if (event.type === "error") {
             setLiveMessages((current) => markLastAssistant(current ?? messages, "error"));
           } else if (event.type === "aborted") {
@@ -370,6 +446,8 @@ export function ChatPage() {
       toast(describeApiError(err, "Unable to send message"), "error");
     } finally {
       setStreaming(false);
+      setDeepCodeTurn(false);
+      setGenerationEstimate(undefined);
       setGenerationId(undefined);
       abortRef.current = null;
       await queryClient.invalidateQueries({ queryKey: ["conversations"] });
@@ -389,8 +467,16 @@ export function ChatPage() {
     const content = (spoken ?? draft).trim();
     const outgoing = spoken === undefined ? attachments : [];
     if ((!content && outgoing.length === 0) || streaming || uploading) return;
+    if (modelsQuery.isPending) {
+      toast("Models are still loading. Try again in a moment.", "error");
+      return;
+    }
+    if (modelsQuery.isError) {
+      toast(describeApiError(modelsQuery.error, "Unable to load models"), "error");
+      return;
+    }
     if (!defaultModel && models.length === 0) {
-      toast("No AI provider configured.", "error");
+      toast("No AI provider configured. Check GEMINI_API_KEY on the API and restart it.", "error");
       return;
     }
     const attachmentIds = outgoing.map((item) => item.id);
@@ -408,7 +494,11 @@ export function ChatPage() {
       setAttachments([]);
     }
     setStreaming(true);
-    const pending = optimisticTurn(content, conversationId ?? "pending", publicAttachments);
+    turnSelectionRef.current = { providerId, modelId };
+    const pending = optimisticTurn(content, conversationId ?? "pending", publicAttachments, {
+      model: modelId,
+      provider: providerId,
+    });
     setLiveMessages((current) => [...(current ?? messagesQuery.data?.messages ?? []), pending.user, pending.assistant]);
     // Sending is an explicit intent to watch the reply, so re-attach to the bottom
     // even if the reader had scrolled up before submitting.
@@ -622,9 +712,12 @@ export function ChatPage() {
     setLiveMessages(trimmed);
 
     setStreaming(true);
+    turnSelectionRef.current = { providerId, modelId };
     const controller = new AbortController();
     abortRef.current = controller;
-    await consumeStream(api.conversations.regenerate(conversationId, messageId, controller.signal));
+    await consumeStream(
+      api.conversations.regenerate(conversationId, messageId, controller.signal, { providerId, modelId }),
+    );
   }
 
   /**
@@ -640,9 +733,15 @@ export function ChatPage() {
     setStreaming(true);
     // The reworded question lands at the bottom, so follow it there.
     pin();
+    turnSelectionRef.current = { providerId, modelId };
     const controller = new AbortController();
     abortRef.current = controller;
-    await consumeStream(api.conversations.editMessage(conversationId, messageId, content, controller.signal));
+    await consumeStream(
+      api.conversations.editMessage(conversationId, messageId, content, controller.signal, {
+        providerId,
+        modelId,
+      }),
+    );
   }
 
   const feedbackMutation = useMutation({
@@ -719,10 +818,7 @@ export function ChatPage() {
             modelId={modelId}
             disabled={streaming}
             loading={modelsQuery.isPending}
-            onChange={(nextProvider, nextModel) => {
-              userPickedModelRef.current = true;
-              setSelection(nextProvider, nextModel);
-            }}
+            onChange={applyThreadSelection}
             onAddModel={() => setKeysPanelOpen(true)}
           />
           {conversationId ? <ShareExportMenu conversationId={conversationId} /> : null}
@@ -813,8 +909,16 @@ export function ChatPage() {
               <ChatTurn
                 key={message.id}
                 message={message}
+                {...(message.model
+                  ? {
+                      modelCaption:
+                        models.find((model) => model.id === message.model)?.name ?? message.model,
+                    }
+                  : {})}
                 eagerMarkdown={index >= visibleMessages.length - 3}
                 streaming={streaming}
+                deepCode={deepCodeTurn && message.status === "streaming"}
+                {...(generationEstimate ? { estimate: generationEstimate } : {})}
                 ttsConfigured={ttsConfigured}
                 ttsUnavailableReason={ttsUnavailableReason}
                 feedbackPending={feedbackMutation.isPending}

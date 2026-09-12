@@ -7,6 +7,7 @@ import {
   DEFAULT_OPENAI_MODEL_ID,
   GEMINI_FLASH_2_MODEL_ID,
   GEMINI_FLASH_MODEL_ID,
+  GEMINI_PRO_MODEL_ID,
   GROQ_OSS_20B_MODEL_ID,
   GROQ_QUALITY_MODEL_ID,
 } from "@Ken/shared";
@@ -18,12 +19,14 @@ export const GEMINI_PRIMARY_MODEL_IDS = [
   DEFAULT_GEMINI_MODEL_ID,
   GEMINI_FLASH_MODEL_ID,
   GEMINI_FLASH_2_MODEL_ID,
+  GEMINI_PRO_MODEL_ID,
 ] as const;
 
 export const FREE_FALLBACK_CHAIN = [
   { providerId: "gemini", modelId: DEFAULT_GEMINI_MODEL_ID },
   { providerId: "gemini", modelId: GEMINI_FLASH_MODEL_ID },
   { providerId: "gemini", modelId: GEMINI_FLASH_2_MODEL_ID },
+  { providerId: "gemini", modelId: GEMINI_PRO_MODEL_ID },
   { providerId: "groq", modelId: DEFAULT_GROQ_MODEL_ID },
   { providerId: "groq", modelId: GROQ_QUALITY_MODEL_ID },
   { providerId: "deepseek", modelId: DEFAULT_DEEPSEEK_MODEL_ID },

@@ -83,17 +83,36 @@ export function toProviderContents(messages: ChatMessage[]): {
     });
   }
 
+  while (contents.length > 0 && contents.at(-1)?.role === "model") {
+    contents.pop();
+  }
+
   return {
     ...(systemParts.length > 0 ? { system: systemParts.join("\n\n") } : {}),
     contents,
   };
 }
 
-export function toOpenAIMessages(messages: ChatMessage[]): Array<{ role: string; content: unknown }> {
-  return messages.map((message) => {
+export interface OpenAIMessageOptions {
+  /**
+   * Emit PDF parts as `type: "file"` blocks. Only OpenAI's own chat/completions
+   * accepts those; the other OpenAI-compatible surfaces Ken talks to (Groq,
+   * Cerebras, DeepSeek, Cloudflare, Gemini's compat endpoint) reject an unknown
+   * content block with a 400, so this stays off unless the adapter opts in.
+   */
+  documents?: boolean;
+}
+
+export function toOpenAIMessages(
+  messages: ChatMessage[],
+  options: OpenAIMessageOptions = {},
+): Array<{ role: string; content: unknown }> {
+  const mapped = messages.map((message) => {
     const role = message.role === "tool" ? "assistant" : message.role;
-    const images = (message.parts ?? []).filter((part) => part.mimeType.startsWith("image/"));
-    if (images.length === 0) {
+    const parts = message.parts ?? [];
+    const images = parts.filter((part) => part.mimeType.startsWith("image/"));
+    const documents = options.documents === true ? parts.filter((part) => isDocumentPart(part.mimeType)) : [];
+    if (images.length === 0 && documents.length === 0) {
       return { role, content: message.content };
     }
     const content: unknown[] = [];
@@ -106,8 +125,26 @@ export function toOpenAIMessages(messages: ChatMessage[]): Array<{ role: string;
         image_url: { url: `data:${part.mimeType};base64,${part.data}` },
       });
     }
+    for (const part of documents) {
+      content.push({
+        type: "file",
+        file: {
+          filename: part.filename ?? "attachment.pdf",
+          file_data: `data:${part.mimeType};base64,${part.data}`,
+        },
+      });
+    }
     return { role, content };
   });
+  while (mapped.length > 0 && mapped.at(-1)?.role === "assistant") {
+    mapped.pop();
+  }
+  return mapped;
+}
+
+/** PDF is the only non-image attachment Ken forwards as binary; text is inlined upstream. */
+function isDocumentPart(mimeType: string): boolean {
+  return mimeType === "application/pdf";
 }
 
 export function toAnthropicMessages(messages: ChatMessage[]): {
@@ -122,8 +159,10 @@ export function toAnthropicMessages(messages: ChatMessage[]): {
       continue;
     }
     const role = message.role === "assistant" ? "assistant" : "user";
-    const images = (message.parts ?? []).filter((part) => part.mimeType.startsWith("image/"));
-    if (images.length === 0) {
+    const parts = message.parts ?? [];
+    const images = parts.filter((part) => part.mimeType.startsWith("image/"));
+    const documents = parts.filter((part) => isDocumentPart(part.mimeType));
+    if (images.length === 0 && documents.length === 0) {
       mapped.push({ role, content: message.content });
       continue;
     }
@@ -134,6 +173,13 @@ export function toAnthropicMessages(messages: ChatMessage[]): {
     for (const part of images) {
       content.push({
         type: "image",
+        source: { type: "base64", media_type: part.mimeType, data: part.data },
+      });
+    }
+    for (const part of documents) {
+      // Anthropic reads PDFs natively through a document block.
+      content.push({
+        type: "document",
         source: { type: "base64", media_type: part.mimeType, data: part.data },
       });
     }

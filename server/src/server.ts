@@ -1,11 +1,14 @@
 import dns from "node:dns";
 import { APP_NAME } from "@Ken/shared";
 import { env, isProduction } from "./config/env.js";
+import { installProviderHttpKeepAlive, warmupGeminiConnection } from "./config/http.js";
 import { logger } from "./config/logger.js";
 import { connectDatabase, disconnectDatabase } from "./config/database.js";
 import { app } from "./app.js";
 import { bootstrapProviders } from "./services/ai/bootstrap.js";
 import { toSafeError } from "./utils/redact.js";
+
+installProviderHttpKeepAlive();
 
 /**
  * Some local networks (notably Windows machines behind an ISP resolver that
@@ -26,7 +29,10 @@ async function start(): Promise<void> {
     await connectDatabase();
     await bootstrapProviders();
   } catch (error) {
-    logger.fatal({ err: toSafeError(error) }, "Failed to connect to MongoDB");
+    logger.fatal(
+      { err: toSafeError(error) },
+      "Failed to connect to MongoDB. For Atlas, add this machine's current IP in Network Access and run npm run dev again.",
+    );
     process.exit(1);
   }
 
@@ -40,6 +46,7 @@ async function start(): Promise<void> {
       },
       `${APP_NAME} API listening`,
     );
+    void warmupGeminiConnection(env.GEMINI_API_KEY);
   });
 
   const shutdown = (signal: string): void => {

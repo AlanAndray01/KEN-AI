@@ -14,6 +14,7 @@ import { isAbortError, isTimeoutAbort } from "../../utils/abort.js";
 import { toSafeError } from "../../utils/redact.js";
 import type { ChatMessage, StreamEvent } from "../ai/AIProvider.js";
 import { aiProviderManager } from "../ai/AIProviderManager.js";
+import { attachmentNeed, pickMultimodalRoute } from "../ai/attachmentRoute.js";
 import { modelRegistry } from "../ai/ModelRegistry.js";
 import { Conversation } from "../../models/Conversation.js";
 import { Message } from "../../models/Message.js";
@@ -22,6 +23,8 @@ import { findOwnedConversation, titleFromContent, capStoredTurns, conversationEx
 import { generateChatTitle } from "./chatTitle.js";
 import { describeSelectedModel } from "./identity.js";
 import { nextOpenGeminiModelId, peekModelSkip } from "../ai/modelSkip.js";
+import { buildDeepCodeMessage, detectDeepCodeRequest } from "./codeGeneration.js";
+import { estimateGenerationMs } from "./generationEstimate.js";
 import { buildResponsePolicyMessages, detectTaskSignals, isLowThinkingTurn, replyMaxTokens } from "./responsePolicy.js";
 import { buildSseTiming, type SseTiming } from "../../utils/sse.js";
 import { generationRegistry } from "./generationRegistry.js";
@@ -52,10 +55,12 @@ export interface PreparedGeneration {
   contextWindow?: number;
   toolSystemMessages?: ChatMessage[];
   customGptId?: string;
+  routedFrom?: string;
+  routeReason?: string;
 }
 
 export interface ChatStreamEvent {
-  type: "start" | "chunk" | "complete" | "aborted" | "error" | "timing" | "model";
+  type: "start" | "chunk" | "complete" | "aborted" | "error" | "timing" | "model" | "estimate";
   conversation?: PublicConversation;
   userMessage?: PublicMessage;
   assistantMessage?: PublicMessage;
@@ -72,7 +77,16 @@ export interface ChatStreamEvent {
   googleConnectMs?: number;
   firstVisibleChunkMs?: number;
   completeMs?: number;
+  /** Median duration of comparable past runs on this model. Absent until enough history exists. */
+  estimatedMs?: number;
+  /** Sample count behind `estimatedMs`, so the UI can hedge a thin estimate. */
+  estimateSamples?: number;
+  /** False when a deep-code turn had to borrow general-mode samples. */
+  estimateMatchedMode?: boolean;
+  /** This turn asked for a substantial code artifact. */
+  deepCode?: boolean;
   model?: string;
+  modelName?: string;
   provider?: string;
 }
 
@@ -106,11 +120,15 @@ export async function prepareSend(input: {
     await getAccessibleGpt(input.userId, customGptId);
   }
 
-  const { providerId, modelId, model } = await resolveExecutionModel(
+  const requested = await resolveExecutionModel(
     input.userId,
     requestedProviderId,
     requestedModelId,
   );
+  const earlyIds = input.attachmentIds ?? [];
+  const earlyFiles = earlyIds.length > 0 ? await loadOwnedFiles(input.userId, earlyIds) : [];
+  const routed = await routeForAttachments(input.userId, requested, earlyFiles);
+  const { providerId, modelId, model } = routed;
   const toolOutcome =
     input.enabledTools && input.enabledTools.length > 0
       ? await aiProviderManager.applyEnabledTools({
@@ -120,7 +138,7 @@ export async function prepareSend(input: {
           enabledTools: input.enabledTools,
         })
       : { systemMessages: [], files: [] };
-  const fileIds = [...(input.attachmentIds ?? []), ...toolOutcome.files.map((file) => file.id)];
+  const fileIds = [...earlyIds, ...toolOutcome.files.map((file) => file.id)];
   const files = fileIds.length > 0 ? await loadOwnedFiles(input.userId, fileIds) : [];
   if (files.length > 0) {
     assertAttachmentsAllowed(model.capabilities, files);
@@ -146,10 +164,8 @@ export async function prepareSend(input: {
       ...(customGptId ? { customGptId } : {}),
     }));
 
-  if (conversation && (input.providerId || input.modelId)) {
-    owned.providerId = providerId;
-    owned.modelId = modelId;
-  }
+  owned.providerId = providerId;
+  owned.modelId = modelId;
   if (customGptId) {
     owned.customGptId = new mongoose.Types.ObjectId(customGptId);
   }
@@ -158,48 +174,62 @@ export async function prepareSend(input: {
   }
 
   const generationId = randomUUID();
-  const userDoc = await Message.create({
-    conversationId: owned._id,
-    userId: input.userId,
-    role: "user",
-    content: input.content,
-    status: "complete",
-    ...(owned.expiresAt ? { expiresAt: owned.expiresAt } : {}),
-  });
-  const publicAttachments =
-    files.length > 0
-      ? await attachFilesToMessage({
-          userId: input.userId,
-          conversationId: String(owned._id),
-          messageId: String(userDoc._id),
-          files,
-        })
-      : [];
-  if (publicAttachments.length > 0) {
-    userDoc.attachments = publicAttachments.map((item) => new mongoose.Types.ObjectId(item.id));
-    await userDoc.save();
-  }
-
-  const assistantDoc = await Message.create({
-    conversationId: owned._id,
-    userId: input.userId,
-    role: "assistant",
-    content: "",
-    model: modelId,
-    provider: providerId,
-    status: "streaming",
-    generationId,
-    parentMessageId: userDoc._id,
-    ...(owned.expiresAt ? { expiresAt: owned.expiresAt } : {}),
-  });
-
+  const userOid = new mongoose.Types.ObjectId();
+  const assistantOid = new mongoose.Types.ObjectId();
   owned.messageCount = (owned.messageCount ?? 0) + 2;
   owned.lastMessageAt = new Date();
   owned.lastMessagePreview = (input.content || files[0]?.originalName || "Attachment").slice(0, 280);
   if (owned.title === "New chat") {
     owned.title = titleFromContent(titleSource);
   }
-  await owned.save();
+
+  const userFields = {
+    _id: userOid,
+    conversationId: owned._id,
+    userId: input.userId,
+    role: "user" as const,
+    content: input.content,
+    status: "complete" as const,
+    ...(owned.expiresAt ? { expiresAt: owned.expiresAt } : {}),
+  };
+  const assistantFields = {
+    _id: assistantOid,
+    conversationId: owned._id,
+    userId: input.userId,
+    role: "assistant" as const,
+    content: "",
+    model: modelId,
+    provider: providerId,
+    status: "streaming" as const,
+    generationId,
+    parentMessageId: userOid,
+    ...(owned.expiresAt ? { expiresAt: owned.expiresAt } : {}),
+  };
+
+  let userDoc;
+  let assistantDoc;
+  let publicAttachments: Awaited<ReturnType<typeof attachFilesToMessage>> = [];
+
+  if (files.length > 0) {
+    userDoc = await Message.create(userFields);
+    publicAttachments = await attachFilesToMessage({
+      userId: input.userId,
+      conversationId: String(owned._id),
+      messageId: String(userDoc._id),
+      files,
+    });
+    if (publicAttachments.length > 0) {
+      userDoc.attachments = publicAttachments.map((item) => new mongoose.Types.ObjectId(item.id));
+      await userDoc.save();
+    }
+    [assistantDoc] = await Promise.all([Message.create(assistantFields), owned.save()]);
+  } else {
+    [userDoc, assistantDoc] = await Promise.all([
+      Message.create(userFields),
+      Message.create(assistantFields),
+      owned.save(),
+    ]);
+  }
   void capStoredTurns(String(owned._id), input.userId);
 
   const { signal } = generationRegistry.start(input.userId, String(owned._id), generationId);
@@ -217,6 +247,7 @@ export async function prepareSend(input: {
     ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
     ...(toolOutcome.systemMessages.length > 0 ? { toolSystemMessages: toolOutcome.systemMessages } : {}),
     ...(customGptId ? { customGptId } : {}),
+    ...(routed.routedFrom ? { routedFrom: routed.routedFrom, routeReason: routed.routeReason } : {}),
   };
 }
 
@@ -236,6 +267,8 @@ export async function prepareEdit(input: {
   conversationId: string;
   messageId: string;
   content: string;
+  providerId?: string;
+  modelId?: string;
 }): Promise<PreparedGeneration> {
   const conversation = await findOwnedConversation(input.userId, input.conversationId);
   if (!mongoose.isValidObjectId(input.messageId)) {
@@ -263,16 +296,6 @@ export async function prepareEdit(input: {
     });
   }
 
-  const { providerId, modelId, model } = await resolveExecutionModel(
-    input.userId,
-    conversation.providerId,
-    conversation.modelId,
-  );
-  if (providerId !== conversation.providerId || modelId !== conversation.modelId) {
-    conversation.providerId = providerId;
-    conversation.modelId = modelId;
-  }
-
   const generationId = randomUUID();
   const userDoc = await Message.create({
     conversationId: conversation._id,
@@ -298,6 +321,16 @@ export async function prepareEdit(input: {
     userDoc.attachments = attachments.map((item) => new mongoose.Types.ObjectId(item.id));
     await userDoc.save();
   }
+
+  const requested = await resolveExecutionModel(
+    input.userId,
+    input.providerId ?? conversation.providerId,
+    input.modelId ?? conversation.modelId,
+  );
+  const routed = await routeForAttachments(input.userId, requested, attachments);
+  const { providerId, modelId, model } = routed;
+  conversation.providerId = providerId;
+  conversation.modelId = modelId;
 
   const assistantDoc = await Message.create({
     conversationId: conversation._id,
@@ -330,6 +363,7 @@ export async function prepareEdit(input: {
     abortSignal: signal,
     ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
     ...(conversation.customGptId ? { customGptId: String(conversation.customGptId) } : {}),
+    ...(routed.routedFrom ? { routedFrom: routed.routedFrom, routeReason: routed.routeReason } : {}),
   };
 }
 
@@ -337,6 +371,8 @@ export async function prepareRegenerate(input: {
   userId: string;
   conversationId: string;
   messageId: string;
+  providerId?: string;
+  modelId?: string;
 }): Promise<PreparedGeneration> {
   const conversation = await findOwnedConversation(input.userId, input.conversationId);
   if (!mongoose.isValidObjectId(input.messageId)) {
@@ -392,15 +428,17 @@ export async function prepareRegenerate(input: {
     { $set: { "metadata.superseded": true } },
   );
 
-  const { providerId, modelId, model } = await resolveExecutionModel(
+  const attachmentMap = await publicAttachmentsForMessages([String(userMessage._id)]);
+  const existingAttachments = attachmentMap.get(String(userMessage._id)) ?? [];
+  const requested = await resolveExecutionModel(
     input.userId,
-    conversation.providerId,
-    conversation.modelId,
+    input.providerId ?? conversation.providerId,
+    input.modelId ?? conversation.modelId,
   );
-  if (providerId !== conversation.providerId || modelId !== conversation.modelId) {
-    conversation.providerId = providerId;
-    conversation.modelId = modelId;
-  }
+  const routed = await routeForAttachments(input.userId, requested, existingAttachments);
+  const { providerId, modelId, model } = routed;
+  conversation.providerId = providerId;
+  conversation.modelId = modelId;
 
   const generationId = randomUUID();
   const assistantDoc = await Message.create({
@@ -430,6 +468,7 @@ export async function prepareRegenerate(input: {
     abortSignal: signal,
     ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
     ...(conversation.customGptId ? { customGptId: String(conversation.customGptId) } : {}),
+    ...(routed.routedFrom ? { routedFrom: routed.routedFrom, routeReason: routed.routeReason } : {}),
   };
 }
 
@@ -455,8 +494,13 @@ export async function runGeneration(
   let executedModelId = prepared.modelId;
   let fallbackFrom: string | undefined;
   let fallbackReason: string | undefined;
-  let streamProviderId = prepared.providerId;
+  const streamProviderId = prepared.providerId;
   let streamModelId = prepared.modelId;
+
+  if (prepared.routedFrom) {
+    fallbackFrom = prepared.routedFrom;
+    fallbackReason = prepared.routeReason;
+  }
 
   const skip = peekModelSkip(prepared.providerId, prepared.modelId);
   if (skip && prepared.providerId === "gemini") {
@@ -474,12 +518,34 @@ export async function runGeneration(
       ? { ...prepared.assistantMessage, model: executedModelId, provider: executedProviderId }
       : prepared.assistantMessage;
 
+  const deepCode = detectDeepCodeRequest(prepared.userMessage.content);
+
   emit({
     type: "start",
     conversation: prepared.conversation,
     userMessage: prepared.userMessage,
     assistantMessage: startAssistant,
     generationId: prepared.generationId,
+    deepCode,
+  });
+
+  // Priced off UsageRecord history, which costs a Mongo round-trip. Emitted as
+  // its own event so `start` — and therefore the first paint — is never held up
+  // waiting for a figure the UI can fill in a moment later.
+  void estimateGenerationMs({
+    providerId: executedProviderId,
+    modelId: executedModelId,
+    deepCode,
+  }).then((estimate) => {
+    if (!estimate) return;
+    emit({
+      type: "estimate",
+      generationId: prepared.generationId,
+      estimatedMs: estimate.estimatedMs,
+      estimateSamples: estimate.sampleSize,
+      estimateMatchedMode: estimate.matchedMode,
+      deepCode,
+    });
   });
   if (fallbackFrom) {
     emit({
@@ -490,6 +556,7 @@ export async function runGeneration(
       fallbackFrom,
       assistantMessage: startAssistant,
       ...(fallbackReason ? { fallbackReason } : {}),
+      ...(prepared.modelName ? { modelName: prepared.modelName } : {}),
     });
   }
   let googleConnectMs: number | undefined;
@@ -514,7 +581,11 @@ export async function runGeneration(
 
   try {
     const signals = detectTaskSignals(prepared.userMessage.content);
-    const casual = signals.budget === "minimal";
+    const hasAttachments = (prepared.userMessage.attachments?.length ?? 0) > 0;
+    const currentUser = await currentUserTurn(prepared.userId, prepared.userMessage);
+    // Preload races persist, so the new turn (and its files) is often missing
+    // from history. Never drop attachments just because the text is small talk.
+    const casual = signals.budget === "minimal" && !hasAttachments;
     const lowThinking = isLowThinkingTurn(signals);
     const [history, persona] = casual
       ? [[], []]
@@ -530,16 +601,19 @@ export async function runGeneration(
             ...buildResponsePolicyMessages(prepared.userMessage.content, {
               modelName: prepared.modelName,
             }),
-            { role: "user", content: prepared.userMessage.content },
+            currentUser,
           ]
         : [
             ...buildResponsePolicyMessages(prepared.userMessage.content, {
               skipProtocol: Boolean(prepared.customGptId),
               modelName: prepared.modelName,
             }),
+            // Appended after the cacheable prefix so a code turn does not
+            // invalidate the shared identity/protocol prefix for other turns.
+            ...(deepCode ? [buildDeepCodeMessage()] : []),
             ...persona,
             ...(prepared.toolSystemMessages ?? []),
-            ...withCurrentUser(history, prepared.userMessage),
+            ...withCurrentUser(history, currentUser),
           ],
       modelId: prepared.modelId,
       providerId: prepared.providerId,
@@ -557,7 +631,11 @@ export async function runGeneration(
     );
 
     let chunks = 0;
-    const maxTokens = replyMaxTokens(signals.budget);
+    // A deep code turn is truncated by the medium budget: the reply gets cut
+    // mid-function, which is worse than no answer. Floor it at the long budget.
+    const maxTokens = deepCode
+      ? Math.max(replyMaxTokens(signals.budget), replyMaxTokens("long"))
+      : replyMaxTokens(signals.budget);
     for await (const event of aiProviderManager.stream({
       providerId: streamProviderId,
       modelId: streamModelId,
@@ -585,6 +663,7 @@ export async function runGeneration(
           activeModel: event.model,
           fallbackFrom: event.fallbackFrom,
           fallbackReason: event.fallbackReason,
+          modelName: describeSelectedModel(event.model),
           assistantMessage: {
             ...prepared.assistantMessage,
             model: event.model,
@@ -695,6 +774,9 @@ export async function runGeneration(
     ...(inputTokens !== undefined ? { inputTokens } : {}),
     ...(outputTokens !== undefined ? { outputTokens } : {}),
     durationMs: Date.now() - started,
+    // Feeds the next turn's estimate: deep-code durations are pooled separately
+    // from ordinary replies so neither skews the other's median.
+    deepCode,
     success: finishStatus !== "error",
     ...(errorCode ? { errorCode } : {}),
     route,
@@ -824,6 +906,52 @@ export async function loadHistory(userId: string, conversationId: string): Promi
   return result;
 }
 
+async function routeForAttachments(
+  userId: string,
+  requested: { providerId: string; modelId: string; model: Awaited<ReturnType<typeof modelRegistry.assertModelAvailable>> },
+  files: Array<{ mimeType: string }>,
+): Promise<{
+  providerId: string;
+  modelId: string;
+  model: Awaited<ReturnType<typeof modelRegistry.assertModelAvailable>>;
+  routedFrom?: string;
+  routeReason?: string;
+}> {
+  const need = attachmentNeed(files);
+  if (need === "none") return requested;
+  const models = await modelRegistry.listPublicModels(userId);
+  const picked = pickMultimodalRoute(models, requested, need);
+  if (!picked) {
+    throw new AppError(
+      need === "files"
+        ? "No configured model can read this PDF. Add a Gemini, OpenAI, or Anthropic key, then send again."
+        : "No configured model can read this image. Add a Gemini, OpenAI, or Anthropic key, then send again.",
+      { statusCode: 409, code: "ATTACHMENT_ROUTE_UNAVAILABLE", expose: true },
+    );
+  }
+  if (!picked.rerouted) return requested;
+  const model =
+    models.find((item) => item.providerId === picked.providerId && item.id === picked.modelId) ??
+    (await modelRegistry.assertModelAvailable(picked.providerId, picked.modelId, userId));
+  logger.info(
+    {
+      fromProvider: requested.providerId,
+      fromModel: requested.modelId,
+      toProvider: picked.providerId,
+      toModel: picked.modelId,
+      need,
+    },
+    "attachment routed to a multimodal model",
+  );
+  return {
+    providerId: picked.providerId,
+    modelId: picked.modelId,
+    model,
+    routedFrom: requested.modelId,
+    ...(picked.reason ? { routeReason: picked.reason } : {}),
+  };
+}
+
 async function resolveExecutionModel(
   userId: string,
   providerId: string,
@@ -855,10 +983,33 @@ async function resolveExecutionModel(
   }
 }
 
-function withCurrentUser(history: ChatMessage[], userMessage: PublicMessage): ChatMessage[] {
+async function currentUserTurn(userId: string, userMessage: PublicMessage): Promise<ChatMessage> {
+  const attachments = userMessage.attachments ?? [];
+  if (attachments.length === 0) {
+    return { role: "user", content: userMessage.content };
+  }
+  const files = await loadOwnedFiles(
+    userId,
+    attachments.map((item) => item.fileId),
+  );
+  const materialized = await materializeFilesForModel(files);
+  return {
+    role: "user",
+    content: [userMessage.content, materialized.contentSuffix].filter(Boolean).join("\n\n"),
+    ...(materialized.parts.length > 0 ? { parts: materialized.parts } : {}),
+  };
+}
+
+function withCurrentUser(history: ChatMessage[], current: ChatMessage): ChatMessage[] {
   const last = history.at(-1);
-  if (last?.role === "user" && last.content === userMessage.content) return history;
-  return [...history, { role: "user", content: userMessage.content }];
+  if (last?.role !== "user") return [...history, current];
+  if (last.content === current.content) {
+    if (current.parts?.length && !last.parts?.length) {
+      return [...history.slice(0, -1), current];
+    }
+    return history;
+  }
+  return [...history, current];
 }
 
 function applyStreamEvent(event: StreamEvent, onChunk: (text: string) => void): void {

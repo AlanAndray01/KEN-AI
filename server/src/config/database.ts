@@ -33,14 +33,29 @@ export async function connectDatabase(uri = env.MONGODB_URI): Promise<void> {
 
   mongoose.set("strictQuery", true);
 
-  try {
-    await mongoose.connect(uri, {
-      autoIndex: false,
-      serverSelectionTimeoutMS: 15_000,
-      family: 4,
-    });
-  } catch (error) {
-    throw toSafeError(error);
+  const maxAttempts = 3;
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      await mongoose.connect(uri, {
+        autoIndex: false,
+        serverSelectionTimeoutMS: 15_000,
+        family: 4,
+      });
+      lastError = undefined;
+      break;
+    } catch (error) {
+      lastError = error;
+      if (attempt === maxAttempts) break;
+      logger.warn(
+        { attempt, remaining: maxAttempts - attempt, err: toSafeError(error) },
+        "MongoDB connect failed; retrying",
+      );
+      await new Promise((resolve) => setTimeout(resolve, 2_000 * attempt));
+    }
+  }
+  if (lastError) {
+    throw toSafeError(lastError);
   }
 
   registerModels();

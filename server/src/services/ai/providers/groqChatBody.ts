@@ -65,7 +65,9 @@ export function buildCompatibleChatBody(
 ): Record<string, unknown> {
   const body: Record<string, unknown> = {
     model: request.modelId,
-    messages: toOpenAIMessages(request.messages),
+    // Only OpenAI's own endpoint accepts `type: "file"` blocks; every other
+    // compatible surface 400s on them, so PDFs are gated to that adapter.
+    messages: toOpenAIMessages(request.messages, { documents: options.providerId === "openai" }),
   };
   if (options.stream) body.stream = true;
 

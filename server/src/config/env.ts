@@ -76,7 +76,7 @@ const baseEnvSchema = z.object({
   STORAGE_ENDPOINT: z.preprocess(emptyToUndefined, z.string().url().optional()),
   SEARCH_PROVIDER: z.preprocess(emptyToUndefined, z.enum(["tavily", "brave", "serper"]).optional()),
   SEARCH_API_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
-  IMAGE_GENERATION_PROVIDER: z.preprocess(emptyToUndefined, z.enum(["openai"]).optional()),
+  IMAGE_GENERATION_PROVIDER: z.preprocess(emptyToUndefined, z.enum(["openai", "gemini"]).optional()),
   IMAGE_GENERATION_API_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
   VOICE_PROVIDER: z.preprocess(emptyToUndefined, z.enum(["openai"]).optional()),
   VOICE_API_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),

@@ -84,7 +84,7 @@ export interface OkResponse {
 }
 
 export interface ChatStreamEvent {
-  type: "start" | "chunk" | "complete" | "aborted" | "error" | "timing" | "model";
+  type: "start" | "chunk" | "complete" | "aborted" | "error" | "timing" | "model" | "estimate";
   conversation?: PublicConversation;
   userMessage?: PublicMessage;
   assistantMessage?: PublicMessage;
@@ -101,6 +101,14 @@ export interface ChatStreamEvent {
   googleConnectMs?: number;
   firstVisibleChunkMs?: number;
   completeMs?: number;
+  /** Median duration of comparable past runs on this model. Absent until enough history exists. */
+  estimatedMs?: number;
+  /** Sample count behind `estimatedMs`, so the UI can hedge a thin estimate. */
+  estimateSamples?: number;
+  /** False when a deep-code turn had to borrow general-mode samples. */
+  estimateMatchedMode?: boolean;
+  /** This turn asked for a substantial code artifact. */
+  deepCode?: boolean;
   model?: string;
   provider?: string;
 }
@@ -508,7 +516,10 @@ export const api = {
         body: JSON.stringify(body),
       }),
     get: (id: string) => request<{ conversation: PublicConversation }>(`/conversations/${id}`),
-    update: (id: string, body: { title?: string; archived?: boolean; pinned?: boolean }) =>
+    update: (
+      id: string,
+      body: { title?: string; archived?: boolean; pinned?: boolean; modelId?: string; providerId?: string },
+    ) =>
       request<{ conversation: PublicConversation }>(`/conversations/${id}`, {
         method: "PATCH",
         body: JSON.stringify(body),
@@ -517,11 +528,25 @@ export const api = {
     messages: (id: string) => request<{ messages: PublicMessage[] }>(`/conversations/${id}/messages`),
     send: (id: string, body: { content: string; modelId?: string; providerId?: string; attachmentIds?: string[]; enabledTools?: ChatToolId[]; customGptId?: string }, signal?: AbortSignal) =>
       streamRequest(`/conversations/${id}/messages`, body, signal),
-    regenerate: (id: string, messageId: string, signal?: AbortSignal) =>
-      streamRequest(`/conversations/${id}/messages/${messageId}/regenerate`, {}, signal),
+    regenerate: (
+      id: string,
+      messageId: string,
+      signal?: AbortSignal,
+      body?: { modelId?: string; providerId?: string },
+    ) => streamRequest(`/conversations/${id}/messages/${messageId}/regenerate`, body ?? {}, signal),
     /** Rewrites a user turn and streams a fresh answer; later turns are dropped. */
-    editMessage: (id: string, messageId: string, content: string, signal?: AbortSignal) =>
-      streamRequest(`/conversations/${id}/messages/${messageId}/edit`, { content }, signal),
+    editMessage: (
+      id: string,
+      messageId: string,
+      content: string,
+      signal?: AbortSignal,
+      body?: { modelId?: string; providerId?: string },
+    ) =>
+      streamRequest(
+        `/conversations/${id}/messages/${messageId}/edit`,
+        { content, ...body },
+        signal,
+      ),
     feedback: (id: string, messageId: string, body: { rating: "up" | "down"; comment?: string }) =>
       request<{ message: PublicMessage }>(`/conversations/${id}/messages/${messageId}/feedback`, {
         method: "POST",

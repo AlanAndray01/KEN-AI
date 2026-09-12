@@ -3,22 +3,13 @@ import { ALLOWED_UPLOAD_MIME_TYPES, MAX_UPLOAD_BYTES } from "@Ken/shared";
 
 export function attachmentRejection(
   file: { name: string; type: string; size: number },
-  capabilities: ModelCapability[],
+  _capabilities?: ModelCapability[],
 ): string | null {
   const mime = file.type === "image/jpg" ? "image/jpeg" : file.type;
-  const vision = capabilities.includes("vision");
-  const files = capabilities.includes("files");
   const isImage = mime.startsWith("image/");
-  const isPdf = mime === "application/pdf";
 
   if (file.size > MAX_UPLOAD_BYTES) {
     return "File is too large";
-  }
-  if (isImage && !vision) {
-    return "This model cannot analyze images. Choose a vision-capable model.";
-  }
-  if (isPdf && !files && !vision) {
-    return "This model cannot read files. Choose a file-capable model.";
   }
   if (mime && !(ALLOWED_UPLOAD_MIME_TYPES as readonly string[]).includes(mime) && !isImage) {
     const extension = file.name.split(".").pop()?.toLowerCase();
@@ -30,15 +21,21 @@ export function attachmentRejection(
   return null;
 }
 
-export function composerAccept(capabilities: ModelCapability[]): string {
-  const vision = capabilities.includes("vision");
-  const files = capabilities.includes("files");
-  const types = ["text/plain", "text/markdown", "text/csv", "application/json", ".txt", ".md", ".csv", ".json"];
-  if (vision) {
-    types.push("image/png", "image/jpeg", "image/webp", "image/gif");
-  }
-  if (files || vision) {
-    types.push("application/pdf");
-  }
-  return types.join(",");
+/** Images and PDFs are always offered; the server routes to a capable model. */
+export function composerAccept(_capabilities?: ModelCapability[]): string {
+  return [
+    "text/plain",
+    "text/markdown",
+    "text/csv",
+    "application/json",
+    ".txt",
+    ".md",
+    ".csv",
+    ".json",
+    "image/png",
+    "image/jpeg",
+    "image/webp",
+    "image/gif",
+    "application/pdf",
+  ].join(",");
 }

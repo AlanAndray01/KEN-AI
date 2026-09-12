@@ -23,6 +23,11 @@ import { consumePlatformChatQuota } from "./platformChatQuota.js";
 import { isProviderQuotaError, isRetryableProviderError } from "./fallback.js";
 import { formatFallbackReason, nextOpenGeminiModelId, peekModelSkip, rememberModelSkip } from "./modelSkip.js";
 import { modelRegistry } from "./ModelRegistry.js";
+import {
+  attachmentNeedFromMessages,
+  modelSatisfiesAttachmentNeed,
+  pickMultimodalRoute,
+} from "./attachmentRoute.js";
 import { FREE_FALLBACK_CHAIN, pickConfiguredModel, preferredIdsForProvider } from "./primaryModel.js";
 import { GEMINI_FIRST_BYTE_TIMEOUT_MS } from "./providers/OpenAICompatibleProvider.js";
 
@@ -311,7 +316,7 @@ export class AIProviderManager {
   }
 
   private async generateOnce(request: GenerateRequest): Promise<AIResponse> {
-    const resolved = this.prepareRequest(request);
+    const resolved = this.prepareRequest(await this.withAttachmentRoute(request));
     const adapter = await this.getAdapter(resolved.providerId, resolved.userId, resolved.skipQuota);
     if (!resolved.skipAvailabilityCheck) {
       await modelRegistry.assertModelAvailable(resolved.providerId, resolved.modelId, resolved.userId);
@@ -320,7 +325,17 @@ export class AIProviderManager {
   }
 
   private async *streamOnce(request: GenerateRequest): AsyncIterable<StreamEvent> {
-    const resolved = this.prepareRequest(request);
+    const routed = await this.withAttachmentRoute(request);
+    if (routed.providerId !== request.providerId || routed.modelId !== request.modelId) {
+      yield {
+        type: "fallback",
+        model: routed.modelId,
+        provider: routed.providerId,
+        fallbackFrom: request.modelId,
+        fallbackReason: "ATTACHMENT_ROUTE",
+      };
+    }
+    const resolved = this.prepareRequest(routed);
     const adapter = await this.getAdapter(resolved.providerId, resolved.userId, resolved.skipQuota);
     if (!resolved.skipAvailabilityCheck) {
       await modelRegistry.assertModelAvailable(resolved.providerId, resolved.modelId, resolved.userId);
@@ -368,14 +383,34 @@ export class AIProviderManager {
     return { ...request, modelId: CLOUDFLARE_VISION_MODEL_ID };
   }
 
+  private async withAttachmentRoute(request: GenerateRequest): Promise<GenerateRequest> {
+    const need = attachmentNeedFromMessages(request.messages);
+    if (need === "none") return request;
+    const models = await modelRegistry.listRoutableModels(request.userId);
+    const picked = pickMultimodalRoute(models, request, need);
+    if (!picked) {
+      throw new AppError(
+        need === "files"
+          ? "No configured model can read this PDF. Add a Gemini, OpenAI, or Anthropic key, then send again."
+          : "No configured model can read this image. Add a Gemini, OpenAI, or Anthropic key, then send again.",
+        { statusCode: 409, code: "ATTACHMENT_ROUTE_UNAVAILABLE", expose: true },
+      );
+    }
+    if (!picked.rerouted) return request;
+    return { ...request, providerId: picked.providerId, modelId: picked.modelId };
+  }
+
   private async fallbackHops(request: GenerateRequest): Promise<GenerateRequest[]> {
     const models = await modelRegistry.listRoutableModels(request.userId);
     const hops: GenerateRequest[] = [];
     const seen = new Set([`${request.providerId}:${request.modelId}`]);
 
+    const need = attachmentNeedFromMessages(request.messages);
     const add = (providerId: string | undefined, modelId?: string): void => {
       const match = this.matchFallback(request, models, providerId, modelId);
       if (!match) return;
+      const catalog = models.find((model) => model.providerId === match.providerId && model.id === match.id);
+      if (!modelSatisfiesAttachmentNeed(catalog?.capabilities, need)) return;
       const key = `${match.providerId}:${match.id}`;
       if (seen.has(key)) return;
       seen.add(key);

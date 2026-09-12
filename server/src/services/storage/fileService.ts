@@ -128,8 +128,12 @@ export function assertAttachmentsAllowed(capabilities: ModelCapability[], files:
         code: "VISION_UNSUPPORTED",
       });
     }
-    if (isPdfMime(file.mimeType) && !filesCapability && !vision) {
-      throw new AppError("This model cannot read files. Choose a file-capable model.", {
+    // `vision` used to satisfy this too, but an image-only model has no way to
+    // receive a PDF: the part was dropped in the normalizer and the model
+    // answered as though nothing was attached. Requiring `files` turns that
+    // silent no-op into an error the user can act on.
+    if (isPdfMime(file.mimeType) && !filesCapability) {
+      throw new AppError("This model cannot read PDFs. Choose a file-capable model.", {
         statusCode: 400,
         code: "FILES_UNSUPPORTED",
       });

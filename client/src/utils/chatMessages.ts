@@ -48,6 +48,7 @@ export function optimisticTurn(
   content: string,
   conversationId: string,
   attachments: PublicAttachment[] = [],
+  selection?: { model: string; provider: string },
 ): { user: PublicMessage; assistant: PublicMessage } {
   const now = new Date().toISOString();
   const suffix = `${now}-${Math.random().toString(36).slice(2, 8)}`;
@@ -70,6 +71,7 @@ export function optimisticTurn(
       status: "streaming",
       createdAt: now,
       updatedAt: now,
+      ...(selection ? { model: selection.model, provider: selection.provider } : {}),
     },
   };
 }
@@ -125,6 +127,15 @@ export function startTurn(
     );
   }
   return dedupeMessages(next);
+}
+
+/** Stamps the picker selection onto a turn so the metadata label never falls back to a default id. */
+export function pinTurnModel(
+  message: PublicMessage,
+  selection?: { model: string; provider: string },
+): PublicMessage {
+  if (!selection?.model) return message;
+  return { ...message, model: selection.model, provider: selection.provider };
 }
 
 /** Updates the executing model on the live assistant row without touching its text. */

@@ -190,13 +190,23 @@ export const sendMessageSchema = z
     message: "Message or attachment is required",
   });
 
+const generationModelFields = {
+  modelId: z.string().trim().min(1).max(160).optional(),
+  providerId: z.string().trim().min(1).max(64).optional(),
+};
+
 /**
  * Editing a user turn resends it, so the content must be non-empty — unlike
  * sendMessageSchema, an edit cannot fall back to attachments alone.
+ * The optional model fields let the current picker override the thread default.
  */
 export const editMessageSchema = z.object({
   content: z.string().trim().min(1).max(MAX_MESSAGE_CONTENT_CHARS),
+  ...generationModelFields,
 });
+
+/** Body for regenerating a turn with the model currently selected in the picker. */
+export const regenerateMessageSchema = z.object(generationModelFields);
 
 export const messageFeedbackSchema = z.object({
   rating: z.enum(["up", "down"]),

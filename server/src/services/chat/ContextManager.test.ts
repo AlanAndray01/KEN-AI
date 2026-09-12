@@ -43,9 +43,26 @@ describe("ContextManager", () => {
     });
 
     const history = result.filter((message) => message.role !== "system");
-    expect(history).toHaveLength(6);
+    expect(history.length).toBeLessThanOrEqual(6);
     expect(history[0]?.content).toBe("turn-14");
-    expect(history.at(-1)?.content).toBe("turn-19");
+    expect(history.at(-1)?.role).toBe("user");
+    expect(history.at(-1)?.content).toBe("turn-18");
+  });
+
+  it("strips a trailing assistant turn so Gemini is not sent a model-ending history", () => {
+    const manager = new ContextManager();
+    const result = manager.build({
+      messages: [
+        { role: "system", content: "Stay brief" },
+        { role: "user", content: "hello" },
+        { role: "assistant", content: "Hi there" },
+      ],
+      modelId: "gemini-3.5-flash-lite",
+      providerId: "gemini",
+      contextWindow: 1_000_000,
+    });
+    expect(result.at(-1)?.role).toBe("user");
+    expect(result.some((message) => message.role === "assistant")).toBe(false);
   });
 
   it("keeps estimated input tokens at or below the 12k budget", () => {

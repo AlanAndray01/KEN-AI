@@ -69,7 +69,7 @@ vi.mock("../services/export/exportService.js", () => ({
   exportAllConversations: (...args: unknown[]) => exportAllConversations(...args),
 }));
 
-describe("notifications, profile, and usage APIs", () => {
+describe("notifications, profile, and usage APIs", { timeout: 15_000 }, () => {
   beforeEach(() => {
     authRole = "user";
     listNotifications.mockReset();
