@@ -4,7 +4,6 @@
   "installCommand": "npm ci --include=dev",
   "outputDirectory": "client/dist",
   "framework": "vite",
-  "_comment_rewrites": "Vercel matches the filesystem before it applies a rewrite, so files in client/public are already served on their own. The SEO assets are still named here explicitly: when robots.txt did not exist, this rewrite answered /robots.txt with index.html at 200 - Content-Type text/html, filename index.html - and crawlers read markup where directives belong. A 404 would have been recoverable; a 200 of the wrong type was not, because nothing reported an error. Naming them means a future build that drops one fails loudly instead of silently serving HTML again.",
   "rewrites": [
     {
       "source": "/((?!assets/|robots\\.txt|sitemap\\.xml|og-image\\.png|site\\.webmanifest|favicon\\.ico).*)",

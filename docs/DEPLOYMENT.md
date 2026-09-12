@@ -121,6 +121,37 @@ Email signup and password reset require `RESEND_API_KEY` and a verified From
 address (`EMAIL_FROM` or `RESEND_FROM_EMAIL`) on Render. Production will not
 boot without them. A Resend delivery failure returns `503 EMAIL_UNAVAILABLE`.
 
+### Editing vercel.json
+
+`vercel.json` is validated against a strict JSON Schema that sets
+`additionalProperties: false`, so **any key Vercel does not define fails the
+build** — including a key added purely to hold a comment. JSON has no comment
+syntax and Vercel provides no escape hatch, so notes about the configuration go
+here in this file, not in `vercel.json`. The one exception Vercel accepts is
+`$schema`, which editors use for autocompletion.
+
+To check a change before pushing:
+
+```bash
+curl -s https://openapi.vercel.sh/vercel.json -o /tmp/vercel-schema.json
+node -e "const s=require('/tmp/vercel-schema.json'),c=require('./vercel.json');
+for (const k of Object.keys(c)) if (k!=='\$schema' && !s.properties[k]) console.log('INVALID:',k)"
+```
+
+### Why the rewrite names the SEO files
+
+The SPA rewrite sends unmatched paths to `index.html`. Vercel checks the
+filesystem first, so the files in `client/public/` are served on their own and
+the exclusions in the rewrite's negative lookahead are belt and braces.
+
+They are named anyway because of how this failed the first time: before
+`client/public/robots.txt` existed, `/robots.txt` fell through to the rewrite
+and returned `index.html` with **HTTP 200** and `Content-Type: text/html`.
+Crawlers read markup where directives belong, and nothing anywhere reported an
+error — a 404 would have been obvious, a wrong-typed 200 was silent. Listing the
+files means a build that drops one breaks loudly instead of quietly serving HTML
+to Googlebot again. `client/src/seo.test.ts` guards the same ground.
+
 ## 5. DNS for ken-ai.tech
 
 At your registrar, point the records at the two hosts:
