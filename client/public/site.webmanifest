@@ -1,0 +1,20 @@
+{
+  "name": "Ken AI",
+  "short_name": "Ken AI",
+  "description": "Ken AI is a private AI assistant for thinking, writing, coding, and research.",
+  "id": "https://ken-ai.tech/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#121212",
+  "theme_color": "#121212",
+  "lang": "en",
+  "icons": [
+    {
+      "src": "/og-image.png",
+      "sizes": "1200x630",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

@@ -3,9 +3,126 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="description" content="Ken AI — a private AI assistant platform" />
     <meta name="theme-color" content="#121212" />
-    <title>Ken AI</title>
+
+    <!--
+      SEO block.
+      ==========
+      This app is client-rendered: the body ships as an empty #root, so anything
+      a crawler is meant to read has to live here in the static HTML. Google can
+      execute JavaScript before indexing, but it queues that work separately and
+      other crawlers (Bing, Slack, X, LinkedIn, WhatsApp) mostly do not run it at
+      all — which is why the tags below are duplicated rather than set only from
+      React. `useDocumentTitle` refines the title and canonical per route once
+      the app is running.
+    -->
+    <title>Ken AI — Private AI Assistant</title>
+    <meta
+      name="description"
+      content="Ken AI is a private AI assistant for thinking, writing, coding, and research. Ask anything and get clear answers with worked examples — free at ken-ai.tech."
+    />
+    <link rel="canonical" href="https://ken-ai.tech/" />
+    <meta name="author" content="Ken AI" />
+    <meta name="application-name" content="Ken AI" />
+
+    <!--
+      `max-image-preview:large` is what allows the card image in Google results;
+      without it Google falls back to a thumbnail or no image at all.
+    -->
+    <meta
+      name="robots"
+      content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1"
+    />
+
+    <!-- Open Graph: Facebook, LinkedIn, WhatsApp, Slack, Discord. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Ken AI" />
+    <meta property="og:title" content="Ken AI — Private AI Assistant" />
+    <meta
+      property="og:description"
+      content="Ken AI is a private AI assistant for thinking, writing, coding, and research. Ask anything and get clear answers with worked examples."
+    />
+    <meta property="og:url" content="https://ken-ai.tech/" />
+    <meta property="og:locale" content="en_US" />
+    <!-- Absolute URL: scrapers do not resolve relative paths. -->
+    <meta property="og:image" content="https://ken-ai.tech/og-image.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Ken AI — ken-ai.tech" />
+
+    <!-- X / Twitter. -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Ken AI — Private AI Assistant" />
+    <meta
+      name="twitter:description"
+      content="Ken AI is a private AI assistant for thinking, writing, coding, and research. Ask anything and get clear answers with worked examples."
+    />
+    <meta name="twitter:image" content="https://ken-ai.tech/og-image.png" />
+    <meta name="twitter:image:alt" content="Ken AI — ken-ai.tech" />
+
+    <link rel="manifest" href="/site.webmanifest" />
+    <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
+
+    <!--
+      Structured data. `Organization` and `WebSite` together are what let Google
+      treat "Ken AI" as a named entity rather than two common words, which is the
+      whole problem on a brand-name search. `alternateName` covers the spellings
+      people actually type.
+    -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "https://ken-ai.tech/#organization",
+            "name": "Ken AI",
+            "alternateName": ["KEN AI", "Ken", "KEN", "ken-ai.tech"],
+            "url": "https://ken-ai.tech/",
+            "logo": {
+              "@type": "ImageObject",
+              "url": "https://ken-ai.tech/og-image.png",
+              "width": 1200,
+              "height": 630
+            },
+            "description": "Ken AI is a private AI assistant for thinking, writing, coding, and research."
+          },
+          {
+            "@type": "WebSite",
+            "@id": "https://ken-ai.tech/#website",
+            "url": "https://ken-ai.tech/",
+            "name": "Ken AI",
+            "alternateName": ["KEN AI", "ken-ai.tech"],
+            "inLanguage": "en",
+            "publisher": { "@id": "https://ken-ai.tech/#organization" }
+          },
+          {
+            "@type": "SoftwareApplication",
+            "@id": "https://ken-ai.tech/#app",
+            "name": "Ken AI",
+            "url": "https://ken-ai.tech/",
+            "applicationCategory": "BusinessApplication",
+            "operatingSystem": "Any modern web browser",
+            "browserRequirements": "Requires JavaScript",
+            "description": "Ken AI is a private AI assistant for thinking, writing, coding, and research. It answers questions across any subject with clear explanations and worked examples.",
+            "image": "https://ken-ai.tech/og-image.png",
+            "publisher": { "@id": "https://ken-ai.tech/#organization" },
+            "featureList": [
+              "Conversational AI assistant across any subject",
+              "Streaming answers with Markdown, code blocks, and LaTeX maths",
+              "File and image understanding",
+              "Web search and image generation tools",
+              "Custom GPTs and saved memory",
+              "Private conversation history with full account deletion"
+            ]
+          }
+        ]
+      }
+    </script>
+
+    <link rel="preconnect" href="https://api.ken-ai.tech" crossorigin />
+    <link rel="dns-prefetch" href="https://api.ken-ai.tech" />
 
     <!--
       The KEN mark: smoky-white stem, brand-green arm. Inlined as a data URI so
@@ -184,6 +301,46 @@
       <div class="boot-label">Initialising KEN</div>
     </div>
     <div id="root"></div>
+
+    <!--
+      The only prose in the served HTML. React empties #root when it mounts, so
+      body copy placed there would be invisible to a crawler that does execute
+      JavaScript; inside <noscript> it survives for the crawlers that do not, and
+      costs a rendering visitor nothing. Keep this factual and in step with the
+      landing page — it describes the same product, it is not a keyword dump.
+    -->
+    <noscript>
+      <main style="max-width: 46rem; margin: 0 auto; padding: 3rem 1.5rem; font-family: system-ui, sans-serif; color: #f5f5f5">
+        <h1>Ken AI — a private AI assistant</h1>
+        <p>
+          <strong>Ken AI</strong> is an AI assistant at
+          <a href="https://ken-ai.tech/" style="color: #00ff41">ken-ai.tech</a> for thinking,
+          writing, coding, and research. Ask it anything — any subject, in your own language — and
+          it answers in plain words, defines the terms it uses, and works through a concrete
+          example rather than handing back an abstract summary.
+        </p>
+        <h2>What Ken AI does</h2>
+        <ul>
+          <li>Answers questions across any subject, from software and mathematics to business, law, health, and everyday practical problems.</li>
+          <li>Streams replies with proper formatting: headings, lists, syntax-highlighted code, and LaTeX mathematics.</li>
+          <li>Reads documents, spreadsheets, and images and turns them into an answer.</li>
+          <li>Searches the web and generates images when a question needs them.</li>
+          <li>Remembers what you ask it to remember, and forgets what you ask it to forget.</li>
+          <li>Keeps your conversations private, with export and one-click deletion of your account and all its data.</li>
+        </ul>
+        <p>
+          Ken AI needs JavaScript to run.
+          <a href="https://ken-ai.tech/register" style="color: #00ff41">Create a free Ken AI account</a>
+          or <a href="https://ken-ai.tech/login" style="color: #00ff41">sign in</a> to start a
+          conversation.
+        </p>
+        <p>
+          <a href="https://ken-ai.tech/privacy" style="color: #7e837e">Privacy</a> ·
+          <a href="https://ken-ai.tech/terms" style="color: #7e837e">Terms</a>
+        </p>
+      </main>
+    </noscript>
+
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

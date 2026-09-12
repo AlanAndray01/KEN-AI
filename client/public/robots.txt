@@ -1,0 +1,36 @@
+# Ken AI — https://ken-ai.tech
+#
+# Files in client/public/ are copied verbatim into client/dist by Vite, so this
+# is served as a real text/plain file. Vercel checks the filesystem before it
+# applies the SPA rewrite in vercel.json, which is why this must exist as a file:
+# without it, /robots.txt fell through the rewrite and returned index.html, and
+# crawlers read HTML where they expected directives.
+
+User-agent: *
+Allow: /
+
+# Signed-in surfaces. These need a session, so a crawler only ever reaches a
+# redirect or an empty shell — indexing them spends crawl budget on nothing and
+# scatters thin pages across the brand's results.
+Disallow: /chat
+Disallow: /settings
+Disallow: /library
+Disallow: /gpts
+Disallow: /search
+Disallow: /history
+Disallow: /admin
+
+# Shared conversations are public by link but they are the user's own content,
+# not ours to publish into a search index.
+Disallow: /share/
+
+# One-time token flows. Nothing here is meaningful without the token.
+Disallow: /verify-email
+Disallow: /reset-password
+Disallow: /forgot-password
+
+# Vite fingerprints these with a content hash, so an indexed URL is stale the
+# moment the app is rebuilt.
+Disallow: /assets/
+
+Sitemap: https://ken-ai.tech/sitemap.xml

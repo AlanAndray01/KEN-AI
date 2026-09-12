@@ -115,6 +115,16 @@ export function HomePage() {
 
           <div className="hero-inner">
             <h1 className="ken-wrap" aria-label="KEN AI">
+              {/*
+                The visible mark is split into two separately styled halves, so
+                the heading's text content reads "KENAI" with no space. A search
+                crawler extracts text, not aria-labels, and "KENAI" does not match
+                a search for "Ken AI" — the exact query this site needs to win.
+                This span carries the real brand string; the halves below stay
+                decorative, and the aria-label still names the heading for
+                assistive technology.
+              */}
+              <span className="sr-only">Ken AI</span>
               <span className="ken-title" aria-hidden="true">
                 KEN
               </span>
@@ -125,8 +135,8 @@ export function HomePage() {
 
             <p className="hero-tag hero-reveal">Intelligence without the noise.</p>
             <p className="hero-sub hero-reveal">
-              Think, create, code, research, and explore with KEN — an AI assistant built for the way
-              you work.
+              Think, create, code, research, and explore with Ken AI — a private AI assistant at
+              ken-ai.tech, built for the way you work.
             </p>
             <div className="hero-cta hero-reveal">
               <Link to={startHref} className="btn btn-primary">

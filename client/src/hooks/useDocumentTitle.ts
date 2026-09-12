@@ -21,9 +21,30 @@ function titleForPath(pathname: string): string {
   return APP_NAME;
 }
 
+/** Public pages worth a canonical of their own; everything else points home. */
+const CANONICAL_PATHS = new Set(["/", "/login", "/register", "/privacy", "/terms"]);
+
+/**
+ * Keeps <link rel="canonical"> in step with the route.
+ *
+ * index.html ships a canonical of the homepage so a non-rendering crawler sees
+ * one, but that tag is static: left alone it would tell Google that /privacy and
+ * /terms are duplicates of the homepage and drop them from the index. Public
+ * routes therefore get a self-referencing canonical, and the signed-in surfaces
+ * — which robots.txt disallows anyway — fall back to the homepage rather than
+ * advertising a URL that only renders behind a session.
+ */
+function syncCanonical(pathname: string): void {
+  const link = document.querySelector<HTMLLinkElement>('link[rel="canonical"]');
+  if (!link) return;
+  const path = CANONICAL_PATHS.has(pathname) ? pathname : "/";
+  link.href = new URL(path, window.location.origin).toString();
+}
+
 export function useDocumentTitle(): void {
   const { pathname } = useLocation();
   useEffect(() => {
     document.title = titleForPath(pathname);
+    syncCanonical(pathname);
   }, [pathname]);
 }
