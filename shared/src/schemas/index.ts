@@ -279,6 +279,7 @@ export const patchMeSchema = z
         sendOnEnter: z.boolean().optional(),
         selectedProviderId: z.string().trim().min(1).max(64).optional(),
         selectedModelId: z.string().trim().min(1).max(160).optional(),
+        selectionMode: z.enum(["auto", "manual"]).optional(),
       })
       .optional(),
   })

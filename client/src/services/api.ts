@@ -109,6 +109,8 @@ export interface ChatStreamEvent {
   estimateMatchedMode?: boolean;
   /** This turn asked for a substantial code artifact. */
   deepCode?: boolean;
+  /** Set when Auto picked the model, naming what it routed for. */
+  autoTask?: PublicMessage["autoTask"];
   model?: string;
   provider?: string;
 }
@@ -438,6 +440,7 @@ export const api = {
         sendOnEnter?: boolean;
         selectedProviderId?: string;
         selectedModelId?: string;
+        selectionMode?: "auto" | "manual";
       };
     }) => request<{ user: PublicUser }>("/me", { method: "PATCH", body: JSON.stringify(body) }),
     usage: () => request<{ usage: PublicUsageSummary }>("/me/usage"),

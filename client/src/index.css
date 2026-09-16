@@ -1,5 +1,12 @@
 @import "tailwindcss";
 
+/* Anchor and programmatic scrolls (chat jump-to-latest, settings anchors,
+   in-page nav) glide instead of snapping. The reduced-motion block further
+   down forces this back to `auto` for users who asked for no animation. */
+html {
+  scroll-behavior: smooth;
+}
+
 /*
  * KEN AI palette — dark only.
  *
@@ -440,6 +447,46 @@ body {
   overflow-x: auto;
   border: 1px solid var(--table-line);
   border-radius: 0.6rem;
+  /*
+   * Always-visible scrollbar, so a wide table announces that it scrolls.
+   *
+   * The global `* { scrollbar-width: thin }` rule makes Chromium ignore every
+   * ::-webkit-scrollbar style and fall back to a thin bar that auto-hides.
+   * Resetting both standard properties to `auto` here hands control back to the
+   * webkit pseudo-elements below, which Chromium and Safari render as a
+   * persistent bar with its own gutter. Firefox gets the standard properties in
+   * the @supports block instead.
+   */
+  scrollbar-width: auto;
+  scrollbar-color: auto;
+}
+
+.markdown-table-wrap::-webkit-scrollbar {
+  height: 10px;
+}
+
+.markdown-table-wrap::-webkit-scrollbar-track {
+  background: var(--surface-muted);
+  border-radius: 0 0 0.6rem 0.6rem;
+}
+
+.markdown-table-wrap::-webkit-scrollbar-thumb {
+  /* Neon green is reserved for signal; "this scrolls" is exactly that. */
+  background-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+  border-radius: 999px;
+}
+
+.markdown-table-wrap::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in srgb, var(--accent) 85%, transparent);
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  .markdown-table-wrap {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--accent) 55%, transparent) var(--surface-muted);
+  }
 }
 
 .markdown-table-wrap > table {
@@ -939,8 +986,15 @@ html.dark .hljs-type {
     gap: 0.125rem;
   }
 
+  /* min-width/height (not just padding) so the 48px tap target holds even
+     though these buttons wrap a single icon with no other sizing hint. */
   .chat-header-start > button,
   .chat-header-end > button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 3rem;
+    min-height: 3rem;
     padding: 0.375rem;
   }
 
@@ -973,15 +1027,21 @@ html.dark .hljs-type {
     gap: 0.5rem;
   }
 
+  /* The YOU / KEN chip is dropped on phones: the role is already obvious from
+     the bubble's side and colour, so the extra label just eats width from the
+     message. `display: none` (not just hiding it) lets `.chat-message`'s own
+     gap collapse instead of leaving a dead space where the chip used to sit. */
   .message-avatar {
-    width: 1.5rem;
-    height: 1.5rem;
-    font-size: 0.5rem;
-    letter-spacing: 0.04em;
+    display: none;
   }
 
+  /* Bubble chrome at roughly 3/4 of its desktop size: the base is rounded-xl
+     (0.75rem radius) with px-4 py-3 (1rem / 0.75rem) padding, so each figure
+     below is that value × 0.75. Message text is deliberately NOT scaled down
+     here — only the bubble shrinks; the words inside stay full size. */
   .assistant-turn {
-    padding: 0.625rem 0.75rem;
+    padding: 0.5625rem 0.75rem;
+    border-radius: 0.5625rem;
   }
 
   .user-message {
@@ -989,12 +1049,58 @@ html.dark .hljs-type {
   }
 
   .user-message > div:first-child {
-    padding: 0.625rem 0.75rem;
+    padding: 0.5625rem 0.75rem;
+    border-radius: 0.5625rem;
   }
 
+  /*
+   * Compact action rows. A 48x48 box per icon stacked a 48px-tall strip under
+   * every turn, which was most of the vertical sprawl on phones, and the
+   * 40px-wide hit target on top of a 14px icon read as gaps between the icons
+   * even at gap:0. Shrinking the button box itself (not just the gap) is what
+   * closes that visual distance. width/height stay at the 24px WCAG 2.2 floor;
+   * the ::after hit-slop makes up the difference on every side.
+   *
+   * The row keeps a small 4px gap rather than 0, specifically so the
+   * horizontal slop has somewhere to go: two neighbours' ::after regions abut
+   * exactly at the gap's midpoint (2px slop + 2px slop = the 4px gap) instead
+   * of overlapping into each other, which is what would make a tap near the
+   * boundary land on the wrong icon.
+   */
   .assistant-actions button,
   .user-message-actions button {
-    padding: 0.3rem;
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.75rem;
+    min-height: 1.75rem;
+    padding: 0.125rem;
+  }
+
+  .assistant-actions button::after,
+  .user-message-actions button::after {
+    content: "";
+    position: absolute;
+    top: -10px;
+    bottom: -10px;
+    left: -2px;
+    right: -2px;
+  }
+
+  .assistant-actions svg,
+  .user-message-actions svg {
+    width: 0.875rem;
+    height: 0.875rem;
+  }
+
+  .assistant-actions,
+  .user-message-actions {
+    gap: 0.25rem;
+  }
+
+  .chat-thread {
+    gap: 0.75rem;
   }
 
   .chat-composer {
@@ -1027,8 +1133,21 @@ html.dark .hljs-type {
     gap: 0;
   }
 
+  /* Four of these sit in one non-wrapping row (attach/web/image/mic); at
+     320px there is no width budget to grow each one to 48px without the row
+     overflowing (measured: ~334px needed at a 48px floor vs. 320 available).
+     `position: relative` + an invisible ::after hit-slop reaches the same
+     48px tappable area without taking any extra layout width — the visible
+     icon and padding are untouched. */
   .chat-composer .composer-tools button {
+    position: relative;
     padding: 0.4rem;
+  }
+
+  .chat-composer .composer-tools button::after {
+    content: "";
+    position: absolute;
+    inset: -10px;
   }
 
   .chat-composer .composer-tools button svg {
@@ -1040,10 +1159,12 @@ html.dark .hljs-type {
     gap: 0.35rem;
   }
 
+  /* Previously shrunk to 2.15rem (34px) here — below the touch-target floor.
+     48px keeps send/live-voice/stop reachable without moving them. */
   .chat-composer .composer-actions button {
     flex-shrink: 0;
-    width: 2.15rem;
-    height: 2.15rem;
+    width: 3rem;
+    height: 3rem;
   }
 
   .chat-composer .composer-actions button svg {
@@ -1191,6 +1312,12 @@ html.dark .hljs-type {
 
   .chat-composer .composer-tools button {
     padding: 0.3rem;
+  }
+
+  /* The box shrinks further at this width, so the hit-slop set at 767px
+     widens to keep the same 48px tappable area. */
+  .chat-composer .composer-tools button::after {
+    inset: -12px;
   }
 
   .auth-glass {

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Keyboard, X } from "lucide-react";
+import { submitModifierLabel } from "@/utils/keyboard";
 
 const ROWS = [
   { keys: ["Ctrl", "Shift", "O"], action: "New chat" },
@@ -63,7 +64,7 @@ export function ShortcutsModal({
 
   if (!open) return null;
 
-  const sendKeys = sendOnEnter ? ["Enter"] : ["Ctrl", "Enter"];
+  const sendKeys = sendOnEnter ? ["Enter"] : [submitModifierLabel(), "Enter"];
   const newlineKeys = sendOnEnter ? ["Shift", "Enter"] : ["Enter"];
 
   return (

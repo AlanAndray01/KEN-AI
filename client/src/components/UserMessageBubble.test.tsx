@@ -127,7 +127,7 @@ describe("UserMessageBubble", () => {
       expect(onEdit).toHaveBeenCalledWith("the new question");
     });
 
-    it("submits on Enter but not on Shift+Enter", () => {
+    it("treats Enter as a newline and submits on Ctrl+Enter", () => {
       stubContentHeight(80);
       const onEdit = vi.fn();
       render(<UserMessageBubble content="first" onEdit={onEdit} />);
@@ -136,11 +136,28 @@ describe("UserMessageBubble", () => {
       const editor = screen.getByRole("textbox", { name: /edit your message/i });
       fireEvent.change(editor, { target: { value: "second" } });
 
+      fireEvent.keyDown(editor, { key: "Enter" });
       fireEvent.keyDown(editor, { key: "Enter", shiftKey: true });
       expect(onEdit).not.toHaveBeenCalled();
 
-      fireEvent.keyDown(editor, { key: "Enter" });
+      fireEvent.keyDown(editor, { key: "Enter", ctrlKey: true });
       expect(onEdit).toHaveBeenCalledWith("second");
+    });
+
+    it("renders attachments above the message text", () => {
+      stubContentHeight(80);
+      render(
+        <UserMessageBubble content="Summarise this file">
+          <ul aria-label="Message attachments">
+            <li>prompt.txt</li>
+          </ul>
+        </UserMessageBubble>,
+      );
+
+      const attachments = screen.getByRole("list", { name: "Message attachments" });
+      const text = screen.getByText("Summarise this file");
+      // DOCUMENT_POSITION_FOLLOWING: the text comes after the attachment list.
+      expect(attachments.compareDocumentPosition(text) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
 
     it("refuses to resend an unchanged message", () => {

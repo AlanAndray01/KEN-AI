@@ -722,3 +722,170 @@ describe("AIProviderManager", () => {
     expect(attempted).toEqual([{ modelId: "gemini-3.5-flash-lite", firstByteTimeoutMs: undefined }]);
   });
 });
+
+describe("AIProviderManager with a pinned model (fallbackPolicy: quota-only)", () => {
+  const geminiModels = [
+    {
+      id: "gemini-3.1-pro-preview",
+      providerId: "gemini",
+      name: "Gemini 3.1 Pro",
+      capabilities: ["text", "streaming"],
+      enabled: true,
+      available: true,
+    },
+    {
+      id: "gemini-3.5-flash-lite",
+      providerId: "gemini",
+      name: "Gemini 3.5 Flash Lite",
+      capabilities: ["text", "streaming"],
+      enabled: true,
+      available: true,
+    },
+  ];
+
+  const quotaError = () =>
+    new AppError("Provider rate limit reached.", {
+      statusCode: 429,
+      code: "PROVIDER_RATE_LIMITED",
+      extra: { httpStatus: 429, errorClass: "quota_exceeded" },
+    });
+
+  beforeEach(() => {
+    clearModelSkips();
+    fakeGenerate.mockReset();
+    assertModelAvailable.mockReset();
+    resolveCredentials.mockReset();
+    listPublicModels.mockReset();
+    delete (fakeAdapter as { stream?: AIProvider["stream"] }).stream;
+    listPublicModels.mockResolvedValue(geminiModels);
+    resolveCredentials.mockResolvedValue({
+      providerId: "gemini",
+      name: "Google Gemini",
+      type: "gemini",
+      apiKey: "test-gemini-key-zzzz",
+      enabled: true,
+      configured: true,
+      source: "environment",
+      capabilities: ["text"],
+    });
+  });
+
+  /** Streams a turn pinned to Gemini 3.1 Pro, capturing events and any thrown error. */
+  async function streamPinned(): Promise<{ events: StreamEvent[]; error?: unknown }> {
+    const { AIProviderManager } = await import("./AIProviderManager.js");
+    const manager = new AIProviderManager();
+    const events: StreamEvent[] = [];
+    try {
+      for await (const event of manager.stream({
+        providerId: "gemini",
+        modelId: "gemini-3.1-pro-preview",
+        messages: [{ role: "user", content: "Hello" }],
+        skipAvailabilityCheck: true,
+        fallbackPolicy: "quota-only",
+      })) {
+        events.push(event);
+      }
+      return { events };
+    } catch (error) {
+      return { events, error };
+    }
+  }
+
+  it("surfaces a 503 on the chosen model instead of answering from another one", async () => {
+    const attempted: string[] = [];
+    fakeAdapter.stream = async function* (request: { modelId: string }) {
+      attempted.push(request.modelId);
+      if (request.modelId === "gemini-3.1-pro-preview") {
+        throw new AppError("The model is overloaded.", { statusCode: 503, code: "PROVIDER_UNAVAILABLE" });
+      }
+      yield { type: "chunk", text: "Hi" };
+    };
+
+    const { events, error } = await streamPinned();
+
+    expect(attempted).toEqual(["gemini-3.1-pro-preview"]);
+    expect(error).toMatchObject({ code: "PROVIDER_UNAVAILABLE" });
+    expect(events.some((event) => event.type === "fallback")).toBe(false);
+  });
+
+  it("leaves the chosen model only for a quota error, and reports the switch", async () => {
+    const attempted: string[] = [];
+    fakeAdapter.stream = async function* (request: { modelId: string }) {
+      attempted.push(request.modelId);
+      if (request.modelId === "gemini-3.1-pro-preview") throw quotaError();
+      yield { type: "chunk", text: "Hi" };
+      yield {
+        type: "complete",
+        response: { content: "Hi", model: request.modelId, provider: "gemini", finishReason: "stop" },
+      };
+    };
+
+    const { events, error } = await streamPinned();
+
+    expect(error).toBeUndefined();
+    expect(attempted).toEqual(["gemini-3.1-pro-preview", "gemini-3.5-flash-lite"]);
+    expect(events.find((event) => event.type === "fallback")).toMatchObject({
+      type: "fallback",
+      model: "gemini-3.5-flash-lite",
+      fallbackFrom: "gemini-3.1-pro-preview",
+      fallbackReason: "PROVIDER_RATE_LIMITED|429|quota_exceeded",
+    });
+  });
+
+  it("gives the chosen model its full time instead of the 2.5s failover abort", async () => {
+    const budgets: Array<number | undefined> = [];
+    fakeAdapter.stream = async function* (request: { modelId: string; firstByteTimeoutMs?: number }) {
+      budgets.push(request.firstByteTimeoutMs);
+      yield {
+        type: "complete",
+        response: { content: "Hi", model: request.modelId, provider: "gemini", finishReason: "stop" },
+      };
+    };
+
+    await streamPinned();
+
+    expect(budgets).toEqual([undefined]);
+  });
+
+  it("tries the chosen model again despite a cached 503 cool-down", async () => {
+    rememberModelSkip(
+      "gemini",
+      "gemini-3.1-pro-preview",
+      new AppError("The model is overloaded.", { statusCode: 503, code: "PROVIDER_UNAVAILABLE" }),
+    );
+    const attempted: string[] = [];
+    fakeAdapter.stream = async function* (request: { modelId: string }) {
+      attempted.push(request.modelId);
+      yield {
+        type: "complete",
+        response: { content: "Hi", model: request.modelId, provider: "gemini", finishReason: "stop" },
+      };
+    };
+
+    const { events } = await streamPinned();
+
+    expect(attempted).toEqual(["gemini-3.1-pro-preview"]);
+    expect(events.some((event) => event.type === "fallback")).toBe(false);
+  });
+
+  it("steps aside at once for a cached quota cool-down, and still reports it", async () => {
+    rememberModelSkip("gemini", "gemini-3.1-pro-preview", quotaError());
+    const attempted: string[] = [];
+    fakeAdapter.stream = async function* (request: { modelId: string }) {
+      attempted.push(request.modelId);
+      yield {
+        type: "complete",
+        response: { content: "Hi", model: request.modelId, provider: "gemini", finishReason: "stop" },
+      };
+    };
+
+    const { events } = await streamPinned();
+
+    // No wasted round-trip to a model already known to be over quota.
+    expect(attempted).toEqual(["gemini-3.5-flash-lite"]);
+    expect(events.find((event) => event.type === "fallback")).toMatchObject({
+      model: "gemini-3.5-flash-lite",
+      fallbackFrom: "gemini-3.1-pro-preview",
+    });
+  });
+});

@@ -27,7 +27,6 @@ export const MODEL_CAPABILITIES = [
 export const PROVIDER_TYPES = [
   "gemini",
   "openai",
-  "anthropic",
   "groq",
   "openrouter",
   "ollama",
@@ -167,6 +166,25 @@ export const MAX_MESSAGE_CONTENT_CHARS = 1_000_000;
 
 /** OpenAI hop when Groq is rate-limited and OPENAI_API_KEY is configured. */
 export const DEFAULT_OPENAI_MODEL_ID = "gpt-4o-mini";
+
+/**
+ * Picker sentinel for Auto mode: the server chooses a model for each turn. It is
+ * a selection the UI and API pass around, never an id sent to a provider.
+ */
+export const AUTO_PROVIDER_ID = "auto";
+export const AUTO_MODEL_ID = "auto";
+
+/** Prefix of the SSE route reason, formatted as `AUTO_ROUTE|<task>`. */
+export const AUTO_ROUTE_REASON = "AUTO_ROUTE";
+
+/** What Auto decided a turn needs, in the order the router settles them. */
+export const AUTO_TASKS = ["files", "vision", "tools", "code", "reasoning", "quick", "chat"] as const;
+
+export type AutoTask = (typeof AUTO_TASKS)[number];
+
+export function isAutoSelection(providerId?: string | null, modelId?: string | null): boolean {
+  return providerId === AUTO_PROVIDER_ID && modelId === AUTO_MODEL_ID;
+}
 
 export const CHAT_TOOL_IDS = ["web_search", "image_generation", "data_analysis"] as const;
 

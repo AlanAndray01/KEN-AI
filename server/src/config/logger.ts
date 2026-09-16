@@ -21,7 +21,6 @@ const redactPaths = [
   "SMTP_PASS",
   "SMTP_USER",
   "OPENAI_API_KEY",
-  "ANTHROPIC_API_KEY",
   "GROQ_API_KEY",
   "OPENROUTER_API_KEY",
   "SEARCH_API_KEY",

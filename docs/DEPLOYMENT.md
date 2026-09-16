@@ -71,7 +71,6 @@ Environment variables to set in the dashboard:
 | `ENCRYPTION_KEY` | generated above | **Yes** |
 | `GEMINI_API_KEY` | from [aistudio.google.com/apikey](https://aistudio.google.com/apikey) | **Yes for default chat** |
 | `GROQ_API_KEY` | from console.groq.com | Optional next hop |
-| `ANTHROPIC_API_KEY` | from console.anthropic.com | Optional Claude |
 | `NODE_ENV` | `production` | Yes (in blueprint) |
 | `CLIENT_URL` | `https://ken-ai.tech,https://www.ken-ai.tech` | Yes (in blueprint) |
 | `COOKIE_DOMAIN` | `.ken-ai.tech` | Yes (in blueprint) |

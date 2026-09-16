@@ -8,7 +8,7 @@ import { hydrateModelSelection } from "@/stores/modelStore";
 import { readCachedAuthUser, writeCachedAuthUser } from "@/utils/authCache";
 
 function toAuthUser(user: PublicUser): AuthUser {
-  hydrateModelSelection(user.preferences.selectedProviderId, user.preferences.selectedModelId);
+  hydrateModelSelection(user.preferences);
   return {
     id: user.id,
     name: user.name,
@@ -24,7 +24,7 @@ function toAuthUser(user: PublicUser): AuthUser {
 function hydrateFromCache(): AuthUser | null {
   const cached = readCachedAuthUser();
   if (!cached) return null;
-  hydrateModelSelection(cached.preferences.selectedProviderId, cached.preferences.selectedModelId);
+  hydrateModelSelection(cached.preferences);
   return cached;
 }
 

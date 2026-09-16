@@ -7,7 +7,6 @@ import {
   applyFeedback,
   markLastAssistant,
   optimisticTurn,
-  pinTurnModel,
   startTurn,
   truncateFromMessage,
   upsertMessage,
@@ -108,17 +107,6 @@ describe("optimisticTurn", () => {
     });
     expect(turn.assistant.model).toBe("gemini-3.1-pro-preview");
     expect(turn.assistant.provider).toBe("gemini");
-  });
-});
-
-describe("pinTurnModel", () => {
-  it("overwrites a fallback id with the picker selection", () => {
-    const pinned = pinTurnModel(
-      { ...streamingTurn("a1"), model: "gemini-3.5-flash-lite", provider: "gemini" },
-      { model: "gemini-3.1-pro-preview", provider: "gemini" },
-    );
-    expect(pinned.model).toBe("gemini-3.1-pro-preview");
-    expect(pinned.content).toBe("");
   });
 });
 

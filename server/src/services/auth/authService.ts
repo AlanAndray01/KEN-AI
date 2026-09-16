@@ -383,6 +383,7 @@ export async function updateProfile(
       sendOnEnter?: boolean;
       selectedProviderId?: string;
       selectedModelId?: string;
+      selectionMode?: "auto" | "manual";
     };
   },
 ): Promise<PublicUser> {
@@ -396,16 +397,18 @@ export async function updateProfile(
   }
 
   if (input.preferences) {
-    const current = user.preferences ?? { theme: "system", language: "en", sendOnEnter: true };
+    const current = user.preferences ?? { theme: "system", language: "en", sendOnEnter: false };
     const theme = input.preferences.theme ?? current.theme ?? "system";
     const selectedProviderId = input.preferences.selectedProviderId ?? current.selectedProviderId;
     const selectedModelId = input.preferences.selectedModelId ?? current.selectedModelId;
+    const selectionMode = input.preferences.selectionMode ?? current.selectionMode;
     user.preferences = {
       theme: theme === "light" || theme === "dark" || theme === "system" ? theme : "system",
       language: input.preferences.language ?? current.language ?? "en",
-      sendOnEnter: input.preferences.sendOnEnter ?? current.sendOnEnter ?? true,
+      sendOnEnter: input.preferences.sendOnEnter ?? current.sendOnEnter ?? false,
       ...(selectedProviderId ? { selectedProviderId } : {}),
       ...(selectedModelId ? { selectedModelId } : {}),
+      ...(selectionMode ? { selectionMode } : {}),
     };
   }
 

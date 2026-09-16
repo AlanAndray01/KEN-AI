@@ -61,8 +61,6 @@ services:
         sync: false
       - key: GROQ_API_KEY
         sync: false
-      - key: ANTHROPIC_API_KEY
-        sync: false
 
       # ---- Email verification + password reset (required to boot) ----
       - key: RESEND_API_KEY

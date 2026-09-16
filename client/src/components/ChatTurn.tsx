@@ -116,7 +116,7 @@ export const ChatTurn = memo(function ChatTurn({
             {modelCaption ?? message.model}
           </p>
         ) : null}
-        <div className="assistant-actions mt-2 flex gap-1">
+        <div className="assistant-actions mt-1 flex gap-1">
           <button
             type="button"
             className="rounded-lg p-1.5 text-fg-muted hover:bg-surface-muted hover:text-fg disabled:opacity-50"

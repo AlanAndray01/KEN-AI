@@ -147,50 +147,6 @@ function isDocumentPart(mimeType: string): boolean {
   return mimeType === "application/pdf";
 }
 
-export function toAnthropicMessages(messages: ChatMessage[]): {
-  system?: string;
-  messages: Array<{ role: "user" | "assistant"; content: unknown }>;
-} {
-  const systemParts: string[] = [];
-  const mapped: Array<{ role: "user" | "assistant"; content: unknown }> = [];
-  for (const message of messages) {
-    if (message.role === "system") {
-      systemParts.push(message.content);
-      continue;
-    }
-    const role = message.role === "assistant" ? "assistant" : "user";
-    const parts = message.parts ?? [];
-    const images = parts.filter((part) => part.mimeType.startsWith("image/"));
-    const documents = parts.filter((part) => isDocumentPart(part.mimeType));
-    if (images.length === 0 && documents.length === 0) {
-      mapped.push({ role, content: message.content });
-      continue;
-    }
-    const content: unknown[] = [];
-    if (message.content) {
-      content.push({ type: "text", text: message.content });
-    }
-    for (const part of images) {
-      content.push({
-        type: "image",
-        source: { type: "base64", media_type: part.mimeType, data: part.data },
-      });
-    }
-    for (const part of documents) {
-      // Anthropic reads PDFs natively through a document block.
-      content.push({
-        type: "document",
-        source: { type: "base64", media_type: part.mimeType, data: part.data },
-      });
-    }
-    mapped.push({ role, content });
-  }
-  return {
-    ...(systemParts.length > 0 ? { system: systemParts.join("\n\n") } : {}),
-    messages: mapped,
-  };
-}
-
 export function chunkEvent(text: string): StreamEvent {
   return { type: "chunk", text };
 }

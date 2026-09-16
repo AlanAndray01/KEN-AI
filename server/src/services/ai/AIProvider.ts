@@ -90,6 +90,16 @@ export interface GenerateRequest {
    * Only the first hop should set this — fallbacks need time to think.
    */
   firstByteTimeoutMs?: number;
+  /**
+   * How far the manager may stray from the requested model.
+   *
+   * `any` (the default) lets auxiliary calls - a chat title, say - fail over on
+   * any retryable error, because nobody chose their model. `quota-only` is for a
+   * turn whose model the user picked: it runs on exactly that model, and only a
+   * provider quota error may move it, which the stream reports as a `fallback`
+   * event so the UI can say so.
+   */
+  fallbackPolicy?: "any" | "quota-only";
 }
 
 export interface ProviderRuntimeConfig {

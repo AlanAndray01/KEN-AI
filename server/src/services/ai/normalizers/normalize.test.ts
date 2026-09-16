@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeAIResponse, toAnthropicMessages, toOpenAIMessages, toProviderContents } from "./normalize.js";
+import { normalizeAIResponse, toOpenAIMessages, toProviderContents } from "./normalize.js";
 
 describe("AI response normalizers", () => {
   it("maps vendor finish reasons onto AIResponse", () => {
@@ -97,13 +97,6 @@ describe("PDF attachment passthrough", () => {
     ]);
   });
 
-  it("sends a PDF to Anthropic as a document block", () => {
-    const { messages } = toAnthropicMessages(pdfTurn);
-    expect(messages[0]?.content).toEqual([
-      { type: "text", text: "Summarise this" },
-      { type: "document", source: { type: "base64", media_type: "application/pdf", data: "JVBER" } },
-    ]);
-  });
 
   it("still carries images alongside a document", () => {
     const mixed = [

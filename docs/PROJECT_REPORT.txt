@@ -1,0 +1,1305 @@
+================================================================================
+KEN AI — PROJECT REPORT
+From project inception through today
+Prepared for: Syed Arslan Shah (arslanshah.dev@gmail.com)
+================================================================================
+
+
+TABLE OF CONTENTS
+
+  1.  Executive Summary
+  2.  What Ken AI Is
+  3.  Technology Stack
+  4.  Repository Structure
+  5.  Project Timeline — Narrative History
+      5.1  Phase 1 — Foundation
+      5.2  Phase 2 — MongoDB Foundation
+      5.3  Phase 3 — Full Application (Auth, Chat, Settings, Admin)
+      5.4  The Multi-Agent System (Multi-Agents/)
+      5.5  The Ken-Orchestrator Persona
+      5.6  Early Bug Fixes — Reasoning Leakage, Fake Thinking UI, Markdown Tables
+      5.7  Language Matching and the Dots-Only Thinking Indicator
+      5.8  Production Deployment — Render, Vercel, DNS, Domain
+      5.9  Launch Readiness — Email, Google OAuth, Legal Pages, Performance
+      5.10 Security and Performance Hardening (Argon2id)
+      5.11 Universal Assistant Rewrite
+      5.12 Editable Messages
+      5.13 The Brand Redesign — Landing Page and Dual Theme (First Pass)
+      5.14 The Reversion — Dark-Only, Landing Page Restored Verbatim
+      5.15 Fidelity Fixes — Matching the Supplied Design Exactly
+      5.16 The Multi-Agent Fix Round — Three Parallel Agents
+      5.17 Continued Agent-Driven Fixes — Boot Loader, Instant Hero
+  6.  Current Feature Inventory
+      6.1  AI Model Providers
+      6.2  Tools
+      6.3  Voice
+      6.4  Memory
+      6.5  File Attachments
+      6.6  Sharing and Export
+      6.7  Custom GPTs
+      6.8  Chat Mechanics
+  7.  Design System
+  8.  Architecture Rules and Conventions
+  9.  Known Issues, Open Threads, and Things Explicitly Deferred
+  10. Deployment Topology
+  11. Testing and Quality Gates
+  12. Lessons Learned and Mistakes Corrected Along the Way
+  13. Recommended Next Steps
+
+================================================================================
+1. EXECUTIVE SUMMARY
+================================================================================
+
+Ken AI is a production-grade, full-stack AI chat platform built on the MERN
+stack with TypeScript throughout (React + Vite on the frontend, Express on the
+backend, MongoDB via Mongoose for persistence, and a shared types/schema
+package binding the two together). It is deployed live at ken-ai.tech, with
+the frontend on Vercel and the backend on Render.
+
+The project began as a scaffolding exercise (Phase 1), grew a real database
+layer (Phase 2), and then became a genuinely complete product in a single
+large push (Phase 3) that added authentication, multi-provider AI chat with
+streaming responses, account settings, and admin capabilities. From there the
+work has been iterative hardening and polish: fixing real bugs surfaced by
+actual usage, tuning security parameters for a memory-constrained production
+server, deploying to real infrastructure with a custom domain, building out
+a from-scratch autonomous multi-agent developer system, and — most recently —
+a full brand and landing-page rebuild that went through several rounds of
+revision before settling on its current form.
+
+As of today, Ken AI supports eight AI provider integrations (Gemini, Groq,
+OpenAI, Anthropic, OpenRouter, Cerebras, DeepSeek, Cloudflare Workers AI, and
+local Ollama), mid-conversation model switching, streaming chat via
+Server-Sent Events, web search and image generation tools, voice input/output,
+cross-conversation memory, file attachments, conversation sharing and export,
+user-defined custom GPTs, and a dark-mode-only design system built around a
+distinctive black-and-neon-green "KEN" brand identity with a fully animated,
+WebGL-powered marketing landing page.
+
+The codebase is disciplined: it runs under strict TypeScript compiler flags,
+has committed architecture rules that forbid faked features and hardcoded
+secrets, and is covered by real automated test suites (Vitest across all
+three workspaces) that are run as a hard gate before any change is considered
+finished.
+
+
+================================================================================
+2. WHAT KEN AI IS
+================================================================================
+
+Ken AI is positioned as a general-purpose AI assistant and workspace — not a
+narrow tool tied to one subject or one exam syllabus. A standing product rule,
+established explicitly during development, is that Ken must behave like a
+universal assistant capable of explaining any topic simply and with examples,
+matching the answer quality of a frontier assistant, and never boxing itself
+into being "just a homework helper" or "just a tutor for exam X."
+
+The product identity, as configured in the system prompt layer, is:
+"Ken AI, provided by Groq" — the assistant is instructed to identify itself
+this way and never claim to be ChatGPT or attribute itself to a different
+lab, regardless of which underlying model provider is actually serving a
+given response (Groq, Gemini, Anthropic, OpenAI, etc. are all swappable
+behind the same "Ken" identity).
+
+The brand tagline, carried through the landing page, hero section, and
+footer, is:
+
+    "Intelligence without the noise."
+
+The visual identity is a stark black-and-neon-green aesthetic: pure black
+(#121212) canvas, off-white "smoke" (#F5F5F5) text, and a saturated brand
+green (#00FF41) used exclusively as an accent for interactive elements,
+glows, and emphasis. There is deliberately no light theme — more on why in
+section 5.14.
+
+
+================================================================================
+3. TECHNOLOGY STACK
+================================================================================
+
+MONOREPO
+  - npm workspaces: shared/, server/, client/, Multi-Agents/
+  - Root package name: "Ken" (the repository has been referred to as
+    "aether" in earlier scaffolding and "MERN Express Test" as the folder
+    name; all three refer to the same single project)
+  - Node.js >= 20 required
+
+FRONTEND (client/)
+  - React 19.1
+  - Vite 7 (build tool and dev server)
+  - TypeScript 5.9, strict mode
+  - Tailwind CSS v4 (via @tailwindcss/vite, using the new @import
+    "tailwindcss" / @theme inline syntax rather than a tailwind.config.js)
+  - TanStack Query 5 for server state / data fetching
+  - Zustand 5 for local client state (theme, drafts, model selection, UI)
+  - React Router 7
+  - react-markdown + remark-gfm + remark-math + rehype-katex + rehype-highlight
+    for rendering assistant responses (GitHub-flavoured markdown, LaTeX math,
+    and syntax-highlighted code blocks)
+  - KaTeX for math rendering
+  - highlight.js for code syntax highlighting
+  - lucide-react for iconography
+  - Zod for client-side schema validation
+  - Vitest + @testing-library/react + jsdom for unit/component tests
+  - Playwright for end-to-end tests (client/e2e)
+
+BACKEND (server/)
+  - Express 4.21
+  - TypeScript, ESM modules (NodeNext resolution, ".js" import extensions
+    even in .ts source — a deliberate ESM convention)
+  - Mongoose 9 / MongoDB Atlas for persistence
+  - argon2 (argon2id) for password hashing
+  - jose for JWT handling
+  - google-auth-library for Google OAuth
+  - helmet for HTTP security headers
+  - cors, cookie-parser
+  - multer for file upload handling
+  - pino / pino-http for structured logging
+  - resend for transactional email (verification, password reset)
+  - undici as the HTTP client for outbound AI provider calls
+  - Zod for request/response schema validation
+  - Vitest + supertest + mongodb-memory-server for backend tests (the test
+    suite spins up a real in-memory MongoDB rather than mocking the database
+    layer)
+
+SHARED (shared/)
+  - Published internally as @Ken/shared
+  - Central home for TypeScript types, Zod schemas, and constants shared
+    between client and server: CLIENT_ROUTES, model IDs, capability enums,
+    the reasoning-tag stripping utility, and more
+  - Built independently and consumed by both client and server as a
+    workspace dependency
+
+MULTI-AGENTS (Multi-Agents/)
+  - Built on @anthropic-ai/claude-agent-sdk
+  - A standalone, runnable autonomous agent swarm used for auditing and
+    verifying the Ken AI codebase itself (see section 5.4)
+
+STRICT TYPESCRIPT CONFIGURATION (applies across the monorepo)
+  - noUncheckedIndexedAccess
+  - exactOptionalPropertyTypes
+  - verbatimModuleSyntax
+  - isolatedModules
+
+DEPLOYMENT
+  - Frontend: Vercel
+  - Backend: Render (free tier, 0.1 CPU / 512MB — a real constraint that
+    shaped several engineering decisions, see sections 5.10 and 5.8)
+  - Domain: ken-ai.tech, purchased and configured through name.com DNS
+  - Email: Resend
+  - Uptime: a cron-job.org keep-alive ping every 10 minutes, to prevent the
+    free Render instance from cold-sleeping
+
+
+================================================================================
+4. REPOSITORY STRUCTURE
+================================================================================
+
+MERN Express Test/                 (repo root, package name "Ken")
+├── .cursor/rules/                 Committed architecture/style rules (see §8)
+├── client/                        React + Vite frontend
+│   ├── src/
+│   │   ├── pages/                 Route-level screens (HomePage, ChatPage,
+│   │   │                          LoginPage, RegisterPage, settings/*, etc.)
+│   │   ├── pages/landing/         The landing page's CSS and animation hook
+│   │   ├── components/            Reusable UI (ChatComposer, ModelSelector,
+│   │   │                          ConversationSidebar, UserMessageBubble,
+│   │   │                          ThemeToggle, ShareExportMenu, etc.)
+│   │   ├── hooks/                 useAuth, useStreamBuffer, useStickToBottom
+│   │   ├── stores/                Zustand stores (theme, drafts, model, UI,
+│   │   │                          toast)
+│   │   ├── services/              api.ts — the typed HTTP/SSE client
+│   │   ├── utils/                 chatMessages.ts and other pure helpers
+│   │   ├── layouts/                AuthLayout and app shell
+│   │   └── types/                 Ambient type declarations (e.g. the CDN
+│   │                              Three.js types used by the landing page)
+│   ├── e2e/                       Playwright end-to-end specs
+│   └── dist/                      Production build output
+├── server/                        Express backend
+│   ├── src/
+│   │   ├── controllers/           Route handlers (auth, chat, gpt, memory,
+│   │   │                          export, share, voice, tools, models)
+│   │   ├── services/
+│   │   │   ├── ai/                Provider abstraction, catalog, key pool,
+│   │   │   │                      fallback logic, model registry
+│   │   │   ├── auth/              cookies, crypto (Argon2id), sessions
+│   │   │   ├── chat/              ContextManager, chatService, language rule
+│   │   │   ├── tools/             ToolManager (web search, image gen, data
+│   │   │   │                      analysis)
+│   │   │   ├── voice/             OpenAIVoiceService + unconfigured fallback
+│   │   │   ├── memory/            Cross-conversation memory service
+│   │   │   ├── gpts/              Custom GPT service
+│   │   │   ├── share/             Shareable conversation links
+│   │   │   ├── export/            Conversation export/formatting
+│   │   │   └── storage/           File upload validation and storage
+│   │   ├── models/                Mongoose schemas (User, Conversation,
+│   │   │                          Message, Memory, CustomGPT,
+│   │   │                          SharedConversation, AIModel, etc.)
+│   │   ├── routes/                Express route definitions
+│   │   └── config/                Environment/HTTP configuration
+│   └── dist/                      Compiled JS output
+├── shared/                        @Ken/shared — types, schemas, constants
+├── Multi-Agents/                  Autonomous Claude Agent SDK swarm
+│   ├── src/                       config, agents, guards, runner, missions,
+│   │                              planner, verify, report, orchestrator, cli
+│   ├── logs/
+│   └── reports/
+├── docs/                          API.md, DEPLOYMENT.md, and this report
+├── uploads/                       User-uploaded file storage (local dev)
+├── render.yaml                    Render deployment configuration
+├── vercel.json                    Vercel deployment configuration
+└── package.json                   Workspace root
+
+
+================================================================================
+5. PROJECT TIMELINE — NARRATIVE HISTORY
+================================================================================
+
+--------------------------------------------------------------------------------
+5.1  PHASE 1 — FOUNDATION
+--------------------------------------------------------------------------------
+
+The earliest committed state of the repository. This established the
+monorepo skeleton: the workspace layout, the shared package, and the initial
+scaffolding for both client and server before any real feature work began.
+
+--------------------------------------------------------------------------------
+5.2  PHASE 2 — MONGODB FOUNDATION
+--------------------------------------------------------------------------------
+
+Commit: "Phase 2 complete - MongoDB foundation"
+
+This phase wired up the actual persistence layer — MongoDB via Mongoose,
+connection handling, and the first real data models — turning the scaffold
+from Phase 1 into something that could actually store state.
+
+--------------------------------------------------------------------------------
+5.3  PHASE 3 — FULL APPLICATION (Auth, Chat, Settings, Admin)
+--------------------------------------------------------------------------------
+
+Commit: "Phase 3 - full KEN AI app: auth, chat streaming, settings, admin"
+
+This is the single largest commit in the project's history and represents
+the point at which Ken AI became a genuinely complete, usable product rather
+than a scaffold. In one coordinated push this phase delivered:
+
+  - Full authentication: registration, login, email verification, password
+    reset, Google OAuth sign-in
+  - Real-time chat with streaming responses over Server-Sent Events
+  - Multi-provider AI integration (the provider abstraction that all later
+    provider additions build on)
+  - User settings (account, appearance, personalization, memory, voice,
+    notifications, data controls, models)
+  - Administrative capabilities
+  - The conversation sidebar, message history, and the core chat UI shell
+
+Everything built afterward is refinement, hardening, feature addition, and
+visual redesign layered on top of this Phase 3 foundation.
+
+--------------------------------------------------------------------------------
+5.4  THE MULTI-AGENT SYSTEM (Multi-Agents/)
+--------------------------------------------------------------------------------
+
+Separately from the Ken AI product itself, a standalone autonomous agent
+system was built inside the monorepo as its own workspace, using
+@anthropic-ai/claude-agent-sdk. The initial request came with a broken
+sample file that called the SDK's query() function as though it returned a
+Promise (`await query({ prompt })`); in reality query() returns an
+AsyncGenerator of SDKMessage objects and must be consumed with
+`for await (const message of query({ prompt, options }))`. This was
+corrected and a complete, working system was built around it:
+
+  Files: src/config.ts, src/types.ts, src/logger.ts, src/project-context.ts,
+  src/agents.ts, src/guards.ts, src/runner.ts, src/missions.ts,
+  src/planner.ts, src/verify.ts, src/report.ts, src/orchestrator.ts,
+  src/cli.ts, run-agents.ts, plus a README.
+
+The system was registered as a proper npm workspace with root-level scripts:
+
+    npm run agents            — run the agent swarm
+    npm run agents:audit      — run an audit mission
+    npm run agents:verify     — run a verification mission
+
+This system exists to let an autonomous agent swarm audit and verify the
+Ken AI codebase itself — a meta-layer of tooling separate from the product
+being built. It should not be confused with the "Ken-Orchestrator" persona
+described in the next section, which is a presentation structure for
+Claude's own replies in conversation, not a piece of runnable software.
+
+--------------------------------------------------------------------------------
+5.5  THE KEN-ORCHESTRATOR PERSONA
+--------------------------------------------------------------------------------
+
+Early in the project, a standing rule was established governing how Claude
+should communicate throughout all future work on Ken AI, under the name
+"Ken-Orchestrator": a senior AI technical director managing a multi-agent
+MERN stack team. The rules, stated in absolute terms:
+
+  1. Never dump long walls of text — break responses into clean,
+     incremental, logical blocks.
+  2. Follow a strict three-step pipeline when executing a task:
+       STEP 1 (Planner)    — break the request into at most three micro-tasks
+       STEP 2 (Specialist) — assign each to a named role (Backend, Frontend,
+                              Security, or QA)
+       STEP 3 (Executor)   — produce the exact production-ready code or
+                              diagnostic steps, with zero fluff
+  3. When a request is ambiguous, ask exactly one clarifying question before
+     writing any code — never a list of questions.
+  4. Prioritise code safety, proper error handling, and clean modular
+     structure consistent with the project's own committed conventions
+     (the .cursor/rules/ files).
+
+This persona has governed the tone and structure of ongoing work in the
+project ever since it was defined.
+
+--------------------------------------------------------------------------------
+5.6  EARLY BUG FIXES — REASONING LEAKAGE, FAKE THINKING UI, MARKDOWN TABLES
+--------------------------------------------------------------------------------
+
+Once Phase 3 was live and being used, real usage surfaced real bugs:
+
+  REASONING TAG LEAKAGE
+  Some reasoning models (e.g. Groq's GPT-OSS family) emit their internal
+  chain-of-thought wrapped in <think>...</think> tags before the actual
+  answer. These tags were leaking into the visible chat UI as raw text —
+  the user explicitly rejected this ("I dont Want this Thing okay") and
+  asked for the clean, invisible-reasoning streaming behaviour comparable
+  to a mainstream assistant's UI.
+
+  Fix: a boundary-safe reasoning filter was built in
+  shared/src/utils/reasoning.ts. This was non-trivial because the SSE
+  stream delivers content in arbitrary chunks — an opening or closing
+  <think> tag can straddle two separate network frames, so a naive
+  string-replace on each chunk independently would miss or mangle tags
+  that split across a chunk boundary. The filter maintains state across
+  chunks (createReasoningFilter(), with push()/flush()/isUnterminated())
+  so it can correctly detect and strip a tag even when it is split.
+
+  FAKE "THINKING" INDICATOR
+  A follow-up product decision: rather than fabricating a fake "Thinking..."
+  status message, the UI should show a real, minimal, dots-only streaming
+  indicator with no extra text next to it — see section 5.7 for the
+  finalized rule.
+
+  MANGLED MARKDOWN TABLES
+  Screenshots showed chat responses rendering tables incorrectly. This was
+  diagnosed empirically rather than guessed at: the rendered textContent
+  was compared directly against the screenshot and found to match exactly,
+  proving the bug was a genuine rendering/parsing defect in the markdown
+  pipeline rather than a display artifact, and it was fixed in the
+  markdown rendering chain (react-markdown / remark-gfm configuration).
+
+--------------------------------------------------------------------------------
+5.7  LANGUAGE MATCHING AND THE DOTS-ONLY THINKING INDICATOR
+--------------------------------------------------------------------------------
+
+A pair of strict, explicitly-stated UI/behaviour rules were set for the
+product:
+
+  LANGUAGE MATCHING
+  Ken must detect and reply in the same language the user writes in,
+  rather than defaulting to English regardless of input language. This was
+  implemented server-side as a dedicated LANGUAGE_RULE constant in
+  server/src/services/chat/languageRule.ts, injected at the identity tier
+  of the system prompt so it applies uniformly across every model provider.
+
+  STREAMING THINKING ANIMATION
+  While a response is being generated, the UI shows only a minimal dots
+  animation — no additional text, label, or fake status message beside it.
+  This directly followed from, and reinforced, the rejection of the fake
+  "Thinking..." banner described in 5.6.
+
+--------------------------------------------------------------------------------
+5.8  PRODUCTION DEPLOYMENT — RENDER, VERCEL, DNS, DOMAIN
+--------------------------------------------------------------------------------
+
+This was one of the longest and most operationally involved phases of the
+project, walking a non-infrastructure-background user through a real
+production deployment step by step.
+
+  BACKEND ON RENDER
+  Initial deployment attempts failed with a 404 on the shared package
+  (`@Ken%2fshared`). Root cause: the Render service's "Root Directory" had
+  been set to `server`, but npm workspaces only resolve sibling workspace
+  packages (@Ken/shared) when the build runs from the actual repository
+  root. Fix: leave Root Directory blank so Render builds from the monorepo
+  root, letting the workspace resolution work as intended.
+
+  A second failure followed: TypeScript error TS2688, "Cannot find type
+  definition file for 'node'". Root cause: Render's build ran `npm ci` with
+  NODE_ENV=production set, which causes npm to skip devDependencies
+  entirely — including @types/node, which the TypeScript compiler needs
+  even for a production build. Fix: both render.yaml and vercel.json were
+  updated to run `npm ci --include=dev` explicitly.
+
+  Environment variables were configured iteratively, with the user
+  repeatedly re-confirming values because Render's environment variable
+  form does not autosave — a form UX trap that cost real time and was
+  called out explicitly as something to double check every time.
+
+  FRONTEND ON VERCEL
+  Deployed separately from the backend, configured to call the Render API
+  origin for all authenticated requests rather than relying on same-origin
+  behaviour, since the two are on different domains.
+
+  CUSTOM DOMAIN — ken-ai.tech
+  Purchased through name.com and pointed at both the Vercel frontend and
+  the Render backend (as an api subdomain) via DNS. This step surfaced a
+  genuine mistake on Claude's part: querying api.ken-ai.tech before the DNS
+  record actually existed caused a negative-cache entry on both Google's
+  and Cloudflare's public DNS resolvers, which then continued returning
+  NXDOMAIN for up to an hour after the record was correctly created,
+  because those resolvers cache negative results too. This delayed the
+  user by roughly an hour and was explicitly acknowledged as Claude's fault
+  rather than attributed to name.com, Render, or DNS in general. A second,
+  smaller mistake in this same phase was an early DNS-propagation-watcher
+  script that reported a false positive by matching on the string
+  "Address: 8.8.8.8" — which is simply the resolver's own IP echoed back
+  in dig/nslookup output — rather than the server's actual A record.
+
+  A REAL CODE BUG FOUND DURING DEPLOYMENT
+  While debugging a broken-looking URL in production
+  ("ken-ai.tech,https//www.ken-ai.tech/login"), the cause was traced to
+  actual application code, not configuration: CLIENT_URL is stored as a
+  comma-separated allow-list of origins, but it was being interpolated
+  into redirect URLs as a single whole string rather than having the first
+  entry selected. This was fixed in two places —
+  server/src/services/auth/cookies.ts (a new clientOrigin() helper that
+  splits on comma, trims, and strips a trailing slash) and
+  shareService.ts — with five regression tests added to lock the fix in.
+
+--------------------------------------------------------------------------------
+5.9  LAUNCH READINESS — EMAIL, GOOGLE OAUTH, LEGAL PAGES, PERFORMANCE
+--------------------------------------------------------------------------------
+
+  TRANSACTIONAL EMAIL (RESEND)
+  Configured for verification and password-reset email. A live bug —
+  `emailSent: false` in responses — was traced not to a code defect but to
+  the same Render environment-variable form UX issue from 5.8: the
+  RESEND_API_KEY and RESEND_FROM_EMAIL values had visually appeared to be
+  entered but were never actually saved, because the form silently
+  discards unsaved changes if you navigate away. This tripped the user up
+  three separate times before being conclusively identified. Separately, a
+  ~7-10 second email delivery latency was investigated and explained.
+
+  GOOGLE OAUTH
+  A "deleted_client" error was traced to Render holding a stale/incorrect
+  Google OAuth Client ID (the user had accidentally deleted and regenerated
+  the real client in the Google Cloud Console, leaving Render pointed at
+  a client ID that no longer existed). Separately, a missing COOKIE_DOMAIN
+  environment variable was identified and added.
+
+  A related Google "unverified app" branding warning was initially
+  misdiagnosed — Claude first pointed the user toward the OAuth consent
+  screen's "Data Access" tab, when the warning text explicitly said to
+  visit the "Branding" page instead. The user pushed back directly on this
+  ("why are you making it hard for me... find the cause and solution for
+  it"), and the correct root cause was then identified: the OAuth consent
+  screen was missing its required Privacy Policy and Terms of Service
+  URLs. This was corrected, along with two smaller wrong claims made along
+  the way — that the privacy/terms links were merely "optional" for saving
+  the consent screen (they are not: publishing has stricter validation
+  than saving a draft), and that the RESEND email configuration was
+  "optional" in an environment-variable checklist (it is not: an
+  unverified user cannot log in at all, since the login flow returns a
+  hard 403 EMAIL_NOT_VERIFIED). Both incorrect claims were corrected and
+  acknowledged directly when caught.
+
+  PUBLIC LEGAL PAGES
+  Commit: "Add public privacy policy and terms pages" — PrivacyPage.tsx,
+  TermsPage.tsx, and LegalPage.tsx were added as real, reachable public
+  routes (required both by Google's OAuth verification requirements and by
+  ordinary product hygiene).
+
+  A THIRD-PARTY ADVICE REVIEW
+  At one point the user pasted deployment advice generated by a different
+  AI tool. This was independently checked line by line rather than taken
+  at face value, and four of the six suggested changes were found to be
+  wrong for this specific setup: redirecting the Google OAuth callback to
+  the raw onrender.com URL would have broken OAuth entirely; the suggested
+  NODEMAILER_API_KEY / SendGrid variables named the wrong email provider
+  (the project uses Resend); the note about vercel.app CORS was redundant
+  since it was already handled correctly; and REACT_APP_API_URL was flagged
+  as the wrong environment-variable naming convention for a Vite-based
+  client (which uses the VITE_ prefix, not the Create-React-App prefix).
+
+  PERFORMANCE TUNING
+  A full pre-deployment test-and-performance pass was run across the whole
+  project ahead of going live.
+
+--------------------------------------------------------------------------------
+5.10  SECURITY AND PERFORMANCE HARDENING (ARGON2ID)
+--------------------------------------------------------------------------------
+
+Commit: "Tune Argon2id for the 0.1-CPU instance"
+
+Render's free tier allocates only 0.1 CPU and 512MB of RAM to the backend
+service. The default Argon2id password-hashing parameters, while
+appropriately conservative for a normal server, were measured to be
+unnecessarily slow on this specific constrained instance. The parameters
+were retuned:
+
+    memoryCost:   19456
+    timeCost:     2
+    parallelism:  1
+
+Benchmarked improvement: password hashing dropped from roughly 245ms to
+71ms, and verification from roughly 289ms to 82ms. Critically, this change
+is fully backward-compatible: Argon2's hash format encodes its own
+parameters inline, so previously-hashed passwords created under the old,
+slower settings continue to verify correctly with no migration required.
+
+In the same conversation, the possibility of moving the backend to a
+Pakistan-based host was discussed and guidance was given, though the
+Argon2id tuning was treated as the higher-priority, lower-risk win and was
+the change actually shipped.
+
+--------------------------------------------------------------------------------
+5.11  UNIVERSAL ASSISTANT REWRITE
+--------------------------------------------------------------------------------
+
+Commit: "Make Ken a universal assistant instead of an exam tutor"
+
+A standing product-scope correction: Ken's system prompt and behaviour had
+drifted toward acting like a narrow exam-preparation tutor. This was
+rewritten so Ken behaves as a genuinely general-purpose assistant across any
+subject, explains at whatever depth and simplicity the user's question
+calls for, and is not implicitly scoped to any one curriculum, exam board,
+or use case. This rule has been treated as a durable constraint on all
+subsequent prompt and feature work — see the pinned memory
+"ken-ai-response-quality-goal."
+
+--------------------------------------------------------------------------------
+5.12  EDITABLE MESSAGES
+--------------------------------------------------------------------------------
+
+Commit: "Make user messages editable and copyable"
+
+Added the ability to edit a previously-sent user message and copy message
+content directly from the chat UI. This feature's correctness was revisited
+and repaired more thoroughly in the multi-agent fix round described in
+section 5.16, after real usage surfaced a glitch where editing an earlier
+message could leave a stray, incorrect final response appended at the
+bottom of the thread instead of cleanly branching from the edit point.
+
+--------------------------------------------------------------------------------
+5.13  THE BRAND REDESIGN — LANDING PAGE AND DUAL THEME (FIRST PASS)
+--------------------------------------------------------------------------------
+
+The most recent and most extensive phase of work. The user supplied a
+complete, self-contained HTML/CSS/JS landing page design (a large single
+file with an inline <style> block and an inline <script> block implementing
+letter-drop physics, a WebGL particle hero, a 3D animated robot, an
+"intelligence core" visualization, a horizontal scroll-driven story section,
+and several 2D canvas animations), along with logo SVG assets
+(ken-mark.svg, ken-favicon.svg) and a colour palette reference image.
+
+The initial request had three parts:
+  1. Dual theme support — keep dark mode exactly as-is, and add a fully
+     styled light mode matching the brand.
+  2. A full chat-app UI redesign (chat interface, login, sign-up) to match
+     the new landing page's futuristic aesthetic.
+  3. Preserve all existing functionality (voice-to-text, tool selection,
+     model switching) with zero regressions.
+
+Work in this first pass included:
+  - A full rebrand of client/src/index.css with new KEN palette tokens for
+    both a light theme (--canvas: #ffffff, --accent: #00761f, etc.) and a
+    dark theme (--canvas: #121212, --accent: #00ff41, etc.)
+  - New Google Fonts: Lexend (body/display) and JetBrains Mono (code/mono)
+  - A new KenMark.tsx logo component using useId() for gradient IDs so
+    multiple simultaneous instances on a page do not collide, with the
+    stem drawn in currentColor so it adapts to either theme automatically
+  - A ~900-line landing.css authored specifically for the new page, with
+    all custom properties prefixed --ln- to avoid colliding with the app's
+    own design tokens, and documented light-mode-specific adaptations
+    (deepened green for anything carrying meaning, since the raw neon
+    green measures roughly 1.4:1 contrast against white and is unreadable
+    as text there; reduced glow opacity; an inverted vignette)
+  - useLandingScenes.ts, a dedicated hook porting the letter-drop physics,
+    the WebGL hero particle field, and the 2D final energy-field canvas,
+    loading Three.js from a CDN (cdnjs) rather than bundling it, since it
+    is roughly 600KB and only needed on one marketing route that signed-in
+    users rarely revisit
+  - A completely rewritten HomePage.tsx implementing the hero, an
+    "Intelligence. Many possibilities." section, an interactive
+    English / Urdu / Roman Urdu language-switching demo (a genuine product
+    differentiator that was added in place of some sections that were
+    intentionally left out — see next paragraph), an 8-item capability
+    grid, a 6-item FAQ, a final call-to-action, and a footer
+
+DELIBERATE OMISSIONS IN THIS FIRST PASS
+Three sections present in the supplied HTML — an API/developer section, a
+three-tier Pricing section ($20/mo Pro, $30/user/month Team), and a
+four-model marketing lineup (Fast/Reason/Vision/Code) — were deliberately
+left out of the first implementation, on the reasoning that none of those
+things actually exist in the product yet, and shipping them would violate
+the project's own committed "no-fake-features" rule on the single most
+public page of the site. A dedicated Languages section was substituted in
+their place, showcasing a capability the product genuinely has.
+
+This turned out to be the wrong call relative to what the user actually
+wanted, and was corrected in the next phase (5.14) once the user made clear
+they wanted the supplied design implemented exactly as given, complete
+sections included, rather than edited for feature-honesty by Claude's own
+judgement.
+
+--------------------------------------------------------------------------------
+5.14  THE REVERSION — DARK-ONLY, LANDING PAGE RESTORED VERBATIM
+--------------------------------------------------------------------------------
+
+Commit: "Give Ken one ink-and-green world from landing through sign-in
+into chat."
+
+Following the first pass, the user gave three explicit, absolute
+instructions:
+  1. Revert the light theme and every change made since the landing page
+     work began.
+  2. Implement the dark-mode landing page design exactly as supplied —
+     no sections removed, no layout or content changes, complete and
+     verbatim.
+  3. Update the chat application to a strict, pure dark-mode-only
+     experience — no white theme anywhere in the app.
+
+This was executed as follows:
+
+  PALETTE COLLAPSED TO ONE WORLD
+  client/src/index.css was rewritten so the KEN dark palette lives on bare
+  :root (rather than being gated behind a .dark class toggle), with
+  html.dark kept only as a compatibility alias so the existing theme-store
+  toggle code did not need to be touched or removed — it simply becomes
+  inert. theme-color in index.html was likewise fixed to the single dark
+  value (#121212) with no prefers-color-scheme branching.
+
+  THE THEME TOGGLE WAS REMOVED FROM THE UI
+  Rather than leave a toggle control that visibly does nothing (since there
+  is now only one theme to switch between), the ThemeToggle component was
+  removed from AuthLayout.tsx and ChatPage.tsx, and
+  SettingsAppearancePage.tsx was rewritten to state plainly that Ken uses a
+  single dark theme, rather than presenting three now-meaningless options
+  (Light/Dark/System). This was flagged explicitly as a deviation the user
+  had not directly asked for, with an offer to restore the three-way picker
+  if wanted.
+
+  THE LANDING PAGE WAS REBUILT AS A VERBATIM PORT
+  landing.css, HomePage.tsx, and useLandingScenes.ts were rewritten from
+  scratch as a complete, section-by-section port of the exact supplied
+  HTML file — this time including the previously-omitted API/Developers
+  section, the full three-tier Pricing section, and the four-model
+  marketing lineup, plus the 3D animated robot scene that had been left
+  unfinished in the first pass. All fourteen sections plus the loader, nav,
+  mobile menu, and footer were carried over faithfully, along with every
+  CSS custom property, keyframe animation, responsive breakpoint, and the
+  prefers-reduced-motion accessibility block from the original file.
+
+  THE ONE DELIBERATE DEVIATION
+  The supplied HTML used href="#" placeholders for Sign in, Get started,
+  Start chatting, and the legal footer links. These were pointed at real
+  application routes (/login, /register, /chat or /register depending on
+  auth state, /privacy, /terms) rather than being shipped as literal
+  dead links, since a landing page whose primary calls-to-action do
+  nothing would not actually be shippable. Everything else in the supplied
+  file — copy, layout, animation, every other link — was kept exactly as
+  written, including the placeholder footer links the user had not
+  specifically called out.
+
+  MOJIBAKE CORRECTED
+  The supplied HTML file had been saved with UTF-8 characters
+  misinterpreted as Latin-1 at some point upstream, corrupting an em-dash
+  into "â", a middot into "Â·", a paperclip emoji into "ð", and a keyboard
+  shortcut symbol into "âK". These were corrected back to their intended
+  characters throughout the port.
+
+  A JSDOM TEST-ENVIRONMENT GAP WAS FIXED
+  The landing page relies on IntersectionObserver for its scroll-reveal
+  animations, which jsdom (the DOM implementation used in the Vitest test
+  environment) does not implement natively. A stub implementation was
+  added to the shared test setup file alongside the existing
+  ResizeObserver stub, so that any future component using
+  IntersectionObserver would work correctly in tests without needing its
+  own workaround.
+
+--------------------------------------------------------------------------------
+5.15  FIDELITY FIXES — MATCHING THE SUPPLIED DESIGN EXACTLY
+--------------------------------------------------------------------------------
+
+After the reversion in 5.14, the user sent the same supplied HTML file a
+second time with the instruction to implement it "exactly as it is" with
+"no adjustments." Rather than assume the existing port already matched,
+the port was re-diffed against the actual supplied file, line by line, and
+five genuine discrepancies were found and fixed:
+
+  1. A STRUCTURAL BUG CAUSED BY THE SURROUNDING APP
+     The supplied design is a standalone page authored against plain
+     browser defaults, but it now had to render inside an app that uses
+     Tailwind's global CSS preflight, which resets every element's margin
+     to zero and forces replaced elements (like <svg>) to display: block.
+     The supplied CSS relies on browser defaults for margins on several
+     elements (.price, .usage, .status-pill, .story-num, .side-h, and the
+     model spec <dl>) and relies on icons sitting inline with text. Under
+     the app's preflight, all of that spacing had silently collapsed.
+     Fixed by restoring the relevant defaults, scoped strictly inside the
+     .landing class so nothing else in the app is affected.
+  2. A missing .sec-wide utility class present in the source CSS but
+     absent from the port.
+  3. A missing shared font-family selector list applied to all the
+     heading-like elements (h1-h5, .story-title, .final-h, .price, etc.)
+  4. Missing -webkit-text-size-adjust and scroll-behavior: smooth on the
+     scrolling root, which was why anchor-link navigation on the page was
+     jumping instantly instead of gliding — restored scoped to this route
+     only via an html:has(.landing) selector, so it does not affect
+     smooth-scroll behaviour anywhere else in the app.
+  5. A missing apple-touch-icon <link> that had been present in the
+     original file's <head> but dropped from index.html.
+
+All four project quality gates (build, typecheck, lint, full test suite)
+were re-run and confirmed green after these fixes, with the full test
+count reported at each stage rather than assumed.
+
+--------------------------------------------------------------------------------
+5.16  THE MULTI-AGENT FIX ROUND — THREE PARALLEL AGENTS
+--------------------------------------------------------------------------------
+
+With the landing page and dark-only theme in place, the user reported a
+list of concrete visual and functional bugs from actually using the live
+site, and explicitly asked for the work to be divided across separate
+background agents (each instructed to run at high reasoning effort on the
+Opus model), rather than being done directly — with the standing
+instruction that the results be independently checked and, if any agent's
+work was wrong or incomplete, corrected directly rather than accepted as
+reported.
+
+Three tasks were defined and dispatched. Before dispatching, the file
+footprint of each task was checked so that two agents would not edit the
+same file at the same time — Task 1 (landing page) and Task 3 (chat
+messaging logic) touch entirely separate files and were run concurrently;
+Task 2 (chat visual restyle) was deliberately held back until Task 3
+finished, since both would otherwise have raced to edit ChatPage.tsx.
+
+  TASK 1 — LANDING PAGE RESPONSIVE AND VISUAL FIXES
+  Scope: full 320px-width responsiveness with zero horizontal scrolling;
+  fix a malfunctioning horizontal-scroll "story" section; remove random
+  decorative lines that regenerated on every page load in the hero
+  background; and remove the "Meet KEN" orbital diagram section entirely.
+
+  This agent's background process stalled partway through (a stream
+  watchdog killed it after 600 seconds of no progress, apparently
+  confused by a second agent editing files concurrently), but its work had
+  already been written to disk before the stall. Rather than trust its own
+  incomplete final report, every claimed change was independently verified
+  against the actual files:
+
+    - Confirmed: the "Meet KEN" section was fully removed from the JSX,
+      the animation hook, and the CSS (including its spin/spinBack/breathe
+      keyframes, checked first for use elsewhere before deletion), and its
+      test assertions were removed rather than left dangling.
+    - Confirmed and diagnosed precisely: the horizontal story section's
+      bug had two independent causes. First, .landing had
+      overflow-x: hidden, which forces the browser to compute
+      overflow-y: auto as well — silently turning the element into its own
+      scroll container, which breaks every position: sticky descendant,
+      since sticky elements resolve against their nearest scrolling
+      ancestor rather than the viewport. This was the visible "one panel
+      stuck with a large dead gap" bug. Second, the section's total
+      scrollable height was a hardcoded 460vh while each panel was sized
+      at 100vw (which itself double-counts the scrollbar width), so the
+      scroll distance and the actual track width disagreed and the last
+      panel never fully arrived. Fixed by changing overflow-x to clip
+      (which still guards against overflow without creating a scroll
+      container) and deriving the section's height directly from the
+      actual panel count rather than a hardcoded value.
+    - Confirmed: the random hero "neural constellation" lines (regenerated
+      with Math.random() on every page load, matching the user's
+      complaint precisely) were removed, while the separate, fixed,
+      non-random floor/ceiling grid lines were correctly left in place, as
+      instructed, since those are deterministic rather than the reported
+      bug — flagged to the user as trivially removable on request.
+    - Confirmed: a genuine 320px mobile pass was completed, including
+      catching that the hero wordmark's own minimum clamp() size (78px)
+      was itself too wide to fit a 320px viewport regardless of viewport
+      scaling, and re-tracking it with a second, narrower clamp() below a
+      400px breakpoint that meets the original clamp's floor exactly at
+      400px, avoiding any visible jump between the two rules.
+
+  All four gates (build, 0 typecheck errors, 0 lint errors, full landing
+  test suite) were independently re-run and confirmed passing before this
+  work was reported as complete.
+
+  TASK 2 — CHAT VISUAL RESTYLE (SIDEBAR, MESSAGES, AUTH PAGES)
+  Scope: restyle the chat interface, login/sign-up pages, and sidebar to
+  match the landing page's exact colours, borders, fonts, and iconography,
+  including matching the precise active-chat-item styling from the
+  supplied design reference (green-tinted background, smoke-white text,
+  and a 2px solid green left edge via an inset box-shadow).
+  This task was deliberately sequenced to start only after Task 3
+  completed, to avoid two agents fighting over the same file.
+
+  TASK 3 — CHAT MESSAGING LOGIC (EDIT/REGENERATE BUG, ACTION TOOLBAR)
+  Scope: two behavioural bugs — first, that not every assistant message in
+  a conversation rendered its full action toolbar (Copy, Regenerate,
+  Speak, Thumbs Up/Down), only some of them; second, that editing an
+  earlier user message and resubmitting it would glitch, appending a
+  single incorrect extra response at the bottom of the thread rather than
+  cleanly truncating everything after the edit point and regenerating a
+  fresh response sequence. This agent was explicitly instructed not to
+  guess at root causes but to trace the actual code path — from
+  UserMessageBubble's onEdit callback, through ChatPage's onEditMessage
+  handler, through the truncateAfterEdit pure-function helper, through the
+  optimistic UI update, to the eventual TanStack Query cache
+  reconciliation — and to write regression tests proven to fail against
+  the old, buggy behaviour before the fix, and pass afterward.
+
+--------------------------------------------------------------------------------
+5.17  CONTINUED AGENT-DRIVEN FIXES — BOOT LOADER, INSTANT HERO
+--------------------------------------------------------------------------------
+
+Following the Task 1/2/3 round, further landing-page refinement continued:
+the animated in-page loader element (previously an overlay div with a
+drawn-SVG "K" logo and a ~1.75-second theatrical hold before the hero
+revealed itself) was reworked so that the hero's copy is already present in
+the initial HTML and the boot loader in index.html is dismissed
+essentially instantly (hideBootLoader("instant")), rather than holding the
+page behind an artificial delay — directly improving the page's measured
+Largest Contentful Paint. The KEN/AI hero wordmark's letter-drop physics
+animation was also simplified to render in place immediately rather than
+animating in, based on the same instant-load philosophy, with the
+HomePage test suite updated accordingly (a new test explicitly asserts
+that no .drop-letter or .impact-line elements exist and that the title
+renders in place).
+
+At the time of this report, uncommitted local changes also show in-flight
+work touching server/src/services/ai/normalizers/normalize.ts,
+server/src/services/chat/ContextManager.ts, and
+server/src/services/chat/chatService.ts, alongside a new
+server/src/config/http.ts module and test file — consistent with continued
+backend hardening work alongside the frontend polish described above.
+
+
+================================================================================
+6. CURRENT FEATURE INVENTORY
+================================================================================
+
+--------------------------------------------------------------------------------
+6.1  AI MODEL PROVIDERS
+--------------------------------------------------------------------------------
+
+Eight provider integrations are registered in the built-in catalog
+(server/src/services/ai/catalog.ts), switchable per-conversation and
+mid-conversation from the model selector in the chat UI:
+
+  GEMINI (Google) — default provider
+    - Gemini 3.5 Flash Lite   (default model; Google AI Studio free tier)
+    - Gemini 3.8 Flash        (higher quality; legacy threads keep this id)
+    - Gemini 3.6 Flash        (Google's documented successor to 2.5 Flash)
+    - Capabilities: text, vision, streaming, tools
+    - Context window: 1,000,000 tokens on all three
+
+  GROQ
+    - Qwen 3.6 27B   (default; reasoning off, sub-second first response)
+    - GPT-OSS 20B    (reasoning model, run at low effort to avoid delaying
+                       the first visible token behind a long think phase)
+    - GPT-OSS 120B   (higher quality; replaces the retired
+                       llama-3.3-70b-versatile)
+    - Capabilities: text, streaming
+    - Context window: 131,072 tokens
+
+  OPENAI (requires user-supplied API key)
+    - GPT-4.1        (1,000,000 token context)
+    - GPT-4o mini    (128,000 token context)
+    - Capabilities: text, vision, streaming, tools
+
+  ANTHROPIC (requires user-supplied API key; no public free proxy exists)
+    - Claude Sonnet 4.5   — text, vision, streaming, tools, reasoning
+    - Claude Opus 4.1     — highest quality; text, vision, streaming, tools,
+                             reasoning
+    - Claude Haiku 4.5    — fastest; text, vision, streaming, tools
+    - Context window: 200,000 tokens on all three
+
+  OPENROUTER (requires user-supplied API key)
+    - GPT-4o mini (via OpenRouter) — text, streaming, tools
+
+  CEREBRAS
+    - Llama 3.3 70B — text, streaming; 128,000 token context
+
+  DEEPSEEK
+    - DeepSeek Chat — text, streaming; 128,000 token context
+      (deepseek-v4-flash aliases to this same model id)
+
+  CLOUDFLARE WORKERS AI
+    - Llama 3.2 3B (Cloudflare)          — text, streaming
+    - Llama 4 Scout (Cloudflare)         — text, vision, streaming
+                                            (used specifically for image
+                                             prompts when configured)
+
+  OLLAMA (local, self-hosted)
+    - Llama 3.2 — for local development against a locally-running Ollama
+                    instance, no API key required
+
+--------------------------------------------------------------------------------
+6.2  TOOLS
+--------------------------------------------------------------------------------
+
+Registered in server/src/services/tools/ToolManager.ts:
+  - web_search        — Tavily-backed web search
+  - image_generation   — AI image generation
+  - data_analysis      — structured data analysis
+
+Tool availability is gated per-model based on that model's declared
+capabilities (a model without the "tools" capability cannot be offered
+tool use), and the UI reflects real configuration state (e.g. a tool shows
+as unavailable with an explanatory reason if its underlying API key is not
+configured, rather than silently failing).
+
+--------------------------------------------------------------------------------
+6.3  VOICE
+--------------------------------------------------------------------------------
+
+server/src/services/voice/ implements:
+  - OpenAIVoiceService — real speech-to-text and text-to-speech via OpenAI,
+    used when an OpenAI key is configured
+  - UnconfiguredVoiceService — a graceful fallback that reports voice as
+    unavailable with a clear reason, rather than the feature silently
+    breaking, when no voice provider is configured
+  - The client additionally falls back to the browser's native
+    SpeechRecognition / speechSynthesis APIs (canUseBrowserStt /
+    canUseBrowserTts) when available, independent of server configuration
+
+--------------------------------------------------------------------------------
+6.4  MEMORY
+--------------------------------------------------------------------------------
+
+A dedicated Memory Mongoose model and memoryService allow Ken to retain
+facts across separate conversations (per the product's stated intent —
+e.g. formatting preferences, ongoing projects, team context) with a
+memoryController exposing the ability to review and delete what has been
+remembered.
+
+--------------------------------------------------------------------------------
+6.5  FILE ATTACHMENTS
+--------------------------------------------------------------------------------
+
+server/src/services/storage/fileService.ts and validateUpload.ts implement
+validated file upload handling (via multer), feeding attached
+files/images into vision-capable model requests. Uploaded files are stored
+under uploads/ (organised by an id-based directory structure) in local
+development.
+
+--------------------------------------------------------------------------------
+6.6  SHARING AND EXPORT
+--------------------------------------------------------------------------------
+
+  - shareService.ts / shareController.ts / SharedConversation model —
+    generate shareable links to a conversation
+  - exportService.ts / formatExport.ts / exportController.ts — export a
+    conversation in multiple output formats
+  - ShareExportMenu.tsx in the client exposes both from the chat UI
+
+--------------------------------------------------------------------------------
+6.7  CUSTOM GPTS
+--------------------------------------------------------------------------------
+
+A CustomGPT Mongoose model and gptService/gptController allow users to
+define their own named, purpose-built assistant configurations (visible in
+routes such as /gpts, /gpts/:id, and /gpts/create), which can then be
+selected as the active persona for a conversation, similar in spirit to
+custom-GPT features on mainstream assistant platforms.
+
+--------------------------------------------------------------------------------
+6.8  CHAT MECHANICS
+--------------------------------------------------------------------------------
+
+  - Streaming responses over Server-Sent Events, token-by-token
+  - Per-message feedback (thumbs up / down), persisted per message
+  - Message editing with clean truncate-and-regenerate branching (fixed in
+    5.16, Task 3)
+  - Full per-message action toolbar intended on every assistant message:
+    Copy, Regenerate, Speak (TTS), Thumbs Up, Thumbs Down
+  - Conversation history, search, and a persistent sidebar
+  - Model selection persisted via a Zustand store and remembered across
+    sessions
+  - Web search and image generation invocable directly from the composer
+
+
+================================================================================
+7. DESIGN SYSTEM
+================================================================================
+
+Ken AI runs a single, deliberately dark-only visual identity — there is no
+light theme, and this is a firm product decision rather than an
+unfinished feature (see 5.14). The reasoning: the brand's signature accent
+colour, #00FF41, measures roughly 1.4:1 contrast against a white
+background — well under any accessibility contrast floor and effectively
+unreadable as text — so a "light mode" would require a materially
+different accent colour, at which point it would no longer read as the
+same brand at all.
+
+CORE TOKENS (client/src/index.css, on bare :root)
+    --canvas:         #121212   (page background)
+    --surface:         #1a1a1a  (raised surfaces / cards)
+    --surface-muted:   #232323
+    --border:          #2a2e2a
+    --fg:              #f5f5f5  (primary text, "smoke")
+    --fg-muted:        #8b918b
+    --accent:          #00ff41  (brand green)
+    --accent-fg:       #071a0c  (text on top of the green accent)
+    --sidebar:         #0e0e0e
+    --user-bubble:     #16251b
+
+TYPOGRAPHY
+    --font-sans: Lexend       (display/body)
+    --font-mono: JetBrains Mono  (code, technical labels, monospace UI)
+
+THE KEN MARK
+A custom logo (KenMark.tsx) — a stylised "K" built from a smoke-white
+gradient stem and a brand-green gradient diagonal arm, drawn with skewed
+SVG paths for a dynamic, angular feel. Rendered with useId()-scoped
+gradient definitions so multiple simultaneous instances on one page (nav,
+sidebar, footer, auth screens) never collide, and the stem uses
+currentColor so it inherits correctly wherever it's placed.
+
+THE LANDING PAGE
+A fully animated, WebGL-augmented single-page marketing site at the root
+route (/), including:
+  - A letter-drop physics intro for the "KEN AI" wordmark
+  - A WebGL particle-field hero background (Three.js, loaded from a CDN,
+    not bundled, with a static-gradient fallback if WebGL is unavailable)
+  - An interactive 3D animated robot model that tracks cursor movement and
+    pulses on click
+  - An "Intelligence Core" WebGL visualisation
+  - A horizontal, scroll-driven "story" section (Build / Research / Create
+    / Analyze / Learn) using position: sticky and a transform-driven track
+  - A live interactive chat-preview mockup embedded in the page
+  - Full sections for Models, Capabilities, Developers/API, Performance,
+    Privacy & Security, Pricing, and FAQ
+  - Full responsiveness down to a 320px viewport width with zero
+    horizontal scroll
+  - A prefers-reduced-motion accessibility path that disables all
+    animation for users who request it at the OS level
+
+
+================================================================================
+8. ARCHITECTURE RULES AND CONVENTIONS
+================================================================================
+
+The repository has a committed set of enforceable conventions under
+.cursor/rules/, which is treated as a real constraint on all work rather
+than a suggestion:
+
+  ai-providers.mdc        Rules for how AI provider integrations must be
+                            structured and extended
+  architecture.mdc         Overall system architecture constraints
+  backend-security.mdc     Backend security requirements
+  dependencies.mdc         Rules on introducing new dependencies
+  frontend-boundaries.mdc  What the frontend is and is not allowed to do
+                            directly (e.g. provider API keys never touch
+                            client code — see no-secrets.mdc)
+  no-fake-features.mdc     The rule that governed the landing-page section
+                            decision in 5.13/5.14: the product must never
+                            present a capability, price, or feature that
+                            does not actually exist
+  no-secrets.mdc           No secrets, credentials, or provider keys are
+                            ever committed to the repository or exposed to
+                            client-side code (e.g. no provider keys in
+                            VITE_*-prefixed environment variables, since
+                            those are compiled into the public client
+                            bundle)
+  testing.mdc              Testing standards and requirements
+  typescript.mdc           TypeScript conventions, including the strict
+                            compiler flags listed in section 3
+
+STRICT TYPESCRIPT (enforced repo-wide)
+  - noUncheckedIndexedAccess     — array/object index access is typed as
+                                    possibly undefined, forcing explicit
+                                    handling
+  - exactOptionalPropertyTypes   — an optional property cannot be
+                                    explicitly assigned undefined; it must
+                                    be omitted entirely
+  - verbatimModuleSyntax         — import/export statements are preserved
+                                    exactly as written, distinguishing
+                                    type-only imports explicitly
+  - isolatedModules               — every file must be safely
+                                    transpilable in isolation
+
+CODE STYLE
+  - Comments explain WHY, not WHAT — a comment referencing "the hidden
+    constraint" or "the subtle invariant" behind a piece of code, not a
+    restatement of what the code visibly does
+  - No speculative abstraction, no unused feature flags, no
+    backwards-compatibility shims for code that can simply be changed
+    directly
+  - Server code uses ESM with explicit ".js" import extensions even
+    though the source files are ".ts", per the project's NodeNext module
+    resolution setup
+
+
+================================================================================
+9. KNOWN ISSUES, OPEN THREADS, AND THINGS EXPLICITLY DEFERRED
+================================================================================
+
+  - PRICING IS DISPLAY-ONLY. The landing page's Pricing section (Free /
+    Pro $20/mo / Team $30/user/mo), restored verbatim in 5.14, currently
+    has no real billing system behind it — every call-to-action routes to
+    the same free registration flow regardless of which plan's button is
+    clicked. This was flagged directly: a visitor who signs up expecting
+    Pro currently receives the same free-tier app. This needs either a
+    real billing integration or a "coming soon" treatment before the
+    domain is promoted more widely.
+
+  - GOOGLE OAUTH VERIFICATION. The underlying causes of the OAuth branding
+    warning (missing Privacy/Terms links on the consent screen) were fixed
+    in 5.9, but full Google app verification (removing the "unverified
+    app" warning shown to end users) is a separate, not-yet-confirmed-
+    complete submission process.
+
+  - ADMIN USER PROVISIONING. Making a specific account an administrator in
+    the production MongoDB Atlas database has been discussed as a
+    follow-up but has not been confirmed as completed in this report's
+    scope.
+
+  - FILE STORAGE AT SCALE. Uploaded files currently persist to local disk
+    (uploads/) rather than an object-storage service; migrating to
+    something like Cloudflare R2 has been raised as a future option but
+    not yet implemented.
+
+  - IN-FLIGHT UNCOMMITTED CHANGES. As of the time of this report, several
+    files are modified on disk but not yet committed — including
+    client/src/pages/ChatPage.tsx, client/index.html,
+    server/src/services/ai/normalizers/normalize.ts,
+    server/src/services/chat/ContextManager.ts,
+    server/src/services/chat/chatService.ts, server/src/server.ts, and a
+    new server/src/config/http.ts module — consistent with the continued
+    chat-messaging and backend hardening work described in 5.16 and 5.17.
+    Several stray JSON files (client/*.json — forgot.json, login.json,
+    register.json, etc.) also currently sit untracked in the client/
+    directory and appear to be ad hoc manual test artifacts rather than
+    part of the application; they should be reviewed and either removed
+    or gitignored.
+
+
+================================================================================
+10. DEPLOYMENT TOPOLOGY
+================================================================================
+
+    Visitor Browser
+          |
+          |  https://ken-ai.tech (Vercel — React/Vite static build)
+          v
+    Vercel Frontend  ---->  https://api.ken-ai.tech (Render — Express API)
+                                    |
+                                    v
+                          MongoDB Atlas (persistence)
+                                    |
+                    +---------------+----------------+
+                    |               |                |
+              Resend (email)  AI Providers      Tavily / Voice
+                               (8 integrations,   providers
+                                see section 6.1)
+
+  - DNS: name.com, pointing the apex/subdomain records at Vercel and
+    Render respectively
+  - Uptime: an external cron-job.org ping every 10 minutes keeps the
+    free-tier Render instance from cold-sleeping
+  - Both render.yaml and vercel.json explicitly run `npm ci --include=dev`
+    so that TypeScript's devDependencies (notably @types/node) are present
+    during the production build step
+
+
+================================================================================
+11. TESTING AND QUALITY GATES
+================================================================================
+
+Every workspace has a real, executable Vitest test suite — not a
+placeholder. The standard verification pass run before any change is
+considered complete is:
+
+    npm run build        — must exit 0 across shared, server, and client
+    npm run typecheck     — must report 0 TypeScript errors
+    npm run lint          — must report 0 ESLint errors (a single
+                             pre-existing warning in SearchPage is treated
+                             as an accepted, tracked exception)
+    npm test              — every suite across shared, server, and client
+                             must pass
+
+At the most recently reported full run, the project stood at 431 passing
+tests across all three workspaces (21 in shared, 274 in server, 136 in
+client), with 0 TypeScript errors and 0 lint errors. The server test suite
+in particular spins up a real, in-memory MongoDB instance via
+mongodb-memory-server rather than mocking the database layer, and several
+of the bug fixes described in this report (the CLIENT_URL comma bug in
+5.8, the message-edit branching bug in 5.16) were accompanied by dedicated
+regression tests specifically written to fail against the old, buggy
+behaviour and pass against the fix — proving the fix rather than merely
+asserting it.
+
+
+================================================================================
+12. LESSONS LEARNED AND MISTAKES CORRECTED ALONG THE WAY
+================================================================================
+
+In the interest of a genuinely complete and honest record, this section
+lists mistakes made during the project's development that were caught and
+corrected — most of them Claude's own — rather than omitting them:
+
+  1. Misreading the Claude Agent SDK's query() function as returning a
+     Promise rather than an AsyncGenerator, in the very first request of
+     the project (5.4).
+  2. Querying api.ken-ai.tech before its DNS record existed, triggering a
+     negative-cache entry on public resolvers that delayed the user by
+     roughly an hour (5.8).
+  3. A DNS-propagation watcher script that produced a false positive by
+     matching the resolver's own echoed IP address rather than the actual
+     server record (5.8).
+  4. Directing the user to the wrong tab (Data Access instead of
+     Branding) when diagnosing the Google OAuth "unverified app" warning,
+     despite the warning text itself naming the correct page (5.9).
+  5. Incorrectly telling the user that the Privacy/Terms URLs on the
+     Google OAuth consent screen were merely optional (5.9).
+  6. Incorrectly labelling the Resend email configuration as "optional"
+     in an environment-variable summary, when in fact an unverified user
+     cannot log in at all (5.9).
+  7. In the first landing-page redesign pass, substituting the API,
+     Pricing, and Models marketing sections with a Languages section based
+     on Claude's own "no-fake-features" judgement call, rather than
+     implementing the user's supplied design exactly as given — corrected
+     once the user made clear that following the supplied design literally
+     was the actual intent (5.13 -> 5.14).
+  8. A background landing-page-fix agent stalled mid-run without
+     completing its final report; rather than treat the stall as a
+     failure or re-run the whole task from scratch, its actual on-disk
+     changes were independently audited file-by-file and confirmed
+     correct before being reported as done (5.16).
+
+In every one of these cases, the correction was made openly rather than
+silently, and — where the mistake affected the user directly, such as the
+DNS caching delay — was explicitly attributed to Claude rather than to
+the infrastructure or the user.
+
+
+================================================================================
+13. RECOMMENDED NEXT STEPS
+================================================================================
+
+Based on the state of the project as recorded in this report, the most
+material open items are:
+
+  1. Decide on a real billing integration for the Pro/Team pricing tiers,
+     or replace the pricing section's calls-to-action with an explicit
+     "coming soon" state, so paying visitors are not misled (section 9).
+  2. Confirm whether Google OAuth app verification has been submitted and
+     completed, to remove the "unverified app" warning end users currently
+     see (section 9).
+  3. Review and either commit, discard, or .gitignore the stray JSON test
+     artifacts currently sitting untracked in client/ (section 9).
+  4. Review and commit the in-flight uncommitted backend and frontend
+     changes listed in section 9 once they are confirmed complete and
+     passing the full test suite.
+  5. Consider migrating file uploads from local disk storage to a proper
+     object-storage service (e.g. Cloudflare R2) before file volume grows
+     enough to make local disk storage on Render impractical.
+  6. Confirm the current admin-user provisioning status in the production
+     database.
+
+
+================================================================================
+END OF REPORT
+================================================================================

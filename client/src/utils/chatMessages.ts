@@ -129,19 +129,10 @@ export function startTurn(
   return dedupeMessages(next);
 }
 
-/** Stamps the picker selection onto a turn so the metadata label never falls back to a default id. */
-export function pinTurnModel(
-  message: PublicMessage,
-  selection?: { model: string; provider: string },
-): PublicMessage {
-  if (!selection?.model) return message;
-  return { ...message, model: selection.model, provider: selection.provider };
-}
-
 /** Updates the executing model on the live assistant row without touching its text. */
 export function applyAssistantModel(
   messages: PublicMessage[],
-  next: { model?: string; provider?: string; messageId?: string },
+  next: { model?: string; provider?: string; messageId?: string; autoTask?: PublicMessage["autoTask"] },
 ): PublicMessage[] {
   const copy = [...messages];
   for (let index = copy.length - 1; index >= 0; index -= 1) {
@@ -152,6 +143,7 @@ export function applyAssistantModel(
       ...message,
       ...(next.model ? { model: next.model } : {}),
       ...(next.provider ? { provider: next.provider } : {}),
+      ...(next.autoTask ? { autoTask: next.autoTask } : {}),
     };
     return copy;
   }

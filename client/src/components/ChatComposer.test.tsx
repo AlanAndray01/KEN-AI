@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ChatComposer } from "./ChatComposer";
 
 describe("ChatComposer", () => {
-  it("sends on Enter and keeps Shift+Enter as a newline", () => {
+  it("keeps Enter and Shift+Enter as newlines and sends on Ctrl+Enter or Cmd+Enter", () => {
     const onSubmit = vi.fn();
     const onChange = vi.fn();
     render(
@@ -17,10 +17,16 @@ describe("ChatComposer", () => {
     );
 
     expect(screen.getByRole("form", { name: "Send message" })).toBeInTheDocument();
-    fireEvent.keyDown(screen.getByLabelText("Message"), { key: "Enter", shiftKey: false });
+    const input = screen.getByLabelText("Message");
+    fireEvent.keyDown(input, { key: "Enter" });
+    fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
+    expect(onSubmit).not.toHaveBeenCalled();
+    fireEvent.keyDown(input, { key: "Enter", ctrlKey: true });
     expect(onSubmit).toHaveBeenCalledTimes(1);
-    fireEvent.keyDown(screen.getByLabelText("Message"), { key: "Enter", shiftKey: true });
-    expect(onSubmit).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(input, { key: "Enter", metaKey: true });
+    expect(onSubmit).toHaveBeenCalledTimes(2);
+    expect(input).toHaveAttribute("enterkeyhint", "enter");
+    expect(screen.getByText(/\+Enter to send · Enter for a new line/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Attach files" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Web search" })).toBeInTheDocument();
     expect(screen.getByLabelText("Message")).not.toHaveAttribute("maxLength");

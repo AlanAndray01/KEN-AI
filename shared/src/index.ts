@@ -143,3 +143,13 @@ export {
   verifyEmailSchema,
   webSearchSchema,
 } from "./schemas/index.js";
+
+export {
+  AUTO_MODEL_ID,
+  AUTO_PROVIDER_ID,
+  AUTO_ROUTE_REASON,
+  AUTO_TASKS,
+  isAutoSelection,
+} from "./constants/index.js";
+export type { AutoTask } from "./constants/index.js";
+export type { ModelSelectionMode } from "./types/domain.js";

@@ -173,7 +173,6 @@ function catalogIndex(providerId: string, modelId: string): number {
 function providerRank(providerId: string): number {
   if (providerId === "gemini") return 0;
   if (providerId === "groq") return 1;
-  if (providerId === "anthropic") return 2;
   if (providerId === "cerebras") return 3;
   if (providerId === "deepseek") return 4;
   if (providerId === "cloudflare") return 5;

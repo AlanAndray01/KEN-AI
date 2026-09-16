@@ -9,7 +9,6 @@ const PROVIDERS = [
   { id: "groq", label: "Groq" },
   { id: "openai", label: "OpenAI" },
   { id: "openrouter", label: "OpenRouter" },
-  { id: "anthropic", label: "Anthropic (Claude)" },
   { id: "ollama", label: "Ollama" },
 ] as const;
 
@@ -98,7 +97,7 @@ export function AddModelKeysDialog({ open, onClose }: AddModelKeysDialogProps) {
             </h2>
             <p className="mt-1 text-sm text-fg-muted">
               Keys are encrypted on the server and never returned to the browser. This does not write `.env`.
-              Gemini uses a Google AI Studio key. Claude requires an official Anthropic key.
+              Gemini uses a Google AI Studio key.
             </p>
           </div>
           <button

@@ -7,6 +7,7 @@ import {
   GEMINI_PRO_MODEL_ID,
   GROQ_OSS_20B_MODEL_ID,
   GROQ_QUALITY_MODEL_ID,
+  isAutoSelection,
   isLlamaModelId,
   resolveGeminiModelId,
   resolveGroqModelId,
@@ -39,6 +40,8 @@ export function shouldReplaceStoredModel(
   _defaultModel: PublicAIModel,
   models: PublicAIModel[],
 ): boolean {
+  // Auto is a selection in its own right, not a gap waiting to be filled.
+  if (isAutoSelection(stored.providerId, stored.modelId)) return false;
   if (!stored.providerId || !stored.modelId) return true;
   if (stored.providerId === "groq" && resolveGroqModelId(stored.modelId) !== stored.modelId) return true;
   if (stored.providerId === "gemini" && resolveGeminiModelId(stored.modelId) !== stored.modelId) return true;

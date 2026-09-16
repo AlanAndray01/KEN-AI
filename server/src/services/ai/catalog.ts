@@ -125,37 +125,6 @@ export const BUILT_IN_PROVIDERS: BuiltInProviderDefinition[] = [
     ],
   },
   {
-    providerId: "anthropic",
-    name: "Anthropic",
-    type: "anthropic",
-    envKey: "ANTHROPIC_API_KEY",
-    defaultBaseUrl: "https://api.anthropic.com",
-    capabilities: ["text", "vision", "streaming", "tools"],
-    models: [
-      {
-        id: "claude-sonnet-4-5",
-        name: "Claude Sonnet 4.5",
-        description: "Official Anthropic API. Requires ANTHROPIC_API_KEY — there is no public free Claude proxy in Ken.",
-        capabilities: ["text", "vision", "files", "streaming", "tools", "reasoning"],
-        contextWindow: 200_000,
-      },
-      {
-        id: "claude-opus-4-1",
-        name: "Claude Opus 4.1",
-        description: "Highest-quality official Anthropic model. Paid developer tier.",
-        capabilities: ["text", "vision", "files", "streaming", "tools", "reasoning"],
-        contextWindow: 200_000,
-      },
-      {
-        id: "claude-haiku-4-5",
-        name: "Claude Haiku 4.5",
-        description: "Fast official Anthropic model. Same ANTHROPIC_API_KEY as Sonnet and Opus.",
-        capabilities: ["text", "vision", "files", "streaming", "tools"],
-        contextWindow: 200_000,
-      },
-    ],
-  },
-  {
     providerId: "openrouter",
     name: "OpenRouter",
     type: "openrouter",

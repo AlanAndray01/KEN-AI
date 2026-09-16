@@ -21,7 +21,13 @@ import { createProviderAdapter } from "./createProviderAdapter.js";
 import { requireConfigured, resolveCredentials, envKeyCount } from "./credentials.js";
 import { consumePlatformChatQuota } from "./platformChatQuota.js";
 import { isProviderQuotaError, isRetryableProviderError } from "./fallback.js";
-import { formatFallbackReason, nextOpenGeminiModelId, peekModelSkip, rememberModelSkip } from "./modelSkip.js";
+import {
+  formatFallbackReason,
+  nextOpenGeminiModelId,
+  peekModelSkip,
+  rememberModelSkip,
+  type ModelSkip,
+} from "./modelSkip.js";
 import { modelRegistry } from "./ModelRegistry.js";
 import {
   attachmentNeedFromMessages,
@@ -76,7 +82,7 @@ export class AIProviderManager {
   }
 
   async generate(request: GenerateRequest): Promise<AIResponse> {
-    const skip = peekModelSkip(request.providerId, request.modelId);
+    const skip = this.honouredSkip(request);
     if (skip) {
       logger.warn(
         {
@@ -106,7 +112,7 @@ export class AIProviderManager {
   }
 
   async *stream(request: GenerateRequest): AsyncIterable<StreamEvent> {
-    const skip = peekModelSkip(request.providerId, request.modelId);
+    const skip = this.honouredSkip(request);
     if (skip) {
       logger.warn(
         {
@@ -164,7 +170,7 @@ export class AIProviderManager {
         rememberModelSkip(request.providerId, request.modelId, rotated);
       }
     }
-    if (!isRetryableProviderError(last)) throw last;
+    if (!this.mayFallBack(request, last)) throw last;
     for (const hop of this.geminiCatalogHops(request)) {
       this.logFallback(request, hop, last);
       try {
@@ -205,7 +211,7 @@ export class AIProviderManager {
         rememberModelSkip(request.providerId, request.modelId, rotated);
       }
     }
-    if (!isRetryableProviderError(last)) throw last;
+    if (!this.mayFallBack(request, last)) throw last;
     const tryHop = async function* (this: AIProviderManager, hop: GenerateRequest): AsyncIterable<StreamEvent> {
       const fallbackReason = reasonOverride ?? formatFallbackReason(last);
       this.logFallback(request, hop, last);
@@ -241,6 +247,33 @@ export class AIProviderManager {
       }
     }
     throw last;
+  }
+
+  /**
+   * A cached cool-down for the requested model, if this request may act on it.
+   *
+   * A pinned turn only steps aside for a remembered quota error. A cached 503 or
+   * first-byte timeout is transient, so the model the user chose is tried again
+   * rather than being quietly replaced for the whole skip window.
+   */
+  private honouredSkip(request: GenerateRequest): ModelSkip | undefined {
+    const skip = peekModelSkip(request.providerId, request.modelId);
+    if (!skip) return undefined;
+    if (request.fallbackPolicy === "quota-only" && skip.code !== "PROVIDER_RATE_LIMITED") return undefined;
+    return skip;
+  }
+
+  /**
+   * Whether a failure may move the request onto a different model.
+   *
+   * A pinned turn moves only for a provider quota error. Anything else surfaces
+   * as an error on the model the user chose, instead of being answered by a
+   * model they did not pick while the picker still shows theirs. Once a quota
+   * error has authorised the move, later hops follow the normal retry rules.
+   */
+  private mayFallBack(request: GenerateRequest, error: unknown): boolean {
+    if (request.fallbackPolicy === "quota-only") return isProviderQuotaError(error);
+    return isRetryableProviderError(error);
   }
 
   private logFallback(request: GenerateRequest, hop: GenerateRequest, error: unknown): void {
@@ -311,6 +344,9 @@ export class AIProviderManager {
    */
   private withPrimaryFirstByteTimeout(request: GenerateRequest): GenerateRequest {
     if (request.providerId !== "gemini" || request.firstByteTimeoutMs !== undefined) return request;
+    // The short budget exists only to fail over. A pinned turn may not fail over
+    // on a timeout, so the abort would just kill a slow-thinking model like Pro.
+    if (request.fallbackPolicy === "quota-only") return request;
     if (request.modelId === DEFAULT_GEMINI_MODEL_ID) return request;
     return { ...request, firstByteTimeoutMs: GEMINI_FIRST_BYTE_TIMEOUT_MS };
   }
@@ -391,8 +427,8 @@ export class AIProviderManager {
     if (!picked) {
       throw new AppError(
         need === "files"
-          ? "No configured model can read this PDF. Add a Gemini, OpenAI, or Anthropic key, then send again."
-          : "No configured model can read this image. Add a Gemini, OpenAI, or Anthropic key, then send again.",
+          ? "No configured model can read this PDF. Add an OpenAI key, then send again."
+          : "No configured model can read this image. Add a Gemini or OpenAI key, then send again.",
         { statusCode: 409, code: "ATTACHMENT_ROUTE_UNAVAILABLE", expose: true },
       );
     }

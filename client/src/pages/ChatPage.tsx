@@ -3,8 +3,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Menu } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
-  DEFAULT_GEMINI_MODEL_ID,
+  AUTO_MODEL_ID,
+  AUTO_PROVIDER_ID,
+  AUTO_ROUTE_REASON,
   GEMINI_FLASH_MODEL_ID,
+  isAutoSelection,
   type PublicConversation,
   type PublicFile,
   type PublicMessage,
@@ -25,7 +28,7 @@ import { useModelStore } from "@/stores/modelStore";
 import { toast } from "@/stores/toastStore";
 import { useUiStore } from "@/stores/uiStore";
 import { attachmentRejection } from "@/utils/attachmentGate";
-import { attachmentRoutedMessage, displayNameForRoutedModel } from "@/utils/attachmentRouteToast";
+import { attachmentRoutedMessage, displayNameForRoutedModel, quotaFallbackMessage } from "@/utils/attachmentRouteToast";
 import { describeApiError, logApiError } from "@/utils/apiErrors";
 import {
   canUseBrowserStt,
@@ -34,7 +37,8 @@ import {
   speakWithBrowser,
   stopBrowserSpeech,
 } from "@/utils/browserSpeech";
-import { appendChunk, applyAssistantModel, applyFeedback, CHAT_MESSAGE_WINDOW, markLastAssistant, optimisticTurn, pinTurnModel, startTurn, truncateFromMessage, upsertMessage } from "@/utils/chatMessages";
+import { appendChunk, applyAssistantModel, applyFeedback, CHAT_MESSAGE_WINDOW, markLastAssistant, optimisticTurn, startTurn, truncateFromMessage, upsertMessage } from "@/utils/chatMessages";
+import { availableCapabilities, captionProps } from "@/utils/autoMode";
 import { pickDefaultModel, shouldReplaceStoredModel } from "@/utils/defaultModel";
 import type { MentionCandidate } from "@/utils/mentions";
 
@@ -57,6 +61,7 @@ export function ChatPage() {
   const storedProviderId = useModelStore((state) => state.providerId);
   const storedModelId = useModelStore((state) => state.modelId);
   const setSelection = useModelStore((state) => state.setSelection);
+  const restoreDefault = useModelStore((state) => state.restoreDefault);
   const persistDraft = useDraftStore((state) => state.setDraft);
   const clearStoredDraft = useDraftStore((state) => state.clearDraft);
   const currentDraftKey = draftKey(conversationId);
@@ -80,8 +85,8 @@ export function ChatPage() {
   const streamConversationRef = useRef<string | undefined>(undefined);
   const appliedConversationRef = useRef<string | undefined>(undefined);
   const userPickedModelRef = useRef(false);
-  /** Model the current generation was launched with — not a later picker change. */
-  const turnSelectionRef = useRef<{ providerId: string; modelId: string } | undefined>(undefined);
+  /** One quota-fallback notice per turn, even when a hop chain emits several events. */
+  const fallbackNotifiedRef = useRef(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recognitionRef = useRef<{ stop: () => void } | null>(null);
   const mediaChunksRef = useRef<Blob[]>([]);
@@ -115,14 +120,21 @@ export function ChatPage() {
   const conversations = conversationsQuery.data?.conversations ?? [];
   const currentConversation = conversations.find((conversation) => conversation.id === conversationId);
 
-  const providerId = storedProviderId || defaultModel?.providerId || "gemini";
-  const modelId = storedModelId || defaultModel?.id || DEFAULT_GEMINI_MODEL_ID;
-  const selectedModel = models.find((model) => model.providerId === providerId && model.id === modelId) ?? defaultModel;
-  const capabilities = selectedModel?.capabilities ?? [];
+  const providerId = storedProviderId || AUTO_PROVIDER_ID;
+  const modelId = storedModelId || AUTO_MODEL_ID;
+  const autoMode = isAutoSelection(providerId, modelId);
+  const selectedModel = autoMode
+    ? undefined
+    : (models.find((model) => model.providerId === providerId && model.id === modelId) ?? defaultModel);
+  // In Auto the server picks per turn and sends an attachment to a model that
+  // can read it, so the composer offers what any available model can do.
+  const capabilities = autoMode ? availableCapabilities(models) : (selectedModel?.capabilities ?? []);
 
   const toolsQuery = useQuery({
+    // Auto has no single model to gate tools by; the capability union above
+    // covers the picker, and the router sends a tool turn to a tool-capable model.
     queryKey: ["tools", providerId, modelId],
-    queryFn: () => api.tools.list(providerId, modelId),
+    queryFn: () => (autoMode ? api.tools.list() : api.tools.list(providerId, modelId)),
     staleTime: QUERY_STALE_MS,
   });
   const voiceQuery = useQuery({
@@ -209,19 +221,25 @@ export function ChatPage() {
   useEffect(() => {
     if (currentConversation) return;
     if (!defaultModel || models.length === 0) return;
+    // Auto is a valid selection, not a gap to fill with a fixed model.
+    if (autoMode) return;
     const leftoverPreviousDefault = providerId === "gemini" && modelId === GEMINI_FLASH_MODEL_ID;
     if (!shouldReplaceStoredModel({ providerId, modelId }, defaultModel, models) && !leftoverPreviousDefault) {
       return;
     }
     // Keep an explicit picker change (including 3.8) for this new thread.
     if (userPickedModelRef.current) return;
-    if (defaultModel.providerId === providerId && defaultModel.id === modelId) return;
-    setSelection(defaultModel.providerId, defaultModel.id);
-  }, [currentConversation, defaultModel, modelId, models, providerId, setSelection]);
+    // A stale or retired pick returns to Auto rather than to another fixed
+    // model, so the router decides until the user says otherwise.
+    setSelection(AUTO_PROVIDER_ID, AUTO_MODEL_ID);
+  }, [autoMode, currentConversation, defaultModel, modelId, models, providerId, setSelection]);
 
   useEffect(() => {
     if (!currentConversation) {
       appliedConversationRef.current = undefined;
+      // Leaving a thread returns the picker to the saved default instead of
+      // inheriting whichever model the last thread happened to use.
+      restoreDefault();
       return;
     }
     if (appliedConversationRef.current === currentConversation.id) return;
@@ -235,11 +253,12 @@ export function ChatPage() {
         models,
       )
     ) {
-      setSelection(defaultModel.providerId, defaultModel.id);
+      setSelection(AUTO_PROVIDER_ID, AUTO_MODEL_ID, { persist: false });
       return;
     }
-    setSelection(currentConversation.providerId, currentConversation.modelId);
-  }, [currentConversation, defaultModel, models, setSelection]);
+    // Mirroring a thread's model must not overwrite the saved default.
+    setSelection(currentConversation.providerId, currentConversation.modelId, { persist: false });
+  }, [currentConversation, defaultModel, models, restoreDefault, setSelection]);
 
   useEffect(() => {
     if (streamConversationRef.current === conversationId) return;
@@ -331,11 +350,13 @@ export function ChatPage() {
       estimatedMs?: number;
       estimateSamples?: number;
       estimateMatchedMode?: boolean;
+      autoTask?: PublicMessage["autoTask"];
     }>,
   ): Promise<void> {
     setStreaming(true);
     setDeepCodeTurn(false);
     setGenerationEstimate(undefined);
+    fallbackNotifiedRef.current = false;
     try {
       for await (const event of iterator) {
         if (event.type === "estimate" && event.estimatedMs !== undefined) {
@@ -366,14 +387,10 @@ export function ChatPage() {
                 queryClient.getQueryData<{ messages: PublicMessage[] }>(["messages", conversationId])?.messages ??
                 [])
               : [];
-            const pinned = turnSelectionRef.current
-              ? { model: turnSelectionRef.current.modelId, provider: turnSelectionRef.current.providerId }
-              : undefined;
-            return startTurn(
-              base,
-              event.userMessage,
-              event.assistantMessage ? pinTurnModel(event.assistantMessage, pinned) : event.assistantMessage,
-            );
+            // The server stamps the model that is actually executing, so it is
+            // shown as sent. Overwriting it with the picker selection is what
+            // used to hide a quota fallback behind the model the user chose.
+            return startTurn(base, event.userMessage, event.assistantMessage);
           });
           void queryClient.invalidateQueries({ queryKey: ["conversations"] });
         }
@@ -381,30 +398,35 @@ export function ChatPage() {
           const model = event.model ?? event.assistantMessage?.model;
           const provider = event.provider ?? event.assistantMessage?.provider;
           if (!model) continue;
-          const attachmentHop =
-            Boolean(event.fallbackFrom) && String(event.fallbackReason ?? "").startsWith("ATTACHMENT_ROUTE");
+          const reason = String(event.fallbackReason ?? "");
+          const attachmentHop = Boolean(event.fallbackFrom) && reason.startsWith("ATTACHMENT_ROUTE");
+          // Auto choosing a model is not a fallback: the footer names it, and the
+          // picker stays on Auto rather than switching to what Auto picked.
+          const autoHop = Boolean(event.fallbackFrom) && reason.startsWith(AUTO_ROUTE_REASON);
+          // The footer always names the model that is really answering.
+          setLiveMessages((current) =>
+            applyAssistantModel(current ?? messages, {
+              model,
+              ...(provider ? { provider } : {}),
+              ...(event.assistantMessage?.id ? { messageId: event.assistantMessage.id } : {}),
+              ...(event.autoTask ? { autoTask: event.autoTask } : {}),
+            }),
+          );
           if (attachmentHop) {
-            setLiveMessages((current) =>
-              applyAssistantModel(current ?? messages, {
-                model,
-                ...(provider ? { provider } : {}),
-                ...(event.assistantMessage?.id ? { messageId: event.assistantMessage.id } : {}),
-              }),
-            );
             const name = displayNameForRoutedModel(model, models, event.modelName);
             toast(attachmentRoutedMessage(name), "info");
-            if (provider) {
-              turnSelectionRef.current = { providerId: provider, modelId: model };
-              applyThreadSelection(provider, model);
-            }
-          } else if (turnSelectionRef.current) {
-            // Keep the picker id on the bubble; quota hops must not echo a default model.
-            setLiveMessages((current) =>
-              applyAssistantModel(current ?? messages, {
-                model: turnSelectionRef.current!.modelId,
-                provider: turnSelectionRef.current!.providerId,
-                ...(event.assistantMessage?.id ? { messageId: event.assistantMessage.id } : {}),
-              }),
+            if (provider) applyThreadSelection(provider, model);
+          } else if (!autoHop && event.fallbackFrom && !fallbackNotifiedRef.current) {
+            // A pinned turn only leaves its model for a provider quota error. Say
+            // so once per turn; the picker keeps the user's choice, so the next
+            // message tries that model again.
+            fallbackNotifiedRef.current = true;
+            toast(
+              quotaFallbackMessage(
+                displayNameForRoutedModel(event.fallbackFrom, models),
+                displayNameForRoutedModel(model, models, event.modelName),
+              ),
+              "info",
             );
           }
         }
@@ -414,12 +436,8 @@ export function ChatPage() {
         if (event.type === "complete" || event.type === "aborted" || event.type === "error") {
           flushChunks();
           if (event.assistantMessage) {
-            const pinned = turnSelectionRef.current
-              ? { model: turnSelectionRef.current.modelId, provider: turnSelectionRef.current.providerId }
-              : undefined;
-            setLiveMessages((current) =>
-              upsertMessage(current ?? messages, pinTurnModel(event.assistantMessage!, pinned)),
-            );
+            const finished = event.assistantMessage;
+            setLiveMessages((current) => upsertMessage(current ?? messages, finished));
           } else if (event.type === "error") {
             setLiveMessages((current) => markLastAssistant(current ?? messages, "error"));
           } else if (event.type === "aborted") {
@@ -494,7 +512,6 @@ export function ChatPage() {
       setAttachments([]);
     }
     setStreaming(true);
-    turnSelectionRef.current = { providerId, modelId };
     const pending = optimisticTurn(content, conversationId ?? "pending", publicAttachments, {
       model: modelId,
       provider: providerId,
@@ -712,7 +729,6 @@ export function ChatPage() {
     setLiveMessages(trimmed);
 
     setStreaming(true);
-    turnSelectionRef.current = { providerId, modelId };
     const controller = new AbortController();
     abortRef.current = controller;
     await consumeStream(
@@ -733,7 +749,6 @@ export function ChatPage() {
     setStreaming(true);
     // The reworded question lands at the bottom, so follow it there.
     pin();
-    turnSelectionRef.current = { providerId, modelId };
     const controller = new AbortController();
     abortRef.current = controller;
     await consumeStream(
@@ -833,7 +848,7 @@ export function ChatPage() {
       >
         {waitingForMessages ? (
           <div
-            className="mx-auto flex w-full max-w-3xl flex-col gap-6"
+            className="chat-thread mx-auto flex w-full max-w-3xl flex-col gap-4"
             aria-busy="true"
             aria-label="Loading messages"
           >
@@ -895,7 +910,7 @@ export function ChatPage() {
             )}
           </div>
         ) : (
-          <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
+          <div className="chat-thread mx-auto flex w-full max-w-3xl flex-col gap-4">
             {hiddenCount > 0 ? (
               <button
                 type="button"
@@ -909,12 +924,7 @@ export function ChatPage() {
               <ChatTurn
                 key={message.id}
                 message={message}
-                {...(message.model
-                  ? {
-                      modelCaption:
-                        models.find((model) => model.id === message.model)?.name ?? message.model,
-                    }
-                  : {})}
+                {...captionProps(message, models)}
                 eagerMarkdown={index >= visibleMessages.length - 3}
                 streaming={streaming}
                 deepCode={deepCodeTurn && message.status === "streaming"}
@@ -938,7 +948,7 @@ export function ChatPage() {
         onSubmit={() => void onSubmit()}
         onStop={() => void onStop()}
         streaming={streaming}
-        sendOnEnter={user?.preferences?.sendOnEnter ?? true}
+        sendOnEnter={user?.preferences?.sendOnEnter ?? false}
         attachments={attachments}
         capabilities={capabilities}
         uploading={uploading}

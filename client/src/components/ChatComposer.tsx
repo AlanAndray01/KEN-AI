@@ -5,6 +5,7 @@ import { AttachmentChips } from "@/components/AttachmentChips";
 import { cn } from "@/utils/cn";
 import { composerAccept } from "@/utils/attachmentGate";
 import { applyMention, filterMentions, mentionTokenAt, type MentionCandidate } from "@/utils/mentions";
+import { isCoarsePointer, shouldSubmitOnKey, submitModifierLabel } from "@/utils/keyboard";
 
 interface ChatComposerProps {
   value: string;
@@ -45,7 +46,7 @@ export function ChatComposer({
   onSubmit,
   onStop,
   streaming,
-  sendOnEnter = true,
+  sendOnEnter = false,
   disabled = false,
   placeholder = "Ask anything",
   attachments = [],
@@ -132,16 +133,22 @@ export function ChatComposer({
         }
       }
     }
-    if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
-    if (sendOnEnter && !event.shiftKey) {
-      event.preventDefault();
-      if (!busy && canSend) onSubmit();
-      return;
-    }
-    if (!sendOnEnter && event.metaKey) {
-      event.preventDefault();
-      if (!busy && canSend) onSubmit();
-    }
+    const submits = shouldSubmitOnKey(
+      {
+        key: event.key,
+        shiftKey: event.shiftKey,
+        ctrlKey: event.ctrlKey,
+        metaKey: event.metaKey,
+        altKey: event.altKey,
+        isComposing: event.nativeEvent.isComposing,
+      },
+      // Read at key time rather than once on mount: a laptop with a touchscreen
+      // can switch primary input mid-session.
+      { sendOnEnter, coarsePointer: isCoarsePointer() },
+    );
+    if (!submits) return;
+    event.preventDefault();
+    if (!busy && canSend) onSubmit();
   }
 
   function takeFiles(list: FileList | File[]): void {
@@ -210,6 +217,7 @@ export function ChatComposer({
           rows={1}
           disabled={disabled}
           placeholder={placeholder}
+          enterKeyHint="enter"
           aria-label="Message"
           aria-autocomplete="list"
           aria-haspopup={onMention ? "listbox" : undefined}
@@ -312,7 +320,7 @@ export function ChatComposer({
               <Mic className="size-4" />
             </button>
             <p className="composer-hint px-1 text-[11px] text-fg-muted">
-              {sendOnEnter ? "Enter to send · Shift+Enter for a new line" : "⌘ Enter to send"}
+              {sendOnEnter ? "Enter to send · Shift+Enter for a new line" : `${submitModifierLabel()}+Enter to send · Enter for a new line`}
               {value.trim() ? ` · ~${estimatePromptTokens(value)} tokens` : ""}
             </p>
           </div>

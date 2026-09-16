@@ -25,7 +25,7 @@ export function WorkspaceLayout() {
   const shortcutsOpen = useUiStore((state) => state.shortcutsOpen);
   const setShortcutsOpen = useUiStore((state) => state.setShortcutsOpen);
   const isChat = location.pathname === "/chat" || location.pathname.startsWith("/chat/");
-  const sendOnEnter = user?.preferences?.sendOnEnter ?? true;
+  const sendOnEnter = user?.preferences?.sendOnEnter ?? false;
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent): void {
@@ -74,9 +74,13 @@ export function WorkspaceLayout() {
       <div className="flex min-w-0 flex-1 flex-col">
         {isChat ? null : (
           <div className="flex items-center border-b border-border px-3 py-2 md:hidden">
+            {/* This row only exists on mobile/tablet (the wrapper above is
+                `md:hidden`), so the 48px target is sized directly rather
+                than through a breakpoint — there is no desktop state to
+                disturb. */}
             <button
               type="button"
-              className="rounded-lg p-2 text-fg-muted hover:bg-surface-muted"
+              className="inline-flex size-12 items-center justify-center rounded-lg text-fg-muted hover:bg-surface-muted"
               aria-label="Open sidebar"
               onClick={() => setMobileOpen(true)}
             >

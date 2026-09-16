@@ -18,7 +18,8 @@ import {
   Settings,
   Share2,
   Shield,
-  Sparkles,
+  Bot,
+  SlidersHorizontal,
   Trash2,
 } from "lucide-react";
 import { APP_NAME, CLIENT_ROUTES, type PublicConversation } from "@Ken/shared";
@@ -233,23 +234,36 @@ export function ConversationSidebar() {
           />
           <SidebarLink to={CLIENT_ROUTES.search} icon={Search} label="History" collapsed={narrow} />
           <SidebarLink to={CLIENT_ROUTES.library} icon={Library} label="Library" collapsed={narrow} />
-          <SidebarLink to={CLIENT_ROUTES.gpts} icon={Sparkles} label="GPTs" collapsed={narrow} />
+          <SidebarLink to={CLIENT_ROUTES.gpts} icon={Bot} label="GPTs" collapsed={narrow} />
         </div>
 
-        {!narrow ? (
-          <>
-            <div className="px-3 pt-3 pb-2">
-              <input
-                type="search"
-                value={filter}
-                onChange={(event) => setFilter(event.target.value)}
-                placeholder="Filter chats"
-                aria-label="Filter chats"
-                className="w-full rounded-lg border border-border bg-canvas px-3 py-1.5 text-sm"
-              />
-            </div>
-            <nav className="flex-1 space-y-4 overflow-y-auto px-2 pb-4" aria-label="Conversations">
-              {conversationsQuery.isLoading ? (
+        {/*
+          `narrow` (the desktop icon-rail toggle) used to unmount this whole
+          block, filter box and chat list included, with no `md:` qualifier.
+          Every other consumer of `narrow` in this file only ever collapses
+          at `md:` and up — this one collapsed it everywhere, so a session
+          that had ever collapsed the desktop rail (the state persists in
+          localStorage) lost its chat history on mobile and tablet too, with
+          no way back: the un-collapse button is itself `md:`-only. The list
+          now always renders; `md:hidden` keeps the desktop rail's collapsed
+          look exactly as it was.
+        */}
+        <>
+          <div className={cn("px-3 pt-3 pb-2", narrow && "md:hidden")}>
+            <input
+              type="search"
+              value={filter}
+              onChange={(event) => setFilter(event.target.value)}
+              placeholder="Filter chats"
+              aria-label="Filter chats"
+              className="w-full rounded-lg border border-border bg-canvas px-3 py-1.5 text-sm"
+            />
+          </div>
+          <nav
+            className={cn("flex-1 space-y-4 overflow-y-auto px-2 pb-4", narrow && "md:hidden")}
+            aria-label="Conversations"
+          >
+            {conversationsQuery.isLoading ? (
                 <p className="px-2 text-xs text-fg-muted">Loading chats…</p>
               ) : null}
               {conversationsQuery.isError ? (
@@ -369,10 +383,12 @@ export function ConversationSidebar() {
                 </section>
               ))}
             </nav>
-          </>
-        ) : (
-          <div className="flex-1" />
-        )}
+          {/* The nav above carries the layout's only `flex-1`; when `narrow`
+              hides it on desktop, this stands in so the account button below
+              still gets pushed to the bottom of the rail. It never renders
+              below `md:`, where the real nav is always visible instead. */}
+          {narrow ? <div className="hidden flex-1 md:block" /> : null}
+        </>
 
         <div className="relative border-t border-border p-2" ref={accountOpen ? menuRef : undefined}>
           <button
@@ -422,7 +438,7 @@ export function ConversationSidebar() {
                 className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-surface-muted"
                 onClick={() => setAccountOpen(false)}
               >
-                <Sparkles className="size-4" />
+                <SlidersHorizontal className="size-4" />
                 Personalization
               </Link>
               <Link

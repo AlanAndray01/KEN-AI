@@ -14,9 +14,12 @@ const userSchema = new mongoose.Schema(
     preferences: {
       theme: { type: String, enum: ["light", "dark", "system"], default: "system" },
       language: { type: String, default: "en", trim: true },
-      sendOnEnter: { type: Boolean, default: true },
+      sendOnEnter: { type: Boolean, default: false },
       selectedProviderId: { type: String, trim: true, maxlength: 64 },
       selectedModelId: { type: String, trim: true, maxlength: 160 },
+      // Only "manual" makes the ids above follow the user across devices; an
+      // account without a mode predates Auto and starts on it.
+      selectionMode: { type: String, enum: ["auto", "manual"] },
     },
     lastLoginAt: { type: Date },
     // Default true so accounts created before email OTP keep working.

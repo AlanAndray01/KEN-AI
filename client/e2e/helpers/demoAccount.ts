@@ -23,7 +23,7 @@ export const DEMO_USER = {
   preferences: {
     theme: "dark" as const,
     language: "en",
-    sendOnEnter: true,
+    sendOnEnter: false,
     selectedProviderId: "groq",
     selectedModelId: "qwen/qwen3.6-27b",
   },

@@ -14,6 +14,7 @@ interface UserLike {
     sendOnEnter?: boolean;
     selectedProviderId?: string | null;
     selectedModelId?: string | null;
+    selectionMode?: string | null;
   } | null;
   createdAt: Date;
   updatedAt: Date;
@@ -30,11 +31,14 @@ export function toPublicUser(user: UserLike): PublicUser {
     preferences: {
       theme: theme === "light" || theme === "dark" || theme === "system" ? theme : "system",
       language: user.preferences?.language ?? "en",
-      sendOnEnter: user.preferences?.sendOnEnter ?? true,
+      sendOnEnter: user.preferences?.sendOnEnter ?? false,
       ...(user.preferences?.selectedProviderId
         ? { selectedProviderId: user.preferences.selectedProviderId }
         : {}),
       ...(user.preferences?.selectedModelId ? { selectedModelId: user.preferences.selectedModelId } : {}),
+      ...(user.preferences?.selectionMode === "auto" || user.preferences?.selectionMode === "manual"
+        ? { selectionMode: user.preferences.selectionMode }
+        : {}),
     },
     createdAt: user.createdAt.toISOString(),
     updatedAt: user.updatedAt.toISOString(),

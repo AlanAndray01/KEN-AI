@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Check, ChevronDown, Copy, Pencil } from "lucide-react";
 import { DeferredMarkdown } from "@/components/DeferredMarkdown";
 import { cn } from "@/utils/cn";
+import { shouldSubmitOnKey } from "@/utils/keyboard";
 
 /**
  * A user turn, collapsed when it is long, with copy and edit controls.
@@ -125,6 +126,12 @@ export function UserMessageBubble({
   return (
     <div className="user-message group/message flex max-w-[85%] flex-col items-end">
       <div className="w-full rounded-xl border border-accent/20 bg-user-bubble px-4 py-3 text-fg">
+        {/*
+          Attachments lead the bubble: the file or image is what the text refers
+          to ("summarise this"), so it reads first. The gap is only needed when
+          text follows.
+        */}
+        {children ? <div className={content ? "user-message-attachments mb-2" : "user-message-attachments"}>{children}</div> : null}
         <div className="relative">
           <div
             ref={bodyRef}
@@ -152,8 +159,6 @@ export function UserMessageBubble({
             />
           </button>
         ) : null}
-
-        {children}
       </div>
 
       {/*
@@ -239,8 +244,22 @@ function MessageEditor({
         value={value}
         onChange={(event) => setValue(event.target.value)}
         onKeyDown={(event) => {
-          // Enter sends, matching the composer. Shift+Enter inserts a newline.
-          if (event.key === "Enter" && !event.shiftKey) {
+          // Same rule as the composer: Ctrl/⌘+Enter sends and Enter is a newline.
+          // The editor ignores the Enter-to-send opt-in: resubmitting an edit
+          // regenerates the reply, so an accidental send is expensive here.
+          if (
+            shouldSubmitOnKey(
+              {
+                key: event.key,
+                shiftKey: event.shiftKey,
+                ctrlKey: event.ctrlKey,
+                metaKey: event.metaKey,
+                altKey: event.altKey,
+                isComposing: event.nativeEvent.isComposing,
+              },
+              { sendOnEnter: false },
+            )
+          ) {
             event.preventDefault();
             submit();
             return;
@@ -250,6 +269,7 @@ function MessageEditor({
             onCancel();
           }
         }}
+        enterKeyHint="enter"
         aria-label="Edit your message"
         rows={1}
         // `message-edit-input` opts out of the global focus ring, the same way

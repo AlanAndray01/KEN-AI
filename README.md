@@ -1,6 +1,6 @@
 # Ken
 
-Ken is a production-oriented MERN TypeScript AI assistant platform. The React client talks only to an Express API. MongoDB is the source of truth. AI providers (Gemini first, then Groq, OpenAI, Anthropic, OpenRouter, Ollama, and custom OpenAI-compatible APIs) are adapters behind a server-side provider manager. Provider API keys never leave the server.
+Ken is a production-oriented MERN TypeScript AI assistant platform. The React client talks only to an Express API. MongoDB is the source of truth. AI providers (Gemini first, then Groq, OpenAI, OpenRouter, Ollama, and custom OpenAI-compatible APIs) are adapters behind a server-side provider manager. Provider API keys never leave the server.
 
 This repository is a npm workspaces monorepo:
 
@@ -133,7 +133,6 @@ Provider keys stay on the server (environment variables or AES-256-GCM encrypted
 
 **Groq (next hop):** set `GROQ_API_KEY`. Default Groq model is `qwen/qwen3.6-27b` (Groq retired Llama 3.1/3.3 IDs). Llama is never chosen as Ken's default.
 
-**Claude:** set `ANTHROPIC_API_KEY` from the official Anthropic console. There is no reliable public free Claude endpoint Ken will call. OpenRouter can list Claude only if you add your own `OPENROUTER_API_KEY` and accept OpenRouter's billing.
 
 Optional keys: `OPENAI_API_KEY`, `OPENROUTER_API_KEY`. Custom OpenAI-compatible endpoints and Ollama are configured by an admin. Persist database keys with `ENCRYPTION_KEY` (required in production). Users can save personal keys through Settings or `POST /api/settings/keys`; those values are encrypted in MongoDB and never written to `.env`.
 

@@ -2,11 +2,15 @@ import { randomUUID } from "node:crypto";
 import mongoose from "mongoose";
 import type { ChatToolId, PublicConversation, PublicMessage } from "@Ken/shared";
 import {
+  AUTO_MODEL_ID,
+  AUTO_PROVIDER_ID,
   DEFAULT_GEMINI_MODEL_ID,
   DEFAULT_GROQ_MODEL_ID,
   resolveDeepSeekModelId,
   resolveGeminiModelId,
   resolveGroqModelId,
+  isAutoSelection,
+  type AutoTask,
 } from "@Ken/shared";
 import { logger } from "../../config/logger.js";
 import { AppError } from "../../utils/AppError.js";
@@ -23,6 +27,7 @@ import { findOwnedConversation, titleFromContent, capStoredTurns, conversationEx
 import { generateChatTitle } from "./chatTitle.js";
 import { describeSelectedModel } from "./identity.js";
 import { nextOpenGeminiModelId, peekModelSkip } from "../ai/modelSkip.js";
+import { planAutoRoute } from "./autoRoute.js";
 import { buildDeepCodeMessage, detectDeepCodeRequest } from "./codeGeneration.js";
 import { estimateGenerationMs } from "./generationEstimate.js";
 import { buildResponsePolicyMessages, detectTaskSignals, isLowThinkingTurn, replyMaxTokens } from "./responsePolicy.js";
@@ -57,6 +62,8 @@ export interface PreparedGeneration {
   customGptId?: string;
   routedFrom?: string;
   routeReason?: string;
+  /** Set when Auto picked the model for this turn. */
+  autoTask?: AutoTask;
 }
 
 export interface ChatStreamEvent {
@@ -85,6 +92,8 @@ export interface ChatStreamEvent {
   estimateMatchedMode?: boolean;
   /** This turn asked for a substantial code artifact. */
   deepCode?: boolean;
+  /** Set when Auto picked the model, naming what it routed for. */
+  autoTask?: AutoTask;
   model?: string;
   modelName?: string;
   provider?: string;
@@ -120,13 +129,23 @@ export async function prepareSend(input: {
     await getAccessibleGpt(input.userId, customGptId);
   }
 
-  const requested = await resolveExecutionModel(
-    input.userId,
-    requestedProviderId,
-    requestedModelId,
-  );
   const earlyIds = input.attachmentIds ?? [];
   const earlyFiles = earlyIds.length > 0 ? await loadOwnedFiles(input.userId, earlyIds) : [];
+  const autoPlan = isAutoSelection(requestedProviderId, requestedModelId)
+    ? await routeAuto(input.userId, {
+        content: input.content,
+        files: earlyFiles,
+        ...(input.enabledTools ? { enabledTools: input.enabledTools } : {}),
+      })
+    : undefined;
+  const requested =
+    autoPlan ??
+    (await resolveExecutionModel(
+      input.userId,
+      requestedProviderId,
+      requestedModelId,
+      input.modelId !== undefined,
+    ));
   const routed = await routeForAttachments(input.userId, requested, earlyFiles);
   const { providerId, modelId, model } = routed;
   const toolOutcome =
@@ -155,8 +174,9 @@ export async function prepareSend(input: {
       // conversations created since this field existed are ever auto-renamed.
       // A chat from before it hydrates with no value and is left alone.
       titleSource: "auto",
-      modelId,
-      providerId,
+      // The thread stores the sentinel, so its next turn stays on Auto.
+      modelId: autoPlan ? AUTO_MODEL_ID : modelId,
+      providerId: autoPlan ? AUTO_PROVIDER_ID : providerId,
       archived: false,
       pinned: false,
       messageCount: 0,
@@ -164,8 +184,8 @@ export async function prepareSend(input: {
       ...(customGptId ? { customGptId } : {}),
     }));
 
-  owned.providerId = providerId;
-  owned.modelId = modelId;
+  owned.providerId = autoPlan ? AUTO_PROVIDER_ID : providerId;
+  owned.modelId = autoPlan ? AUTO_MODEL_ID : modelId;
   if (customGptId) {
     owned.customGptId = new mongoose.Types.ObjectId(customGptId);
   }
@@ -247,7 +267,7 @@ export async function prepareSend(input: {
     ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
     ...(toolOutcome.systemMessages.length > 0 ? { toolSystemMessages: toolOutcome.systemMessages } : {}),
     ...(customGptId ? { customGptId } : {}),
-    ...(routed.routedFrom ? { routedFrom: routed.routedFrom, routeReason: routed.routeReason } : {}),
+    ...routeTrail(routed, autoPlan),
   };
 }
 
@@ -322,15 +342,18 @@ export async function prepareEdit(input: {
     await userDoc.save();
   }
 
-  const requested = await resolveExecutionModel(
-    input.userId,
-    input.providerId ?? conversation.providerId,
-    input.modelId ?? conversation.modelId,
-  );
+  const selectedProviderId = input.providerId ?? conversation.providerId;
+  const selectedModelId = input.modelId ?? conversation.modelId;
+  const autoPlan = isAutoSelection(selectedProviderId, selectedModelId)
+    ? await routeAuto(input.userId, { content: input.content, files: attachments })
+    : undefined;
+  const requested =
+    autoPlan ??
+    (await resolveExecutionModel(input.userId, selectedProviderId, selectedModelId, input.modelId !== undefined));
   const routed = await routeForAttachments(input.userId, requested, attachments);
   const { providerId, modelId, model } = routed;
-  conversation.providerId = providerId;
-  conversation.modelId = modelId;
+  conversation.providerId = autoPlan ? AUTO_PROVIDER_ID : providerId;
+  conversation.modelId = autoPlan ? AUTO_MODEL_ID : modelId;
 
   const assistantDoc = await Message.create({
     conversationId: conversation._id,
@@ -363,7 +386,7 @@ export async function prepareEdit(input: {
     abortSignal: signal,
     ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
     ...(conversation.customGptId ? { customGptId: String(conversation.customGptId) } : {}),
-    ...(routed.routedFrom ? { routedFrom: routed.routedFrom, routeReason: routed.routeReason } : {}),
+    ...routeTrail(routed, autoPlan),
   };
 }
 
@@ -430,15 +453,18 @@ export async function prepareRegenerate(input: {
 
   const attachmentMap = await publicAttachmentsForMessages([String(userMessage._id)]);
   const existingAttachments = attachmentMap.get(String(userMessage._id)) ?? [];
-  const requested = await resolveExecutionModel(
-    input.userId,
-    input.providerId ?? conversation.providerId,
-    input.modelId ?? conversation.modelId,
-  );
+  const selectedProviderId = input.providerId ?? conversation.providerId;
+  const selectedModelId = input.modelId ?? conversation.modelId;
+  const autoPlan = isAutoSelection(selectedProviderId, selectedModelId)
+    ? await routeAuto(input.userId, { content: userMessage.content ?? "", files: existingAttachments })
+    : undefined;
+  const requested =
+    autoPlan ??
+    (await resolveExecutionModel(input.userId, selectedProviderId, selectedModelId, input.modelId !== undefined));
   const routed = await routeForAttachments(input.userId, requested, existingAttachments);
   const { providerId, modelId, model } = routed;
-  conversation.providerId = providerId;
-  conversation.modelId = modelId;
+  conversation.providerId = autoPlan ? AUTO_PROVIDER_ID : providerId;
+  conversation.modelId = autoPlan ? AUTO_MODEL_ID : modelId;
 
   const generationId = randomUUID();
   const assistantDoc = await Message.create({
@@ -468,7 +494,7 @@ export async function prepareRegenerate(input: {
     abortSignal: signal,
     ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
     ...(conversation.customGptId ? { customGptId: String(conversation.customGptId) } : {}),
-    ...(routed.routedFrom ? { routedFrom: routed.routedFrom, routeReason: routed.routeReason } : {}),
+    ...routeTrail(routed, autoPlan),
   };
 }
 
@@ -503,7 +529,9 @@ export async function runGeneration(
   }
 
   const skip = peekModelSkip(prepared.providerId, prepared.modelId);
-  if (skip && prepared.providerId === "gemini") {
+  // Only a remembered quota error may start the turn on another model. A cached
+  // 503 or timeout is transient, so the model the user picked is tried again.
+  if (skip && skip.code === "PROVIDER_RATE_LIMITED" && prepared.providerId === "gemini") {
     const next = nextOpenGeminiModelId(prepared.modelId);
     if (next) {
       streamModelId = next;
@@ -527,6 +555,7 @@ export async function runGeneration(
     assistantMessage: startAssistant,
     generationId: prepared.generationId,
     deepCode,
+    ...(prepared.autoTask ? { autoTask: prepared.autoTask } : {}),
   });
 
   // Priced off UsageRecord history, which costs a Mongo round-trip. Emitted as
@@ -557,6 +586,7 @@ export async function runGeneration(
       assistantMessage: startAssistant,
       ...(fallbackReason ? { fallbackReason } : {}),
       ...(prepared.modelName ? { modelName: prepared.modelName } : {}),
+      ...(prepared.autoTask ? { autoTask: prepared.autoTask } : {}),
     });
   }
   let googleConnectMs: number | undefined;
@@ -644,6 +674,10 @@ export async function runGeneration(
       abortSignal: prepared.abortSignal,
       maxTokens,
       skipAvailabilityCheck: true,
+      // A model the user picked moves only for a provider quota error, and the
+      // stream surfaces that hop rather than hiding it. An Auto turn has no
+      // user-chosen model to protect, so it keeps the normal retryable failover.
+      ...(prepared.autoTask ? {} : { fallbackPolicy: "quota-only" as const }),
       ...(requestId ? { requestId } : {}),
       ...(lowThinking ? { reasoningEffort: "none" as const } : {}),
     })) {
@@ -749,6 +783,10 @@ export async function runGeneration(
     assistant.status = finishStatus;
     assistant.set("model", executedModelId);
     assistant.set("provider", executedProviderId);
+    if (prepared.autoTask) {
+      // Kept on the reply so a reloaded thread still shows that Auto chose it.
+      assistant.set("metadata", { ...(asRecord(assistant.metadata) ?? {}), autoTask: prepared.autoTask });
+    }
     if (finishStatus === "error") {
       assistant.set("metadata", {
         ...(asRecord(assistant.metadata) ?? {}),
@@ -906,6 +944,76 @@ export async function loadHistory(userId: string, conversationId: string): Promi
   return result;
 }
 
+interface AutoResolution {
+  providerId: string;
+  modelId: string;
+  model: Awaited<ReturnType<typeof modelRegistry.assertModelAvailable>>;
+  autoTask: AutoTask;
+  routeReason: string;
+}
+
+/**
+ * Resolve the Auto picker option to a concrete model for this turn.
+ *
+ * Only models the registry reports as available are considered, so Auto can
+ * never select something the configured keys cannot serve.
+ */
+async function routeAuto(
+  userId: string,
+  input: { content: string; files: ReadonlyArray<{ mimeType: string }>; enabledTools?: readonly ChatToolId[] },
+): Promise<AutoResolution> {
+  const models = await modelRegistry.listPublicModels(userId);
+  const plan = planAutoRoute(models, input);
+  if (!plan.route) {
+    const message =
+      plan.task === "files"
+        ? "No configured model can read this PDF. Add an OpenAI key, or pick a model, then send again."
+        : plan.task === "vision"
+          ? "No configured model can read this image. Add a Gemini or OpenAI key, or pick a model, then send again."
+          : "No model is available for Auto. Add an API key, or pick a model, then send again.";
+    throw new AppError(message, { statusCode: 503, code: "AUTO_ROUTE_UNAVAILABLE", expose: true });
+  }
+  const route = plan.route;
+  const model =
+    models.find((item) => item.providerId === route.providerId && item.id === route.modelId) ??
+    (await modelRegistry.assertModelAvailable(route.providerId, route.modelId, userId));
+  logger.info(
+    {
+      task: route.task,
+      providerId: route.providerId,
+      modelId: route.modelId,
+      preferred: route.preferred,
+      candidates: models.filter((item) => item.available).length,
+    },
+    "auto mode routed turn",
+  );
+  return {
+    providerId: route.providerId,
+    modelId: route.modelId,
+    model,
+    autoTask: route.task,
+    routeReason: route.reason,
+  };
+}
+
+/** What moved this turn off the requested model, for the SSE model event. */
+function routeTrail(
+  routed: { routedFrom?: string; routeReason?: string },
+  autoPlan: AutoResolution | undefined,
+): Pick<PreparedGeneration, "routedFrom" | "routeReason" | "autoTask"> {
+  if (routed.routedFrom) {
+    return {
+      routedFrom: routed.routedFrom,
+      ...(routed.routeReason ? { routeReason: routed.routeReason } : {}),
+      ...(autoPlan ? { autoTask: autoPlan.autoTask } : {}),
+    };
+  }
+  if (autoPlan) {
+    return { routedFrom: AUTO_MODEL_ID, routeReason: autoPlan.routeReason, autoTask: autoPlan.autoTask };
+  }
+  return {};
+}
+
 async function routeForAttachments(
   userId: string,
   requested: { providerId: string; modelId: string; model: Awaited<ReturnType<typeof modelRegistry.assertModelAvailable>> },
@@ -924,8 +1032,8 @@ async function routeForAttachments(
   if (!picked) {
     throw new AppError(
       need === "files"
-        ? "No configured model can read this PDF. Add a Gemini, OpenAI, or Anthropic key, then send again."
-        : "No configured model can read this image. Add a Gemini, OpenAI, or Anthropic key, then send again.",
+        ? "No configured model can read this PDF. Add an OpenAI key, then send again."
+        : "No configured model can read this image. Add a Gemini or OpenAI key, then send again.",
       { statusCode: 409, code: "ATTACHMENT_ROUTE_UNAVAILABLE", expose: true },
     );
   }
@@ -956,6 +1064,8 @@ async function resolveExecutionModel(
   userId: string,
   providerId: string,
   modelId: string,
+  /** True when the client named this model, as opposed to inheriting the thread's. */
+  explicit = false,
 ): Promise<{ providerId: string; modelId: string; model: Awaited<ReturnType<typeof modelRegistry.assertModelAvailable>> }> {
   const executionModelId =
     providerId === "groq"
@@ -971,6 +1081,15 @@ async function resolveExecutionModel(
   } catch (error) {
     if (!(error instanceof AppError) || error.code !== "MODEL_UNAVAILABLE") throw error;
     const models = await modelRegistry.listPublicModels(userId);
+    if (explicit) {
+      // Substituting a default here is what answered a Pro selection with Lite
+      // while the picker still read Pro. Refuse, and say what to do instead.
+      const listed = models.find((item) => item.providerId === providerId && item.id === executionModelId)?.name;
+      throw new AppError(
+        `${describeSelectedModel(executionModelId, listed)} isn't available right now. Choose another model and send again.`,
+        { statusCode: 400, code: "MODEL_UNAVAILABLE", expose: true },
+      );
+    }
     const gemini =
       models.find((model) => model.providerId === "gemini" && model.id === DEFAULT_GEMINI_MODEL_ID) ??
       models.find((model) => model.providerId === "gemini");

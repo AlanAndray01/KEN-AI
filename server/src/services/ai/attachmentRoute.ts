@@ -45,7 +45,7 @@ export interface AttachmentRoute {
   reason?: string;
 }
 
-const PROVIDER_PREFERENCE = ["gemini", "openai", "anthropic", "cloudflare"] as const;
+const PROVIDER_PREFERENCE = ["gemini", "openai", "cloudflare"] as const;
 
 /**
  * Pick a configured model that can actually receive the attachment.

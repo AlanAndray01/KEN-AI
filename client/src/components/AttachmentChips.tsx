@@ -35,7 +35,8 @@ export function AttachmentChips({
 
 export function MessageAttachments({ attachments }: { attachments: PublicAttachment[] }) {
   return (
-    <ul className="mt-2 flex flex-wrap gap-2" aria-label="Message attachments">
+    // No margin here: the bubble places this list and owns the spacing around it.
+    <ul className="flex flex-wrap gap-2" aria-label="Message attachments">
       {attachments.map((item) => (
         <li key={item.id}>
           <AttachmentPreview

@@ -65,3 +65,42 @@ describe("ModelSelector", () => {
     expect(screen.getByRole("listbox", { name: "Models" })).toHaveAttribute("id", "model-selector-listbox");
   });
 });
+
+describe("ModelSelector Auto mode", () => {
+  it("shows Auto as the selection when the picker is on auto", () => {
+    render(<ModelSelector models={models} providerId="auto" modelId="auto" onChange={vi.fn()} />);
+
+    const trigger = screen.getByRole("button", { name: "Select model: Auto" });
+    expect(trigger).toHaveTextContent("Auto");
+  });
+
+  it("offers Auto first and marks it selected", () => {
+    render(<ModelSelector models={models} providerId="auto" modelId="auto" onChange={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Select model: Auto" }));
+
+    const options = screen.getAllByRole("option");
+    expect(options[0]).toHaveTextContent("Auto");
+    expect(options[0]).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("Picks the best available model for each message")).toBeInTheDocument();
+  });
+
+  it("reports an explicit model choice as a manual override", () => {
+    const onChange = vi.fn();
+    render(<ModelSelector models={models} providerId="auto" modelId="auto" onChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "Select model: Auto" }));
+    fireEvent.click(screen.getByRole("option", { name: /Qwen 3.6 27B/ }));
+
+    expect(onChange).toHaveBeenCalledWith("groq", "qwen/qwen3.6-27b");
+  });
+
+  it("returns to Auto from a manual selection", () => {
+    const onChange = vi.fn();
+    render(
+      <ModelSelector models={models} providerId="groq" modelId="qwen/qwen3.6-27b" onChange={onChange} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Select model: Qwen 3.6 27B" }));
+    fireEvent.click(screen.getByRole("option", { name: /Auto/ }));
+
+    expect(onChange).toHaveBeenCalledWith("auto", "auto");
+  });
+});

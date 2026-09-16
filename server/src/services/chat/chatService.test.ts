@@ -419,3 +419,210 @@ describe("chatService attachments", () => {
     expect(lastUser?.parts).toEqual([{ type: "inline", mimeType: "image/png", data: "AAAA" }]);
   });
 });
+
+describe("chatService keeps the model the user picked", () => {
+  beforeEach(() => {
+    messages.clear();
+    conversations.clear();
+    stream.mockReset();
+    generate.mockReset();
+    clearModelSkips();
+  });
+
+  const completeOn = () =>
+    async function* (request: { modelId: string; providerId: string }) {
+      yield { type: "chunk", text: "Hi" };
+      yield {
+        type: "complete",
+        response: { content: "Hi", model: request.modelId, provider: request.providerId },
+      };
+    };
+
+  it("tells the provider manager that only a quota error may move the turn", async () => {
+    stream.mockImplementation(completeOn());
+
+    const { prepareSend, runGeneration } = await import("./chatService.js");
+    const prepared = await prepareSend({
+      userId: "000000000000000000000001",
+      content: "Hello",
+      providerId: "mock",
+      modelId: "mock-text",
+    });
+    await runGeneration(prepared, () => undefined, "test");
+
+    expect(stream.mock.calls[0]?.[0]).toMatchObject({ fallbackPolicy: "quota-only" });
+  });
+
+  it("does not start on another model for a cached 503 cool-down", async () => {
+    rememberModelSkip(
+      "gemini",
+      "gemini-3.1-pro-preview",
+      new AppError("The model is overloaded.", { statusCode: 503, code: "PROVIDER_UNAVAILABLE" }),
+    );
+    stream.mockImplementation(completeOn());
+
+    const { prepareSend, runGeneration } = await import("./chatService.js");
+    const prepared = await prepareSend({
+      userId: "000000000000000000000001",
+      content: "Hello",
+      providerId: "mock",
+      modelId: "mock-text",
+    });
+    prepared.providerId = "gemini";
+    prepared.modelId = "gemini-3.1-pro-preview";
+    prepared.assistantMessage.model = "gemini-3.1-pro-preview";
+    prepared.assistantMessage.provider = "gemini";
+
+    const events: Array<{ type: string; assistantMessage?: { model?: string } }> = [];
+    await runGeneration(prepared, (event) => events.push(event), "test");
+
+    expect(events.find((event) => event.type === "start")).toMatchObject({
+      assistantMessage: { model: "gemini-3.1-pro-preview" },
+    });
+    expect(events.some((event) => event.type === "model")).toBe(false);
+    expect(stream.mock.calls[0]?.[0]).toMatchObject({
+      providerId: "gemini",
+      modelId: "gemini-3.1-pro-preview",
+    });
+  });
+
+  it("refuses an explicitly chosen model that is unavailable instead of substituting a default", async () => {
+    const { modelRegistry } = await import("../ai/ModelRegistry.js");
+    vi.mocked(modelRegistry.assertModelAvailable).mockRejectedValueOnce(
+      new AppError("Model unavailable", { statusCode: 404, code: "MODEL_UNAVAILABLE" }),
+    );
+
+    const { prepareSend } = await import("./chatService.js");
+
+    await expect(
+      prepareSend({
+        userId: "000000000000000000000001",
+        content: "Hello",
+        providerId: "gemini",
+        modelId: "gemini-3.1-pro-preview",
+      }),
+    ).rejects.toMatchObject({
+      code: "MODEL_UNAVAILABLE",
+      statusCode: 400,
+      message: expect.stringContaining("Choose another model"),
+    });
+    expect(stream).not.toHaveBeenCalled();
+  });
+});
+
+describe("chatService Auto mode", () => {
+  const AUTO_MODELS = [
+    {
+      id: "gemini-3.5-flash-lite",
+      providerId: "gemini",
+      name: "Gemini 3.5 Flash Lite",
+      capabilities: ["text", "vision", "streaming", "tools"],
+      enabled: true,
+      available: true,
+    },
+    {
+      id: "gpt-4.1",
+      providerId: "openai",
+      name: "GPT-4.1",
+      capabilities: ["text", "vision", "files", "streaming", "tools"],
+      enabled: true,
+      available: true,
+    },
+  ];
+
+  beforeEach(async () => {
+    messages.clear();
+    conversations.clear();
+    stream.mockReset();
+    generate.mockReset();
+    clearModelSkips();
+    const { modelRegistry } = await import("../ai/ModelRegistry.js");
+    vi.mocked(modelRegistry.listPublicModels).mockResolvedValue(AUTO_MODELS as never);
+    stream.mockImplementation(async function* (request: { modelId: string; providerId: string }) {
+      yield { type: "chunk", text: "Hi" };
+      yield {
+        type: "complete",
+        response: { content: "Hi", model: request.modelId, provider: request.providerId },
+      };
+    });
+  });
+
+  it("routes a heavy code request to the high tier and records what it chose", async () => {
+    const { prepareSend } = await import("./chatService.js");
+    const prepared = await prepareSend({
+      userId: "000000000000000000000001",
+      content: "Write a TypeScript Express middleware that rate limits requests per user",
+      providerId: "auto",
+      modelId: "auto",
+    });
+
+    expect(prepared).toMatchObject({
+      providerId: "openai",
+      modelId: "gpt-4.1",
+      autoTask: "code",
+      routedFrom: "auto",
+      routeReason: "AUTO_ROUTE|code",
+    });
+  });
+
+  it("routes a greeting to a fast model instead", async () => {
+    const { prepareSend } = await import("./chatService.js");
+    const prepared = await prepareSend({
+      userId: "000000000000000000000001",
+      content: "hi",
+      providerId: "auto",
+      modelId: "auto",
+    });
+
+    expect(prepared).toMatchObject({ providerId: "gemini", modelId: "gemini-3.5-flash-lite", autoTask: "quick" });
+  });
+
+  it("keeps the thread on Auto rather than pinning it to what Auto picked", async () => {
+    const { prepareSend } = await import("./chatService.js");
+    const prepared = await prepareSend({
+      userId: "000000000000000000000001",
+      content: "hi",
+      providerId: "auto",
+      modelId: "auto",
+    });
+
+    const conversation = conversations.get(prepared.conversationId);
+    expect(conversation).toMatchObject({ providerId: "auto", modelId: "auto" });
+  });
+
+  it("lets an Auto turn fail over normally, unlike a model the user pinned", async () => {
+    const { prepareSend, runGeneration } = await import("./chatService.js");
+    const auto = await prepareSend({
+      userId: "000000000000000000000001",
+      content: "hi",
+      providerId: "auto",
+      modelId: "auto",
+    });
+    await runGeneration(auto, () => undefined, "test");
+    expect(stream.mock.calls[0]?.[0]).not.toHaveProperty("fallbackPolicy");
+
+    stream.mockClear();
+    const manual = await prepareSend({
+      userId: "000000000000000000000001",
+      content: "hi",
+      providerId: "mock",
+      modelId: "mock-text",
+    });
+    await runGeneration(manual, () => undefined, "test");
+    expect(stream.mock.calls[0]?.[0]).toMatchObject({ fallbackPolicy: "quota-only" });
+  });
+
+  it("honours an explicit model choice instead of routing", async () => {
+    const { prepareSend } = await import("./chatService.js");
+    const prepared = await prepareSend({
+      userId: "000000000000000000000001",
+      content: "Write a TypeScript Express middleware that rate limits requests per user",
+      providerId: "mock",
+      modelId: "mock-text",
+    });
+
+    expect(prepared).toMatchObject({ providerId: "mock", modelId: "mock-text" });
+    expect(prepared.autoTask).toBeUndefined();
+    expect(conversations.get(prepared.conversationId)).toMatchObject({ providerId: "mock", modelId: "mock-text" });
+  });
+});

@@ -1,3 +1,4 @@
+import type { AutoTask } from "../constants/index.js";
 import type { ThemePreference, UserRole } from "./index.js";
 
 export type MessageRole = "user" | "assistant" | "system" | "tool";
@@ -17,7 +18,6 @@ export type ModelCapability =
 export type ProviderType =
   | "gemini"
   | "openai"
-  | "anthropic"
   | "groq"
   | "openrouter"
   | "ollama"
@@ -44,12 +44,17 @@ export type NotificationType =
   | "provider"
   | "security";
 
+/** How the model picker is set: Auto routing, or a model the user chose. */
+export type ModelSelectionMode = "auto" | "manual";
+
 export interface UserPreferences {
   theme: ThemePreference;
   language: string;
   sendOnEnter: boolean;
   selectedProviderId?: string;
   selectedModelId?: string;
+  /** "manual" makes the ids above follow the account; absent or "auto" means Auto. */
+  selectionMode?: ModelSelectionMode;
 }
 
 export interface PublicUser {
@@ -179,6 +184,8 @@ export interface PublicMessage {
   content: string;
   model?: string;
   provider?: string;
+  /** Set when Auto chose this model, naming what it routed for. */
+  autoTask?: AutoTask;
   status: MessageStatus;
   parentMessageId?: string;
   feedback?: PublicMessageFeedback;

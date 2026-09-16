@@ -1,5 +1,6 @@
 import type { PublicConversation, PublicMessage, PublicMessageFeedback } from "@Ken/shared";
 import type { MessageStatus } from "@Ken/shared";
+import { AUTO_TASKS } from "@Ken/shared";
 
 function iso(value: unknown): string {
   if (value instanceof Date) return value.toISOString();
@@ -50,6 +51,7 @@ export function toPublicMessage(
     status?: MessageStatus | null;
     parentMessageId?: { toString(): string } | string | null;
     generationId?: string | null;
+    metadata?: unknown;
     feedback?: { rating?: "up" | "down" | null; comment?: string | null } | null;
     createdAt?: Date | string;
     updatedAt?: Date | string;
@@ -64,6 +66,12 @@ export function toPublicMessage(
         }
       : undefined;
 
+  // Auto records what it routed for on the reply, so a reloaded thread can
+  // still show "Auto · <model>" rather than only the model name.
+  const metadata =
+    doc.metadata && typeof doc.metadata === "object" ? (doc.metadata as Record<string, unknown>) : undefined;
+  const autoTask = AUTO_TASKS.find((task) => task === metadata?.["autoTask"]);
+
   return {
     id: doc.id ?? String(doc._id),
     conversationId: String(doc.conversationId),
@@ -75,6 +83,7 @@ export function toPublicMessage(
     ...(doc.parentMessageId ? { parentMessageId: String(doc.parentMessageId) } : {}),
     ...(feedback ? { feedback } : {}),
     ...(doc.generationId ? { generationId: doc.generationId } : {}),
+    ...(autoTask ? { autoTask } : {}),
     ...(attachments && attachments.length > 0 ? { attachments } : {}),
     createdAt: iso(doc.createdAt),
     updatedAt: iso(doc.updatedAt),

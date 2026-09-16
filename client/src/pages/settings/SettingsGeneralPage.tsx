@@ -8,7 +8,7 @@ import { toast } from "@/stores/toastStore";
 export function SettingsGeneralPage() {
   const { user, refreshUser } = useAuth();
   const [language, setLanguage] = useState(user?.preferences?.language ?? "en");
-  const [sendOnEnter, setSendOnEnter] = useState(user?.preferences?.sendOnEnter ?? true);
+  const [sendOnEnter, setSendOnEnter] = useState(user?.preferences?.sendOnEnter ?? false);
   const [pending, setPending] = useState(false);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -55,7 +55,7 @@ export function SettingsGeneralPage() {
             checked={sendOnEnter}
             onChange={(event) => setSendOnEnter(event.target.checked)}
           />
-          Press Enter to send (Shift+Enter for a new line)
+          Press Enter to send. When off, Enter adds a new line and Ctrl/⌘+Enter sends. Touch keyboards always add a new line.
         </label>
         <button
           type="submit"

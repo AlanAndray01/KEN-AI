@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { api } from "@/services/api";
 import { useModelStore } from "@/stores/modelStore";
+import { useToastStore } from "@/stores/toastStore";
 import { ChatPage } from "./ChatPage";
 
 const mocks = vi.hoisted(() => ({
@@ -167,10 +168,10 @@ describe("ChatPage", () => {
     expect(await screen.findByRole("heading", { name: "Chat" })).toBeInTheDocument();
     expect(screen.getByRole("form", { name: "Send message" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Messages" })).toHaveAttribute("aria-live", "polite");
-    expect(await screen.findByRole("button", { name: "Select model: Gemini 3.5 Flash Lite" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Select model: Auto" })).toBeInTheDocument();
   });
 
-  it("starts a new chat on Flash Lite even if the last stored pick was 3.8", async () => {
+  it("starts a new chat on Auto even if the last stored pick was 3.8", async () => {
     useModelStore.setState({ providerId: "gemini", modelId: "gemini-3.8-flash" });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
@@ -183,7 +184,7 @@ describe("ChatPage", () => {
       </QueryClientProvider>,
     );
 
-    expect(await screen.findByRole("button", { name: "Select model: Gemini 3.5 Flash Lite" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Select model: Auto" })).toBeInTheDocument();
   });
 
   it("keeps Gemini 3.8 Flash selected when opening a saved 3.8 thread", async () => {
@@ -246,7 +247,7 @@ describe("ChatPage", () => {
     expect(await screen.findByRole("button", { name: "Select model: Gemini 3.1 Pro" })).toBeInTheDocument();
   });
 
-  it("sends the picker model and stamps that id on the live reply, not a default fallback", async () => {
+  it("sends the picker model and footers the model the server reports running", async () => {
     vi.mocked(api.conversations.list).mockResolvedValue({
       conversations: [
         {
@@ -281,7 +282,7 @@ describe("ChatPage", () => {
           role: "assistant",
           content: "",
           status: "streaming",
-          model: "gemini-3.5-flash-lite",
+          model: body.modelId,
           createdAt: "2026-01-01T00:00:05.000Z",
           updatedAt: "2026-01-01T00:00:05.000Z",
         },
@@ -295,7 +296,7 @@ describe("ChatPage", () => {
           role: "assistant",
           content: "There is.",
           status: "complete",
-          model: "gemini-3.5-flash-lite",
+          model: body.modelId,
           createdAt: "2026-01-01T00:00:05.000Z",
           updatedAt: "2026-01-01T00:00:05.000Z",
         },
@@ -347,6 +348,108 @@ describe("ChatPage", () => {
     expect(document.querySelector("[data-active-model='gemini-3.5-flash-lite']")).toBeNull();
   });
 
+  it("announces a quota fallback and footers the model that actually answered", async () => {
+    useToastStore.setState({ toasts: [] });
+    vi.mocked(api.conversations.list).mockResolvedValue({
+      conversations: [
+        {
+          id: "c1",
+          title: "Pro thread",
+          modelId: "gemini-3.1-pro-preview",
+          providerId: "gemini",
+          archived: false,
+          pinned: false,
+          messageCount: 1,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+    const liteReply = {
+      id: "a-new",
+      conversationId: "c1",
+      role: "assistant",
+      content: "",
+      status: "streaming",
+      model: "gemini-3.5-flash-lite",
+      provider: "gemini",
+      createdAt: "2026-01-01T00:00:05.000Z",
+      updatedAt: "2026-01-01T00:00:05.000Z",
+    };
+    mocks.sendChat.mockImplementation(async function* (_id, body) {
+      yield {
+        type: "start",
+        conversation: { id: "c1", modelId: body.modelId },
+        userMessage: {
+          id: "u-new",
+          conversationId: "c1",
+          role: "user",
+          content: body.content,
+          status: "complete",
+          createdAt: "2026-01-01T00:00:04.000Z",
+          updatedAt: "2026-01-01T00:00:04.000Z",
+        },
+        assistantMessage: liteReply,
+      };
+      // What the server sends when Pro's quota is exhausted.
+      yield {
+        type: "model",
+        model: "gemini-3.5-flash-lite",
+        provider: "gemini",
+        activeModel: "gemini-3.5-flash-lite",
+        fallbackFrom: "gemini-3.1-pro-preview",
+        fallbackReason: "PROVIDER_RATE_LIMITED|429|quota_exceeded",
+        assistantMessage: liteReply,
+      };
+      yield { type: "chunk", text: "Hello there." };
+      yield {
+        type: "complete",
+        assistantMessage: { ...liteReply, content: "Hello there.", status: "complete" },
+      };
+    });
+
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={["/chat/c1"]}>
+          <Routes>
+            <Route path="/chat/:conversationId" element={<ChatPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByRole("button", { name: "Select model: Gemini 3.1 Pro" })).toBeInTheDocument();
+    const textarea = await screen.findByRole("textbox", { name: "Message" });
+    fireEvent.change(textarea, { target: { value: "Hello" } });
+    fireEvent.submit(screen.getByRole("form", { name: "Send message" }));
+
+    await waitFor(() => {
+      expect(mocks.sendChat).toHaveBeenCalledWith(
+        "c1",
+        expect.objectContaining({ providerId: "gemini", modelId: "gemini-3.1-pro-preview" }),
+        expect.anything(),
+      );
+    });
+    expect(await screen.findByText("Hello there.")).toBeInTheDocument();
+
+    // The footer names the model that answered, never the one that was bypassed.
+    expect(document.querySelector("[data-active-model='gemini-3.5-flash-lite']")).toHaveTextContent(
+      "Gemini 3.5 Flash Lite",
+    );
+    expect(document.querySelector("[data-active-model='gemini-3.1-pro-preview']")).toBeNull();
+
+    // The switch is announced exactly once, naming both models.
+    const notices = useToastStore
+      .getState()
+      .toasts.filter((item) => item.message.includes("has reached its usage limit"));
+    expect(notices.map((item) => item.message)).toEqual([
+      "Gemini 3.1 Pro has reached its usage limit, so this reply is from Gemini 3.5 Flash Lite.",
+    ]);
+
+    // The user's choice stands, so the next message tries Pro again.
+    expect(screen.getByRole("button", { name: "Select model: Gemini 3.1 Pro" })).toBeInTheDocument();
+  });
   it("reserves message space while a thread is loading instead of flashing the empty state", async () => {
     mocks.listMessages.mockReturnValue(new Promise(() => undefined));
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -688,7 +791,7 @@ describe("ChatPage message actions", () => {
       "c1",
       "a1",
       expect.anything(),
-      { providerId: "gemini", modelId: "gemini-3.5-flash-lite" },
+      { providerId: "auto", modelId: "auto" },
     );
   });
 });
@@ -752,7 +855,7 @@ describe("ChatPage message editing", () => {
       "u1",
       "edited question",
       expect.anything(),
-      { providerId: "gemini", modelId: "gemini-3.5-flash-lite" },
+      { providerId: "auto", modelId: "auto" },
     );
   });
 

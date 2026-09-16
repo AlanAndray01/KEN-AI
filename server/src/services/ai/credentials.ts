@@ -52,8 +52,6 @@ function envKeysFor(providerId: string): string[] {
       return parseKeyPool(env.OPENAI_API_KEY);
     case "gemini":
       return parseKeyPool(env.GEMINI_API_KEY);
-    case "anthropic":
-      return parseKeyPool(env.ANTHROPIC_API_KEY);
     case "openrouter":
       return parseKeyPool(env.OPENROUTER_API_KEY);
     default:

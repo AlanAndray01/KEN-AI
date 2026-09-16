@@ -10,7 +10,6 @@ const BYOK_PROVIDERS = [
   { id: "groq", label: "Groq Cloud" },
   { id: "openrouter", label: "OpenRouter" },
   { id: "openai", label: "OpenAI" },
-  { id: "anthropic", label: "Anthropic (Claude)" },
   { id: "ollama", label: "Ollama (local)" },
 ] as const;
 
@@ -86,8 +85,7 @@ export function SettingsModelsPage() {
         </p>
       </div>
       <p className="rounded-xl border border-border bg-surface px-4 py-3 text-sm text-fg-muted">
-        Gemini is the default when a Google AI Studio key is saved. Claude (Sonnet, Opus, Haiku) uses
-        an official Anthropic key — Ken does not call unofficial free Claude proxies.
+        Gemini is the default when a Google AI Studio key is saved.
       </p>
       {modelsQuery.isLoading ? <p className="text-fg-muted">Loading models…</p> : null}
       {modelsQuery.isError ? <p className="text-danger">Unable to load models.</p> : null}

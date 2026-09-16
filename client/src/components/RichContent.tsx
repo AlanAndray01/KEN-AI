@@ -1,5 +1,5 @@
 import { memo, useMemo, useState } from "react";
-import { ChevronRight, ListChecks, Network, Sparkles, Zap } from "lucide-react";
+import { ChevronRight, Layers, ListChecks, Network, Zap } from "lucide-react";
 import { DeferredMarkdown } from "@/components/DeferredMarkdown";
 import {
   parseRichContent,
@@ -95,7 +95,7 @@ function FlashCards({ title, cards }: { title: string; cards: { front: string; b
   return (
     <section className="rounded-2xl border border-border bg-surface p-4">
       <BlockHeader
-        icon={<Sparkles size={16} />}
+        icon={<Layers size={16} />}
         title={title}
         meta={`${index + 1} / ${cards.length}`}
       />
