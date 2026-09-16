@@ -9,6 +9,7 @@ import {
   stopInMemoryMongo,
   tryStartInMemoryMongo,
 } from "../test/mongoHarness.js";
+import { explainProviderSkip, hasConfiguredAiProvider } from "../test/providerHarness.js";
 import { registerVerified } from "../test/registerVerified.js";
 import { DEFAULT_GROQ_MODEL_ID } from "@Ken/shared";
 import { Conversation } from "../models/Conversation.js";
@@ -16,6 +17,10 @@ import { Message } from "../models/Message.js";
 
 const mongo = await tryStartInMemoryMongo();
 explainSkip(mongo, "chat routes (real MongoDB)");
+
+const PROVIDER_ENV_KEYS = ["GEMINI_API_KEY", "GROQ_API_KEY", "OPENAI_API_KEY"];
+const providerConfigured = hasConfiguredAiProvider(...PROVIDER_ENV_KEYS);
+explainProviderSkip(providerConfigured, "chat routes (real MongoDB)", PROVIDER_ENV_KEYS);
 
 let app: Express;
 
@@ -52,7 +57,7 @@ async function seedExchange(userId: string): Promise<{ conversationId: string; a
   return { conversationId: String(conversation._id), assistantId: String(assistant._id) };
 }
 
-describe.skipIf(!mongo.ok)("chat routes (real MongoDB)", () => {
+describe.skipIf(!mongo.ok || !providerConfigured)("chat routes (real MongoDB)", () => {
   beforeAll(async () => {
     app = await loadApp();
   });

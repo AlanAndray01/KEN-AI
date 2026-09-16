@@ -5,11 +5,17 @@ import {
   stopInMemoryMongo,
   tryStartInMemoryMongo,
 } from "../../test/mongoHarness.js";
+import { explainProviderSkip, hasConfiguredAiProvider } from "../../test/providerHarness.js";
 import { Conversation, Message, User } from "../../models/index.js";
 import { AppError } from "../../utils/AppError.js";
 
 const mongo = await tryStartInMemoryMongo();
 explainSkip(mongo, "prepareEdit (real MongoDB)");
+
+// The seeded conversation below is pinned to providerId "groq", so only a Groq
+// key can satisfy this suite — a Gemini-only .env would still fail it.
+const providerConfigured = hasConfiguredAiProvider("GROQ_API_KEY");
+explainProviderSkip(providerConfigured, "prepareEdit (real MongoDB)", ["GROQ_API_KEY"]);
 
 // Imported after the harness connects so model registration has happened.
 const { prepareEdit, loadHistory } = await import("./chatService.js");
@@ -51,7 +57,7 @@ async function threadContents(): Promise<string[]> {
   return docs.map((doc) => doc.content);
 }
 
-describe.skipIf(!mongo.ok)("prepareEdit (real MongoDB)", () => {
+describe.skipIf(!mongo.ok || !providerConfigured)("prepareEdit (real MongoDB)", () => {
   afterAll(async () => {
     await stopInMemoryMongo();
   });

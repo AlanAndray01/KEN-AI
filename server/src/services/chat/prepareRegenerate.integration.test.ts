@@ -5,10 +5,15 @@ import {
   stopInMemoryMongo,
   tryStartInMemoryMongo,
 } from "../../test/mongoHarness.js";
+import { explainProviderSkip, hasConfiguredAiProvider } from "../../test/providerHarness.js";
 import { Conversation, Message, User } from "../../models/index.js";
 
 const mongo = await tryStartInMemoryMongo();
 explainSkip(mongo, "prepareRegenerate (real MongoDB)");
+
+// Pinned to providerId "groq" below, same as prepareEdit's suite.
+const providerConfigured = hasConfiguredAiProvider("GROQ_API_KEY");
+explainProviderSkip(providerConfigured, "prepareRegenerate (real MongoDB)", ["GROQ_API_KEY"]);
 
 // Imported after the harness connects so model registration has happened.
 const { prepareRegenerate, loadHistory } = await import("./chatService.js");
@@ -54,7 +59,7 @@ async function supersededContents(): Promise<string[]> {
   return docs.map((doc) => doc.content);
 }
 
-describe.skipIf(!mongo.ok)("prepareRegenerate (real MongoDB)", () => {
+describe.skipIf(!mongo.ok || !providerConfigured)("prepareRegenerate (real MongoDB)", () => {
   afterAll(async () => {
     await stopInMemoryMongo();
   });

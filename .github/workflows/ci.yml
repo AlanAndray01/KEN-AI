@@ -1,0 +1,55 @@
+name: CI
+
+# Runs on every push and PR. No secrets are needed: the AI-provider
+# integration tests skip themselves (see server/src/test/providerHarness.ts)
+# when no key is configured, and every other test either mocks the AI layer
+# or boots its own in-memory MongoDB (server/src/test/mongoHarness.ts).
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A newer push on the same branch/PR cancels the older run in flight, so CI
+# never queues stale commits behind ones that are already obsolete.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Typecheck, lint, test, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Matches the "engines" field in package.json.
+          node-version: "24.x"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # mongodb-memory-server downloads a real mongod binary on first use;
+      # caching it keeps every run after the first one from re-downloading.
+      - name: Cache MongoDB binaries
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mongodb-binaries
+          key: mongodb-binaries-${{ runner.os }}
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm run test
+
+      # Proves the actual deploy artifacts build, not just that tsc is happy
+      # with them — this is what would have caught a broken Vercel build
+      # before it reached production instead of after.
+      - name: Build
+        run: npm run build
