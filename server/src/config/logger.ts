@@ -32,6 +32,7 @@ const redactPaths = [
   "uri",
   "MONGODB_URI",
   "MONGO_URI",
+  "REDIS_URL",
   "req.body.password",
   "req.body.currentPassword",
   "req.body.newPassword",

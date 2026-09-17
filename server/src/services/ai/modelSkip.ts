@@ -1,6 +1,8 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { logger } from "../../config/logger.js";
+import { redisClient } from "../../config/redis.js";
 import { AppError } from "../../utils/AppError.js";
 import { isAbortError } from "../../utils/abort.js";
 import { GEMINI_PRIMARY_MODEL_IDS } from "./primaryModel.js";
@@ -25,6 +27,43 @@ const skips = new Map<string, ModelSkip>();
 
 function skipKey(providerId: string, modelId: string): string {
   return `${providerId}:${modelId}`;
+}
+
+/**
+ * A cooldown recorded on one instance (after a rate limit or an outage) needs
+ * to reach every other instance, or a model that is "cooling down" on
+ * instance A still gets hit by instance B. `peekModelSkip` runs inside
+ * AIProviderManager's synchronous fallback-hop loop and cannot become
+ * async, so the local Map stays the source of truth for every read; cross-
+ * instance propagation instead rides a Redis Pub/Sub channel that every
+ * instance both publishes to and applies straight into its own local Map.
+ */
+const SKIP_CHANNEL = "ken:model-skip:set";
+let subscriberStarted = false;
+
+function ensureSubscriber(): void {
+  if (subscriberStarted || !redisClient) return;
+  subscriberStarted = true;
+  const subscriber = redisClient.duplicate();
+  subscriber.on("error", (error: Error) => logger.warn({ err: error }, "Redis model-skip subscriber error"));
+  subscriber.on("message", (_channel: string, raw: string) => {
+    try {
+      const { key, entry } = JSON.parse(raw) as { key: string; entry: ModelSkip };
+      if (key && entry?.until > Date.now()) skips.set(key, entry);
+    } catch {
+      // Ignore a malformed cross-instance skip message.
+    }
+  });
+  void subscriber
+    .subscribe(SKIP_CHANNEL)
+    .catch((error: Error) => logger.warn({ err: error }, "Redis model-skip subscribe failed"));
+}
+
+function publishSkip(key: string, entry: ModelSkip): void {
+  if (!redisClient) return;
+  void redisClient
+    .publish(SKIP_CHANNEL, JSON.stringify({ key, entry }))
+    .catch((error: Error) => logger.warn({ err: error }, "Redis model-skip publish failed"));
 }
 
 export function clearModelSkips(): void {
@@ -58,15 +97,19 @@ export function rememberModelSkip(providerId: string, modelId: string, error: un
   ensureSkipCache();
   const retryMs = skipDurationMs(error);
   if (retryMs === undefined) return;
-  skips.set(skipKey(providerId, modelId), {
+  const key = skipKey(providerId, modelId);
+  const entry: ModelSkip = {
     until: Date.now() + retryMs,
     reason: formatFallbackReason(error),
     code: error instanceof AppError ? error.code : "PROVIDER_ERROR",
-  });
+  };
+  skips.set(key, entry);
   persistSkips();
+  publishSkip(key, entry);
 }
 
 function ensureSkipCache(): void {
+  ensureSubscriber();
   if (loadedFromDisk) return;
   loadedFromDisk = true;
   try {

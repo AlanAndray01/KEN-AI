@@ -1,36 +1,39 @@
 import { env, isTest } from "../../config/env.js";
+import { redisClient } from "../../config/redis.js";
 import { AppError } from "../../utils/AppError.js";
-import { MemoryRateLimitStore } from "../../middleware/rateLimit.js";
+import { MemoryRateLimitStore, RedisRateLimitStore } from "../../middleware/rateLimit.js";
 
-const store = new MemoryRateLimitStore(env.RATE_LIMIT_LOGIN_FAILURE_WINDOW_MS, env.RATE_LIMIT_LOGIN_FAILURES);
+const store = redisClient
+  ? new RedisRateLimitStore("login-lockout", env.RATE_LIMIT_LOGIN_FAILURE_WINDOW_MS, env.RATE_LIMIT_LOGIN_FAILURES)
+  : new MemoryRateLimitStore(env.RATE_LIMIT_LOGIN_FAILURE_WINDOW_MS, env.RATE_LIMIT_LOGIN_FAILURES);
 
-export function assertLoginNotLocked(ip: string): void {
+export async function assertLoginNotLocked(ip: string): Promise<void> {
   if (isTest) return;
-  const current = store.get(ip);
+  const current = await store.peek(ip);
   if (current && current.count >= env.RATE_LIMIT_LOGIN_FAILURES) {
     throw lockedError();
   }
 }
 
-export function recordFailedLogin(ip: string): void {
+export async function recordFailedLogin(ip: string): Promise<void> {
   if (isTest) return;
-  const result = store.consume(ip);
+  const result = await store.consume(ip);
   if (result.allowed) return;
   throw lockedError();
 }
 
-export function recordFailedLoginForTest(ip: string): void {
-  const current = store.get(ip);
+export async function recordFailedLoginForTest(ip: string): Promise<void> {
+  const current = await store.peek(ip);
   if (current && current.count >= env.RATE_LIMIT_LOGIN_FAILURES) {
     throw lockedError();
   }
-  const result = store.consume(ip);
+  const result = await store.consume(ip);
   if (result.allowed) return;
   throw lockedError();
 }
 
 export function resetLoginFailures(): void {
-  store.clear();
+  if (store instanceof MemoryRateLimitStore) store.clear();
 }
 
 function lockedError(): AppError {

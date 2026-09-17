@@ -119,11 +119,11 @@ export async function loginUser(
   req: Request,
 ): Promise<AuthResult> {
   const ip = req.ip || req.socket.remoteAddress || "unknown";
-  assertLoginNotLocked(ip);
+  await assertLoginNotLocked(ip);
 
   const user = await User.findOne({ email: input.email.toLowerCase() }).select("+passwordHash");
   if (!user?.passwordHash) {
-    recordFailedLogin(ip);
+    await recordFailedLogin(ip);
     throw new AppError("Invalid email or password", {
       statusCode: 401,
       code: "INVALID_CREDENTIALS",
@@ -132,7 +132,7 @@ export async function loginUser(
 
   const matches = await verifyPassword(user.passwordHash, input.password);
   if (!matches) {
-    recordFailedLogin(ip);
+    await recordFailedLogin(ip);
     throw new AppError("Invalid email or password", {
       statusCode: 401,
       code: "INVALID_CREDENTIALS",

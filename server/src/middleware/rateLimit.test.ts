@@ -19,8 +19,9 @@ function mockRes(): Response & { headers: Record<string, string> } {
 }
 
 describe("createRateLimit", () => {
-  it("returns 429 after the max requests in a window", () => {
+  it("returns 429 after the max requests in a window", async () => {
     const limit = createRateLimit({
+      name: "test",
       windowMs: 60_000,
       max: 2,
       enabledInTest: true,
@@ -28,12 +29,12 @@ describe("createRateLimit", () => {
     const res = mockRes();
     const next = vi.fn();
 
-    limit(mockReq(), res, next as NextFunction);
-    limit(mockReq(), res, next as NextFunction);
+    await limit(mockReq(), res, next as NextFunction);
+    await limit(mockReq(), res, next as NextFunction);
     expect(next).toHaveBeenCalledTimes(2);
     expect(next.mock.calls[0]?.[0]).toBeUndefined();
 
-    limit(mockReq(), res, next as NextFunction);
+    await limit(mockReq(), res, next as NextFunction);
     const error = next.mock.calls[2]?.[0] as AppError;
     expect(error).toBeInstanceOf(AppError);
     expect(error.statusCode).toBe(429);

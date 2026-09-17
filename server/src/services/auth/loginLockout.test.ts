@@ -7,11 +7,11 @@ describe("login lockout", () => {
     resetLoginFailures();
   });
 
-  it("locks an IP after 5 failed attempts", () => {
+  it("locks an IP after 5 failed attempts", async () => {
     let locked = false;
     for (let i = 0; i < 8; i += 1) {
       try {
-        recordFailedLoginForTest("10.0.0.9");
+        await recordFailedLoginForTest("10.0.0.9");
       } catch (error) {
         expect(error).toBeInstanceOf(AppError);
         expect((error as AppError).code).toBe("RATE_LIMITED");

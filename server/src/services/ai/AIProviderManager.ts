@@ -503,7 +503,7 @@ export class AIProviderManager {
   async getAdapter(providerId: string, userId?: string, skipQuota?: boolean): Promise<AIProvider> {
     const resolved = requireConfigured(await resolveCredentials(providerId, userId));
     if (userId && !skipQuota) {
-      consumePlatformChatQuota(userId, resolved.source);
+      await consumePlatformChatQuota(userId, resolved.source);
     }
     return createProviderAdapter({
       id: resolved.providerId,
