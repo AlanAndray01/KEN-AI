@@ -127,7 +127,14 @@ export async function listMessages(
     }
   }
 
-  const docs = await Message.find(filter).sort({ createdAt: -1 }).limit(limit);
+  // The _id tiebreak is load-bearing, not cosmetic. prepareSend writes a user
+  // turn and its assistant reply in the same tick, so their createdAt values are
+  // usually identical, and MongoDB leaves the order of tied documents
+  // unspecified. Without this the reply could sort before its question, or be
+  // the one dropped when the pair straddles the limit - which is what made an
+  // answer vanish when reopening a thread. ObjectIds are monotonic, so ordering
+  // by _id within a millisecond is insertion order.
+  const docs = await Message.find(filter).sort({ createdAt: -1, _id: -1 }).limit(limit);
   const chronological = docs.reverse();
   const attachmentMap = await publicAttachmentsForMessages(chronological.map((doc) => String(doc._id)));
   return chronological.map((doc) => toPublicMessage(doc, attachmentMap.get(String(doc._id))));

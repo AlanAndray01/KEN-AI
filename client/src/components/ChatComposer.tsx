@@ -1,4 +1,12 @@
-import { useEffect, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ClipboardEvent,
+  type DragEvent,
+  type FormEvent,
+  type KeyboardEvent,
+} from "react";
 import { AudioLines, Globe, Image as ImageIcon, Mic, Plus, Send, Square, X } from "lucide-react";
 import { estimatePromptTokens, type ModelCapability, type PublicFile } from "@Ken/shared";
 import { AttachmentChips } from "@/components/AttachmentChips";
@@ -151,10 +159,60 @@ export function ChatComposer({
     if (!busy && canSend) onSubmit();
   }
 
+  /** Gives a clipboard payload a stable, human name; it usually has none. */
+  function named(file: File): File {
+    if (file.name && file.name !== "image.png" && file.name !== "blob") return file;
+    const extension = file.type.split("/")[1]?.split("+")[0] ?? "png";
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    return new File([file], `pasted-${stamp}.${extension}`, {
+      type: file.type,
+      lastModified: file.lastModified,
+    });
+  }
+
   function takeFiles(list: FileList | File[]): void {
     const next = [...list];
     if (next.length === 0) return;
     onAddFiles?.(next);
+  }
+
+  /**
+   * Ctrl/Cmd+V of an image or document, on every viewport.
+   *
+   * Both collections are read: Chrome and Firefox populate `files`, while Safari
+   * (desktop and iOS) only fills `items`, so a screenshot pasted on an iPad
+   * arrives through the second path alone. Entries are de-duplicated because a
+   * browser may list the same payload in both.
+   *
+   * The default is only prevented when the clipboard carries no text. A paste
+   * holding both - copying a cell out of a spreadsheet, say - still types its
+   * text and attaches its image, and an ordinary text paste is never touched.
+   */
+  function onPaste(event: ClipboardEvent<HTMLFormElement>): void {
+    if (streaming || disabled || !onAddFiles) return;
+    const clipboard = event.clipboardData;
+    if (!clipboard) return;
+
+    const seen = new Set<string>();
+    const files: File[] = [];
+    const collect = (file: File | null): void => {
+      if (!file || file.size === 0) return;
+      const key = `${file.name}:${file.size}:${file.type}:${file.lastModified}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      files.push(named(file));
+    };
+
+    for (const item of clipboard.items ?? []) {
+      if (item.kind === "file") collect(item.getAsFile());
+    }
+    for (const file of clipboard.files ?? []) collect(file);
+
+    if (files.length === 0) return;
+    // A screenshot has no filename of its own, so the chip would read "image.png"
+    // for every paste in the thread.
+    if (!clipboard.getData("text")) event.preventDefault();
+    takeFiles(files);
   }
 
   function onDrop(event: DragEvent<HTMLFormElement>): void {
@@ -183,6 +241,9 @@ export function ChatComposer({
         setDragging(false);
       }}
       onDrop={onDrop}
+      // On the form rather than the textarea: a paste while the send button or
+      // an attachment chip holds focus should attach just the same.
+      onPaste={onPaste}
     >
       <div className={cn("composer-shell relative rounded-[1.75rem] border bg-surface shadow-sm", dragging ? "border-accent" : "border-border")}>
         {dragging ? (

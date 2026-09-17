@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Menu } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -41,6 +41,9 @@ import { appendChunk, applyAssistantModel, applyFeedback, CHAT_MESSAGE_WINDOW, m
 import { availableCapabilities, captionProps } from "@/utils/autoMode";
 import { pickDefaultModel, shouldReplaceStoredModel } from "@/utils/defaultModel";
 import type { MentionCandidate } from "@/utils/mentions";
+
+/** Server clamps to 200. Only CHAT_MESSAGE_WINDOW of these are mounted at once. */
+const HISTORY_FETCH_LIMIT = 200;
 
 const AddModelKeysDialog = lazy(() =>
   import("@/components/AddModelKeysDialog").then((mod) => ({ default: mod.AddModelKeysDialog })),
@@ -95,7 +98,6 @@ export function ChatPage() {
   // removed. The hook still tracks it internally to decide whether new tokens
   // should scroll the view.
   const { containerRef: scrollRef, stickToBottom, pin } = useStickToBottom<HTMLElement>();
-  const [, startTransition] = useTransition();
   const [showAllMessages, setShowAllMessages] = useState(false);
 
   const conversationsQuery = useQuery({
@@ -110,7 +112,9 @@ export function ChatPage() {
   });
   const messagesQuery = useQuery({
     queryKey: ["messages", conversationId],
-    queryFn: () => api.conversations.messages(conversationId ?? ""),
+    // The server defaults to 50, which silently truncated long threads: the
+    // "Show earlier messages" control could only ever reveal what was fetched.
+    queryFn: () => api.conversations.messages(conversationId ?? "", { limit: HISTORY_FETCH_LIMIT }),
     enabled: Boolean(conversationId),
     staleTime: MESSAGE_STALE_MS,
   });
@@ -287,10 +291,12 @@ export function ChatPage() {
     Boolean(conversationId) && messagesQuery.isPending && liveMessages === null;
   const skeletonCount = Math.min(4, Math.max(2, currentConversation?.messageCount || 2));
 
+  // Not wrapped in startTransition: React is free to defer a transition when
+  // other work arrives, and a deferred token batch is exactly the stutter this
+  // stream is meant to avoid. useStreamBuffer already caps the work at one
+  // update per frame, so these stay urgent.
   const { push: pushChunk, flush: flushChunks, reset: resetChunks } = useStreamBuffer((text) => {
-    startTransition(() => {
-      setLiveMessages((current) => appendChunk(current ?? messagesRef.current, text));
-    });
+    setLiveMessages((current) => appendChunk(current ?? messagesRef.current, text));
   });
 
   useEffect(() => {

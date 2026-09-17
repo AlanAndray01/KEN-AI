@@ -68,6 +68,13 @@ export const ChatTurn = memo(function ChatTurn({
     );
   }
 
+  // A row still marked "streaming" while nothing is generating is a turn whose
+  // connection dropped, not a live one. Treating the two alike left reopened
+  // threads showing thinking dots forever, or raw unparsed markdown for a
+  // partial answer - both read as "the reply is missing".
+  const live = streaming && message.status === "streaming";
+  const interrupted = !streaming && message.status === "streaming";
+
   return (
     <article className="chat-message flex gap-3">
       <MessageAvatar role="assistant" />
@@ -75,21 +82,41 @@ export const ChatTurn = memo(function ChatTurn({
         <div className="assistant-turn rounded-xl border border-border bg-surface/60 px-4 py-3 text-fg">
           {message.content ? (
             <>
-              {message.status === "streaming" ? (
+              {live ? (
+                // Plain text while tokens land: parsing markdown every frame is
+                // what makes a fast stream stutter.
                 <p className="markdown-stream">{message.content}</p>
               ) : (
                 <AssistantRichBody content={message.content} eager={eagerMarkdown} />
               )}
-              {message.status === "streaming" ? (
-                <span className="streaming-caret" aria-hidden="true" />
+              {live ? <span className="streaming-caret" aria-hidden="true" /> : null}
+              {interrupted ? (
+                <p className="mt-2 text-sm text-fg-muted">
+                  This reply was cut off. Retry to finish it.
+                </p>
               ) : null}
             </>
-          ) : message.status === "streaming" ? (
+          ) : live ? (
             deepCode ? (
               <CodeGenerationTicker {...(estimate ? { estimate } : {})} />
             ) : (
               <ThinkingPipeline />
             )
+          ) : interrupted ? (
+            <div role="alert">
+              <p className="font-medium">Generation was interrupted</p>
+              <p className="mt-1 text-sm text-fg-muted">
+                The connection dropped before this reply arrived. You can retry this turn.
+              </p>
+              <button
+                type="button"
+                className="mt-3 rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-surface-muted disabled:opacity-50"
+                disabled={streaming}
+                onClick={() => onRegenerate(message.id)}
+              >
+                Retry
+              </button>
+            </div>
           ) : message.status === "error" ? (
             <div role="alert">
               <p className="font-medium">Generation failed</p>

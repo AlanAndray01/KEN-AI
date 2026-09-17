@@ -887,8 +887,9 @@ describe("ChatPage message editing", () => {
   });
 
   it("never starts the new answer pre-filled with a previous reply", async () => {
-    // Deliberately stops after "start": the fresh bubble must be empty rather
-    // than inheriting the text of an existing reply.
+    // Deliberately stops after "start", so the generator returns without ever
+    // sending "complete". That is what a dropped connection looks like, and the
+    // fresh bubble must be empty rather than inheriting an existing reply.
     mocks.editMessage.mockImplementation(async function* () {
       yield {
         type: "start",
@@ -917,8 +918,11 @@ describe("ChatPage message editing", () => {
     fireEvent.change(editor, { target: { value: "edited question" } });
     fireEvent.click(screen.getByRole("button", { name: "Update" }));
 
+    // The stream ended without completing, so the empty bubble offers a retry.
+    // Reaching this at all proves the bubble is empty: any inherited text would
+    // have rendered the reply instead.
     await waitFor(() => {
-      expect(screen.getByRole("status", { name: "Generating response" })).toBeInTheDocument();
+      expect(screen.getByText("Generation was interrupted")).toBeInTheDocument();
     });
     // Nothing was discarded, and no existing answer leaked into the new bubble.
     expect(screen.getAllByText("first answer")).toHaveLength(1);
@@ -967,5 +971,93 @@ describe("ChatPage live voice", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+});
+
+describe("ChatPage interrupted replies", () => {
+  beforeEach(resetChatMocks);
+
+  it("offers a retry on a reply whose connection dropped, not endless thinking dots", async () => {
+    // A row left as "streaming" in the database while nothing is generating.
+    mocks.listMessages.mockResolvedValue({
+      messages: [
+        {
+          id: "u1",
+          conversationId: "c1",
+          role: "user",
+          content: "Explain closures",
+          status: "complete",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+        {
+          id: "a1",
+          conversationId: "c1",
+          role: "assistant",
+          content: "",
+          status: "streaming",
+          model: "gemini-3.5-flash-lite",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={["/chat/c1"]}>
+          <Routes>
+            <Route path="/chat/:conversationId" element={<ChatPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText("Generation was interrupted")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+  });
+
+  it("renders a half-finished reply as markdown, with a note that it was cut off", async () => {
+    mocks.listMessages.mockResolvedValue({
+      messages: [
+        {
+          id: "u1",
+          conversationId: "c1",
+          role: "user",
+          content: "Explain closures",
+          status: "complete",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+        {
+          id: "a1",
+          conversationId: "c1",
+          role: "assistant",
+          content: "A closure keeps its scope",
+          status: "streaming",
+          model: "gemini-3.5-flash-lite",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={["/chat/c1"]}>
+          <Routes>
+            <Route path="/chat/:conversationId" element={<ChatPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText("This reply was cut off. Retry to finish it.")).toBeInTheDocument();
+    // Not left on the raw plain-text stream node that live tokens use.
+    expect(document.querySelector(".markdown-stream")).toBeNull();
   });
 });

@@ -528,7 +528,10 @@ export const api = {
         body: JSON.stringify(body),
       }),
     remove: (id: string) => request<{ ok: true }>(`/conversations/${id}`, { method: "DELETE" }),
-    messages: (id: string) => request<{ messages: PublicMessage[] }>(`/conversations/${id}/messages`),
+    messages: (id: string, options: { limit?: number } = {}) =>
+      request<{ messages: PublicMessage[] }>(
+        `/conversations/${id}/messages${options.limit ? `?limit=${options.limit}` : ""}`,
+      ),
     send: (id: string, body: { content: string; modelId?: string; providerId?: string; attachmentIds?: string[]; enabledTools?: ChatToolId[]; customGptId?: string }, signal?: AbortSignal) =>
       streamRequest(`/conversations/${id}/messages`, body, signal),
     regenerate: (

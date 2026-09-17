@@ -421,7 +421,7 @@ export async function prepareRegenerate(input: {
             userId: input.userId,
             role: "user",
             createdAt: { $lt: target.createdAt },
-          }).sort({ createdAt: -1 });
+          }).sort({ createdAt: -1, _id: -1 });
 
   if (!userMessage || userMessage.role !== "user") {
     throw new AppError("Cannot regenerate this message", { statusCode: 400, code: "REGENERATE_UNAVAILABLE" });
@@ -901,7 +901,7 @@ export async function loadHistory(userId: string, conversationId: string): Promi
     "metadata.superseded": { $ne: true },
     status: { $in: ["complete", "aborted", "streaming"] },
   })
-    .sort({ createdAt: -1 })
+    .sort({ createdAt: -1, _id: -1 })
     .limit(MAX_HISTORY_MESSAGES);
   const docs = [...newestFirst].reverse();
 
