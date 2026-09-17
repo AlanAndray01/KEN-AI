@@ -15,7 +15,8 @@
     "bench:api": "tsx src/scripts/bench-latency.ts api",
     "verify:db": "tsx src/scripts/verify-mongo.ts",
     "verify:health": "tsx src/scripts/verify-health.ts",
-    "clear:dummy": "tsx src/scripts/clearDummyData.ts"
+    "clear:dummy": "tsx src/scripts/clearDummyData.ts",
+    "check:catalog-drift": "tsx src/scripts/checkCatalogDrift.ts"
   },
   "dependencies": {
     "@Ken/shared": "*",
