@@ -20,6 +20,7 @@ import type { AIProvider, AIResponse, GenerateRequest, StreamEvent } from "./AIP
 import { createProviderAdapter } from "./createProviderAdapter.js";
 import { requireConfigured, resolveCredentials, envKeyCount } from "./credentials.js";
 import { consumePlatformChatQuota } from "./platformChatQuota.js";
+import { assertUnderSpendCeiling } from "./spendCeiling.js";
 import { isProviderQuotaError, isRetryableProviderError } from "./fallback.js";
 import {
   formatFallbackReason,
@@ -504,6 +505,7 @@ export class AIProviderManager {
     const resolved = requireConfigured(await resolveCredentials(providerId, userId));
     if (userId && !skipQuota) {
       await consumePlatformChatQuota(userId, resolved.source);
+      await assertUnderSpendCeiling(userId, resolved.source);
     }
     return createProviderAdapter({
       id: resolved.providerId,

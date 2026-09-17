@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@Ken/shared": "*",
+    "@sentry/react": "^10.75.0",
     "@tanstack/react-query": "^5.85.5",
     "highlight.js": "^11.12.0",
     "katex": "^0.18.4",

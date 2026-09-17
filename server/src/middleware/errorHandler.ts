@@ -3,6 +3,7 @@ import { MulterError } from "multer";
 import { ZodError } from "zod";
 import { isProduction } from "../config/env.js";
 import { logger } from "../config/logger.js";
+import { captureError } from "../config/sentry.js";
 import { AppError } from "../utils/AppError.js";
 import { redactSensitive, toSafeError } from "../utils/redact.js";
 
@@ -68,6 +69,16 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
     },
     safeMessage,
   );
+
+  // Only genuine server-side failures, not expected 4xx responses (bad
+  // input, auth, rate limits) — those would drown out real signal.
+  if (error.statusCode >= 500) {
+    captureError(error.cause ?? error, {
+      requestId: req.requestId,
+      route: req.path,
+      code: error.code,
+    });
+  }
 
   const payload: {
     error: {

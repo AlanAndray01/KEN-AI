@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import { reportError } from "@/utils/errorReporting";
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -25,6 +26,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       message: error.message,
       componentStack: info.componentStack,
     });
+    reportError(error, { componentStack: info.componentStack ?? undefined });
   }
 
   private readonly handleReload = (): void => {

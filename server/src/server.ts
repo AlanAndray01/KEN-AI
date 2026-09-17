@@ -3,12 +3,29 @@ import { APP_NAME } from "@Ken/shared";
 import { env, isProduction } from "./config/env.js";
 import { installProviderHttpKeepAlive, warmupGeminiConnection } from "./config/http.js";
 import { logger } from "./config/logger.js";
+import { captureError } from "./config/sentry.js";
 import { connectDatabase, disconnectDatabase } from "./config/database.js";
 import { app } from "./app.js";
 import { bootstrapProviders } from "./services/ai/bootstrap.js";
 import { toSafeError } from "./utils/redact.js";
 
 installProviderHttpKeepAlive();
+
+// Nothing in the request pipeline reaches these — errorHandler.ts covers
+// every error a route or middleware throws. These are the two ways Node
+// itself signals that something escaped that pipeline entirely (a rejected
+// promise nobody awaited, a throw outside any try/catch); logging and
+// reporting is all that is safe to do at that point.
+process.on("uncaughtException", (error) => {
+  logger.fatal({ err: toSafeError(error) }, "Uncaught exception");
+  captureError(error, { source: "uncaughtException" });
+  process.exit(1);
+});
+
+process.on("unhandledRejection", (reason) => {
+  logger.error({ err: toSafeError(reason) }, "Unhandled promise rejection");
+  captureError(reason, { source: "unhandledRejection" });
+});
 
 /**
  * Some local networks (notably Windows machines behind an ISP resolver that

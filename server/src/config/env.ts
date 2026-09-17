@@ -65,6 +65,7 @@ const baseEnvSchema = z.object({
   CF_TOKEN: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
   OPENROUTER_API_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
   REDIS_URL: z.preprocess(emptyToUndefined, z.string().url().optional()),
+  SENTRY_DSN: z.preprocess(emptyToUndefined, z.string().url().optional()),
   STORAGE_PROVIDER: z.enum(["local", "s3", "r2", "cloudinary"]).default("local"),
   STORAGE_DIRECTORY: z.string().min(1).default("uploads"),
   FILE_MAX_BYTES: z.coerce.number().int().positive().default(10 * 1024 * 1024),
@@ -95,6 +96,16 @@ const baseEnvSchema = z.object({
   RATE_LIMIT_IMAGE: z.coerce.number().int().positive().default(10),
   RATE_LIMIT_VOICE: z.coerce.number().int().positive().default(20),
   RATE_LIMIT_PASSWORD_RESET: z.coerce.number().int().positive().default(5),
+  /**
+   * Daily token ceiling per user on shared platform keys (env or admin-
+   * stored), not bring-your-own keys. 250k is a starting point sized well
+   * under a typical free-tier daily provider quota (QUOTA_EXCEEDED_SKIP_MS
+   * in modelSkip.ts exists because those quotas are themselves in this
+   * range) so one heavy user cannot exhaust the shared quota for everyone
+   * else; the /admin/usage dashboard shows real usage to recalibrate this
+   * once there's traffic to look at. 0 disables the ceiling entirely.
+   */
+  AUTO_MODE_DAILY_TOKEN_CEILING: z.coerce.number().int().nonnegative().default(250_000),
 });
 
 export const envSchema = baseEnvSchema.superRefine((value, ctx) => {
@@ -190,6 +201,7 @@ export const env = {
   CF_TOKEN: parsed.data.CF_TOKEN,
   OPENROUTER_API_KEY: parsed.data.OPENROUTER_API_KEY,
   REDIS_URL: parsed.data.REDIS_URL,
+  SENTRY_DSN: parsed.data.SENTRY_DSN,
   STORAGE_PROVIDER: parsed.data.STORAGE_PROVIDER,
   STORAGE_DIRECTORY: parsed.data.STORAGE_DIRECTORY,
   FILE_MAX_BYTES: parsed.data.FILE_MAX_BYTES,
@@ -220,6 +232,7 @@ export const env = {
   RATE_LIMIT_IMAGE: parsed.data.RATE_LIMIT_IMAGE,
   RATE_LIMIT_VOICE: parsed.data.RATE_LIMIT_VOICE,
   RATE_LIMIT_PASSWORD_RESET: parsed.data.RATE_LIMIT_PASSWORD_RESET,
+  AUTO_MODE_DAILY_TOKEN_CEILING: parsed.data.AUTO_MODE_DAILY_TOKEN_CEILING,
 };
 
 export const isProduction = env.NODE_ENV === "production";

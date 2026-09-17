@@ -9,6 +9,7 @@ import App from "@/App";
 import { QUERY_STALE_MS } from "@/query";
 import { hideBootLoader } from "@/utils/bootLoader";
 import { showLandingPage } from "@/utils/featureFlags";
+import "@/utils/errorReporting";
 import "@/index.css";
 
 const queryClient = new QueryClient({

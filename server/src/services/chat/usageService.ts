@@ -2,6 +2,8 @@ import type { PublicUsageByGroup, PublicUsageRecord, PublicUsageSummary } from "
 import { logger } from "../../config/logger.js";
 import { UsageRecord } from "../../models/UsageRecord.js";
 import { toSafeError } from "../../utils/redact.js";
+import { resolveCredentials } from "../ai/credentials.js";
+import { recordSpend } from "../ai/spendCeiling.js";
 
 export async function recordUsage(input: {
   userId: string;
@@ -33,6 +35,15 @@ export async function recordUsage(input: {
     });
   } catch (error) {
     logger.error({ err: toSafeError(error) }, "Failed to record usage");
+  }
+
+  const totalTokens = (input.inputTokens ?? 0) + (input.outputTokens ?? 0);
+  if (!input.success || totalTokens <= 0) return;
+  try {
+    const resolved = await resolveCredentials(input.providerId, input.userId);
+    if (resolved) await recordSpend(input.userId, resolved.source, totalTokens);
+  } catch (error) {
+    logger.error({ err: toSafeError(error) }, "Failed to record spend-ceiling usage");
   }
 }
 
