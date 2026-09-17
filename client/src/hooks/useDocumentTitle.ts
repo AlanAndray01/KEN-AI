@@ -41,10 +41,30 @@ function syncCanonical(pathname: string): void {
   link.href = new URL(path, window.location.origin).toString();
 }
 
+/**
+ * index.html ships a static `index, follow` robots tag so non-JS crawlers see
+ * something before robots.txt is even fetched. robots.txt then disallows the
+ * signed-in surfaces, but that only stops well-behaved crawlers from
+ * *requesting* those routes — a crawler that ignores it, or a URL reached via
+ * an external link, would still see a page telling it to index. Once React is
+ * running we know the real route, so private surfaces get an explicit
+ * `noindex, nofollow` here as a second layer; public routes get the static
+ * `index, follow` restored in case a client-side route change left it set to
+ * `noindex` from a previous page.
+ */
+function syncRobots(pathname: string): void {
+  const meta = document.querySelector<HTMLMetaElement>('meta[name="robots"]');
+  if (!meta) return;
+  meta.content = CANONICAL_PATHS.has(pathname)
+    ? "index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1"
+    : "noindex, nofollow";
+}
+
 export function useDocumentTitle(): void {
   const { pathname } = useLocation();
   useEffect(() => {
     document.title = titleForPath(pathname);
     syncCanonical(pathname);
+    syncRobots(pathname);
   }, [pathname]);
 }

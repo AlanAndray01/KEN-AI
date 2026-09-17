@@ -187,7 +187,20 @@ export function ChatPage() {
   }));
 
   useEffect(() => {
-    void import("@/components/MarkdownContent");
+    // Deferred to idle time rather than fired on mount: this chunk (remark/
+    // rehype/KaTeX) is large, and a fresh /chat visit paints its LCP element
+    // (the empty-state prompt) as plain text that needs none of it. Loading
+    // it eagerly puts it on the main thread exactly when LCP is trying to
+    // happen, which is what Lighthouse's mobile run (4x CPU throttling)
+    // flagged as the biggest contributor to a 4.5s LCP. Idle-loading still
+    // has it warm well before the first reply streams back.
+    const loadMarkdown = () => void import("@/components/MarkdownContent");
+    if ("requestIdleCallback" in window) {
+      const idleHandle = window.requestIdleCallback(loadMarkdown, { timeout: 2000 });
+      return () => window.cancelIdleCallback(idleHandle);
+    }
+    const timeoutHandle = globalThis.setTimeout(loadMarkdown, 300);
+    return () => globalThis.clearTimeout(timeoutHandle);
   }, []);
 
   useEffect(() => {
