@@ -5,9 +5,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   AUTO_MODEL_ID,
   AUTO_PROVIDER_ID,
-  AUTO_ROUTE_REASON,
   GEMINI_FLASH_MODEL_ID,
-  MODEL_COOLDOWN_REASON,
   isAutoSelection,
   type PublicConversation,
   type PublicFile,
@@ -29,7 +27,6 @@ import { useModelStore } from "@/stores/modelStore";
 import { toast } from "@/stores/toastStore";
 import { useUiStore } from "@/stores/uiStore";
 import { attachmentRejection } from "@/utils/attachmentGate";
-import { attachmentRoutedMessage, displayNameForRoutedModel, quotaFallbackMessage } from "@/utils/attachmentRouteToast";
 import { describeApiError, logApiError } from "@/utils/apiErrors";
 import {
   canUseBrowserStt,
@@ -89,8 +86,6 @@ export function ChatPage() {
   const streamConversationRef = useRef<string | undefined>(undefined);
   const appliedConversationRef = useRef<string | undefined>(undefined);
   const userPickedModelRef = useRef(false);
-  /** One quota-fallback notice per turn, even when a hop chain emits several events. */
-  const fallbackNotifiedRef = useRef(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recognitionRef = useRef<{ stop: () => void } | null>(null);
   const mediaChunksRef = useRef<Blob[]>([]);
@@ -376,7 +371,6 @@ export function ChatPage() {
     setStreaming(true);
     setDeepCodeTurn(false);
     setGenerationEstimate(undefined);
-    fallbackNotifiedRef.current = false;
     try {
       for await (const event of iterator) {
         if (event.type === "estimate" && event.estimatedMs !== undefined) {
@@ -418,17 +412,13 @@ export function ChatPage() {
           const model = event.model ?? event.assistantMessage?.model;
           const provider = event.provider ?? event.assistantMessage?.provider;
           if (!model) continue;
-          const reason = String(event.fallbackReason ?? "");
-          const attachmentHop = Boolean(event.fallbackFrom) && reason.startsWith("ATTACHMENT_ROUTE");
-          // Auto choosing a model is not a fallback: the footer names it, and the
-          // picker stays on Auto rather than switching to what Auto picked.
-          const autoHop = Boolean(event.fallbackFrom) && reason.startsWith(AUTO_ROUTE_REASON);
-          // Neither is a cooldown that was already announced. The skip it comes
-          // from lasts up to ten minutes, so telling the user again on every
-          // message inside that window is the same news repeated, not new news.
-          // The footer below still names whatever is actually answering.
-          const cooldownHop = Boolean(event.fallbackFrom) && reason.startsWith(MODEL_COOLDOWN_REASON);
-          // The footer always names the model that is really answering.
+          // A routing change is never announced. Auto picking per turn, a
+          // cooldown hop, a quota failover mid-stream — all of it is routine
+          // and none of it interrupts the reader. The reply's own footer is
+          // where a model change surfaces, and it always names whichever model
+          // actually produced the text above it, so nothing is hidden by the
+          // silence: the attribution is on the message it belongs to rather
+          // than in a notice that outlives the turn it described.
           setLiveMessages((current) =>
             applyAssistantModel(current ?? messages, {
               model,
@@ -437,22 +427,13 @@ export function ChatPage() {
               ...(event.autoTask ? { autoTask: event.autoTask } : {}),
             }),
           );
-          if (attachmentHop) {
-            const name = displayNameForRoutedModel(model, models, event.modelName);
-            toast(attachmentRoutedMessage(name), "info");
-            if (provider) applyThreadSelection(provider, model);
-          } else if (!autoHop && !cooldownHop && event.fallbackFrom && !fallbackNotifiedRef.current) {
-            // A pinned turn only leaves its model for a provider quota error. Say
-            // so once per turn; the picker keeps the user's choice, so the next
-            // message tries that model again.
-            fallbackNotifiedRef.current = true;
-            toast(
-              quotaFallbackMessage(
-                displayNameForRoutedModel(event.fallbackFrom, models),
-                displayNameForRoutedModel(model, models, event.modelName),
-              ),
-              "info",
-            );
+          // An attachment route is the one hop that also moves the thread, so
+          // the next message keeps going to the model that can read the file.
+          // That is a selection change, not a notification.
+          const routedForAttachment =
+            Boolean(event.fallbackFrom) && String(event.fallbackReason ?? "").startsWith("ATTACHMENT_ROUTE");
+          if (routedForAttachment && provider) {
+            applyThreadSelection(provider, model);
           }
         }
         if (event.type === "chunk" && event.text) {

@@ -348,7 +348,7 @@ describe("ChatPage", () => {
     expect(document.querySelector("[data-active-model='gemini-3.5-flash-lite']")).toBeNull();
   });
 
-  it("announces a quota fallback and footers the model that actually answered", async () => {
+  it("footers the model that actually answered a quota fallback, silently", async () => {
     useToastStore.setState({ toasts: [] });
     vi.mocked(api.conversations.list).mockResolvedValue({
       conversations: [
@@ -439,13 +439,10 @@ describe("ChatPage", () => {
     );
     expect(document.querySelector("[data-active-model='gemini-3.1-pro-preview']")).toBeNull();
 
-    // The switch is announced exactly once, naming both models.
-    const notices = useToastStore
-      .getState()
-      .toasts.filter((item) => item.message.includes("has reached its usage limit"));
-    expect(notices.map((item) => item.message)).toEqual([
-      "Gemini 3.1 Pro has reached its usage limit, so this reply is from Gemini 3.5 Flash Lite.",
-    ]);
+    // The switch is not announced at all. A routing change is routine, and the
+    // footer above already attributes the reply — a toast on top of that only
+    // interrupts, and outlives the turn it was describing.
+    expect(useToastStore.getState().toasts).toEqual([]);
 
     // The user's choice stands, so the next message tries Pro again.
     expect(screen.getByRole("button", { name: "Select model: Gemini 3.1 Pro" })).toBeInTheDocument();
