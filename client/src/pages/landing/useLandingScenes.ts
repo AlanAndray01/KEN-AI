@@ -54,6 +54,30 @@ export function useLandingScenes(rootRef: RefObject<HTMLElement | null>): void {
       return observer;
     };
 
+    /**
+     * Runs work after the browser has painted, not in the mount task with it.
+     *
+     * Every section below the hero sets itself up here: canvas contexts, their
+     * first sizing pass, observers, the story track's measurements. Done inline
+     * it is one ~500ms task between React's commit and the first paint, so the
+     * hero text — the LCP element, and the only thing on screen at that point —
+     * waits behind setup for sections nobody has scrolled to yet. A frame is
+     * painted between these two callbacks, so the work lands after the hero is
+     * already on screen.
+     */
+    const afterPaint = (run: () => void): void => {
+      let inner = 0;
+      const outer = requestAnimationFrame(() => {
+        inner = requestAnimationFrame(() => {
+          if (!disposed) run();
+        });
+      });
+      cleanups.push(() => {
+        cancelAnimationFrame(outer);
+        cancelAnimationFrame(inner);
+      });
+    };
+
     const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
     const isMobile = (): boolean => window.innerWidth < 768;
     const isTablet = (): boolean => window.innerWidth >= 768 && window.innerWidth < 1200;
@@ -109,36 +133,22 @@ export function useLandingScenes(rootRef: RefObject<HTMLElement | null>): void {
     }
 
     /* ---------- LOADER + HERO COPY ---------- */
-    const revealHeroText = (): void => {
-      $$(".hero-reveal").forEach((el, i) => {
-        const t = window.setTimeout(() => el.classList.add("on"), 260 + i * 120);
-        cleanups.push(() => clearTimeout(t));
-      });
-      const t = window.setTimeout(() => nav?.classList.add("in"), 200);
+    // Lifted here rather than on `load`, which waits for every image, font and
+    // the Three.js CDN script. The hero wordmark needs none of them — it is
+    // static HTML sitting under the loader overlay the whole time — and LCP
+    // cannot be recorded until that overlay lifts, so waiting was ~1.2s of pure
+    // render delay against text that was ready all along. The scenes fade in
+    // behind it afterwards.
+    hideBootLoader("instant");
+    $$(".hero-reveal").forEach((el, i) => {
+      const t = window.setTimeout(() => el.classList.add("on"), 260 + i * 120);
       cleanups.push(() => clearTimeout(t));
-    };
-
-    let started = false;
-    const begin = (): void => {
-      if (started || disposed) return;
-      started = true;
-      // The old 1.75s boot hold was the landing LCP. Hero copy is already in
-      // the HTML; hide the loader on the first frame so Lighthouse measures
-      // text, not a theatrical delay.
-      hideBootLoader("instant");
-      revealHeroText();
-    };
-    if (document.readyState === "complete") begin();
-    else on(window, "load", begin);
-    const failsafe = window.setTimeout(begin, 800);
-    const navFailsafe = window.setTimeout(() => nav?.classList.add("in"), 1200);
-    cleanups.push(() => {
-      clearTimeout(failsafe);
-      clearTimeout(navFailsafe);
     });
+    const navIn = window.setTimeout(() => nav?.classList.add("in"), 200);
+    cleanups.push(() => clearTimeout(navIn));
 
     /* ---------- CHAT + EDITOR REVEAL ---------- */
-    {
+    afterPaint(() => {
       const frame = $<HTMLElement>("#chat-frame");
       if (frame) {
         const ob = observe(
@@ -181,7 +191,7 @@ export function useLandingScenes(rootRef: RefObject<HTMLElement | null>): void {
         );
         ob.observe(ed);
       }
-    }
+    });
 
     /* ---------- FAQ ---------- */
     $$<HTMLButtonElement>("#faq .faq-q").forEach((btn) => {
@@ -204,7 +214,7 @@ export function useLandingScenes(rootRef: RefObject<HTMLElement | null>): void {
     });
 
     /* ---------- STORY HORIZONTAL SCROLL ---------- */
-    {
+    afterPaint(() => {
       const sec = $<HTMLElement>("#story");
       const pane = $<HTMLElement>("#story .story-sticky");
       const track = $<HTMLElement>("#story-track");
@@ -251,10 +261,10 @@ export function useLandingScenes(rootRef: RefObject<HTMLElement | null>): void {
         on(window, "resize", update);
         update();
       }
-    }
+    });
 
     /* ---------- PERFORMANCE CANVAS (2D) ---------- */
-    {
+    afterPaint(() => {
       const cv = $<HTMLCanvasElement>("#perf-canvas");
       const ctx = cv?.getContext("2d") ?? null;
       if (cv && ctx) {
@@ -271,7 +281,10 @@ export function useLandingScenes(rootRef: RefObject<HTMLElement | null>): void {
           cv.height = H * dpr;
           ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         };
-        size();
+        // No eager sizing pass: reading clientWidth straight after writing
+        // cv.width forces a synchronous layout, and the observer below already
+        // sizes the canvas the moment it first becomes visible — which is the
+        // only point anything is drawn into it.
         on(window, "resize", size);
         const packets = Array.from({ length: 16 }, (_, i) => ({
           p: i / 16,
@@ -355,10 +368,10 @@ export function useLandingScenes(rootRef: RefObject<HTMLElement | null>): void {
           ),
         ).observe(cv);
       }
-    }
+    });
 
     /* ---------- FINAL CTA ENERGY FIELD (2D) ---------- */
-    {
+    afterPaint(() => {
       const cv = $<HTMLCanvasElement>("#final-canvas");
       const ctx = cv?.getContext("2d") ?? null;
       if (cv && ctx) {
@@ -383,7 +396,8 @@ export function useLandingScenes(rootRef: RefObject<HTMLElement | null>): void {
             o: Math.random(),
           }));
         };
-        size();
+        // Sized by the observer below when it first scrolls into view; see the
+        // performance canvas above for why there is no eager pass here.
         on(window, "resize", size);
         loop(() => {
           if (!active) return;
@@ -436,10 +450,10 @@ export function useLandingScenes(rootRef: RefObject<HTMLElement | null>): void {
           ),
         ).observe(cv);
       }
-    }
+    });
 
     /* ---------- MINI ROBOT (2D) ---------- */
-    {
+    afterPaint(() => {
       const cv = $<HTMLCanvasElement>("#mini-canvas");
       const ctx = cv?.getContext("2d") ?? null;
       if (cv && ctx) {
@@ -455,7 +469,8 @@ export function useLandingScenes(rootRef: RefObject<HTMLElement | null>): void {
           cv.height = H * dpr;
           ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         };
-        size();
+        // Sized by the observer below when it first scrolls into view; see the
+        // performance canvas above for why there is no eager pass here.
         on(window, "resize", size);
         const hasRoundRect = typeof ctx.roundRect === "function";
         loop(() => {
@@ -522,7 +537,7 @@ export function useLandingScenes(rootRef: RefObject<HTMLElement | null>): void {
           ),
         ).observe(cv);
       }
-    }
+    });
 
     /* ================= WEBGL ================= */
     const hasWebGL = (): boolean => {

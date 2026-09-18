@@ -277,6 +277,17 @@ html:has(.landing) { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
 @keyframes blip { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
 /* ============ SECTION SHELL ============ */
 .landing .sec { position: relative; padding: clamp(88px, 11vw, 170px) var(--pad); max-width: var(--maxw); margin: 0 auto; }
+/*
+  The hero is the only thing on screen at load, but the browser was laying out
+  and style-resolving all ten sections below it before it could paint - the bulk
+  of the LCP render delay, since the LCP element is the hero wordmark. Skipping
+  off-screen sections defers that work to whenever each is scrolled near.
+  `auto` in contain-intrinsic-size makes each one remember its real height after
+  the first render, so the scrollbar stops guessing. #hero and #story are
+  deliberately excluded: the hero must paint, and story drives a sticky
+  horizontal scroll that measures its own height.
+*/
+.landing .sec { content-visibility: auto; contain-intrinsic-size: auto 720px; }
 .landing .sec-wide { max-width: none; padding-left: 0; padding-right: 0; }
 .landing .eyebrow {
   display: inline-flex; align-items: center; gap: 10px; font-family: var(--mono); font-size: 10px;
