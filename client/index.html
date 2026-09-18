@@ -336,13 +336,24 @@
         overflow: hidden;
         background: rgba(245, 245, 245, 0.16);
       }
+      /*
+        Indeterminate, not a fake progress bar. The old one filled once over
+        1.5s on a timer that knew nothing about real loading, so it had two
+        failure modes and always hit one of them: finish early and it was cut
+        off mid-fill, which reads as a glitch; finish late and it sat pinned at
+        100% doing nothing, which reads as hung. A loop is honest at any
+        duration and can be removed on any frame without looking broken.
+      */
       #boot-loader .boot-bar i {
         position: absolute;
-        inset: 0;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        width: 40%;
         background: #00ff41;
         box-shadow: 0 0 14px rgba(0, 255, 65, 0.45);
         transform: translateX(-100%);
-        animation: boot-fill 1.5s cubic-bezier(0.22, 1, 0.36, 1) 0.15s forwards;
+        animation: boot-sweep 1.15s cubic-bezier(0.4, 0, 0.2, 1) infinite;
       }
       #boot-loader .boot-label {
         font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -361,18 +372,27 @@
           opacity: 1;
         }
       }
-      @keyframes boot-fill {
+      @keyframes boot-sweep {
+        from {
+          transform: translateX(-100%);
+        }
         to {
-          transform: translateX(0);
+          transform: translateX(350%);
         }
       }
       @media (prefers-reduced-motion: reduce) {
         #boot-loader .k-stem,
         #boot-loader .k-arm,
-        #boot-loader .k-fil,
-        #boot-loader .boot-bar i {
+        #boot-loader .k-fil {
           animation-duration: 0.01ms;
           animation-delay: 0ms;
+        }
+        /* The sweep loops, so collapsing its duration would strobe rather than
+           stop it. It becomes a static filled bar instead. */
+        #boot-loader .boot-bar i {
+          animation: none;
+          transform: none;
+          width: 100%;
         }
         #boot-loader {
           transition-duration: 0.01ms;

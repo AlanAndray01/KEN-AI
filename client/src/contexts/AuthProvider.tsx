@@ -35,7 +35,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!user) return;
-    prefetchSignedInWorkspace(queryClient);
+    return prefetchSignedInWorkspace(queryClient);
   }, [queryClient, user]);
 
   const commitUser = useCallback((next: AuthUser | null) => {
