@@ -32,6 +32,31 @@ export function writeSseDone(res: ExpressResponse): void {
   flushSse(res);
 }
 
+/**
+ * Comment frames on an idle stream, so nothing between here and the browser
+ * decides the connection is dead.
+ *
+ * Between opening the stream and the first token, the model may think for a
+ * long time on a reasoning or deep-code turn, and until now not one byte was
+ * written in that window. Hosting proxies (Render's included) close an idle
+ * connection well before a slow first token arrives, which the UI sees as a
+ * reply that never came. A `:` comment is ignored by the EventSource parser
+ * and by the client's own reader, so it keeps the socket alive without
+ * appearing as an event.
+ *
+ * Returns a stop function; callers must call it when the turn ends.
+ */
+export function startSseHeartbeat(res: ExpressResponse, intervalMs = 15_000): () => void {
+  const timer = setInterval(() => {
+    if (res.writableEnded) return;
+    res.write(": keep-alive\n\n");
+    flushSse(res);
+  }, intervalMs);
+  // Never hold the process open for a heartbeat alone.
+  timer.unref?.();
+  return () => clearInterval(timer);
+}
+
 /** Visible in DevTools; no secrets, no prompt text. */
 export interface SseTiming {
   type: "timing";

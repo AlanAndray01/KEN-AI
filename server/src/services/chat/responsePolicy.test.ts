@@ -11,8 +11,8 @@ describe("detectTaskSignals", () => {
   it("caps decode length to the turn's reply budget", () => {
     expect(replyMaxTokens("minimal")).toBe(256);
     expect(replyMaxTokens("short")).toBe(1024);
-    expect(replyMaxTokens("medium")).toBe(2048);
-    expect(replyMaxTokens("long")).toBe(4096);
+    expect(replyMaxTokens("medium")).toBe(4096);
+    expect(replyMaxTokens("long")).toBe(16_384);
   });
 
   it("splits the stable prefix from the per-turn policy so Groq can cache it", () => {

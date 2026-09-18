@@ -2,10 +2,39 @@ import type { GenerateRequest } from "../AIProvider.js";
 import { toOpenAIMessages } from "../normalizers/normalize.js";
 
 /**
- * Default decode cap for a streamed Groq chat turn when the caller did not set one.
- * Groq free-tier OTPM is 1000; requesting 2048 fails the whole turn with 429.
+ * Decode cap for a streamed Groq chat turn when the caller did not set one.
+ *
+ * Groq's free tier meters output tokens per minute (OTPM, 1000 on `on_demand`)
+ * and rejects a request pre-flight when its *estimate* of the reply exceeds
+ * what is left in that bucket. This value keeps an unbudgeted turn clear of it.
+ *
+ * It is deliberately no longer used to clamp callers that did ask for more.
+ * OTPM is a refilling per-minute budget, not a per-request ceiling: measured
+ * against the live API, one request returned 8192 completion tokens and another
+ * 4975, both 200. Flattening every reply to 1000 truncated all of them to buy
+ * protection the bucket does not actually need — a code answer was cut mid
+ * function every single time, while an occasional 429 merely fails over.
  */
 export const DEFAULT_GROQ_MAX_COMPLETION_TOKENS = 1_000;
+
+/**
+ * Real per-model output ceilings, read from Groq's own /models metadata
+ * (`max_completion_tokens`). Asking above these is a hard 400, so they are the
+ * one clamp worth keeping.
+ */
+const GROQ_MAX_COMPLETION_TOKENS: Readonly<Record<string, number>> = {
+  "qwen/qwen3.8-27b": 16_384,
+  "openai/gpt-oss-20b": 65_536,
+  "openai/gpt-oss-120b": 65_536,
+};
+
+/** Conservative ceiling for a Groq id not in the table above. */
+const GROQ_UNKNOWN_MODEL_CEILING = 8_192;
+
+export function groqMaxCompletionTokens(modelId: string, requested?: number): number {
+  const ceiling = GROQ_MAX_COMPLETION_TOKENS[modelId] ?? GROQ_UNKNOWN_MODEL_CEILING;
+  return Math.min(requested ?? DEFAULT_GROQ_MAX_COMPLETION_TOKENS, ceiling);
+}
 
 /**
  * GPT-OSS cannot turn reasoning off (`none` is a Qwen-only value). `low` is the
@@ -74,10 +103,7 @@ export function buildCompatibleChatBody(
   if (options.providerId === "groq") {
     Object.assign(body, groqReasoningParams(request.modelId, request.reasoningEffort));
     body.temperature = 0.6;
-    body.max_completion_tokens = Math.min(
-      request.maxTokens ?? DEFAULT_GROQ_MAX_COMPLETION_TOKENS,
-      DEFAULT_GROQ_MAX_COMPLETION_TOKENS,
-    );
+    body.max_completion_tokens = groqMaxCompletionTokens(request.modelId, request.maxTokens);
     return body;
   }
 

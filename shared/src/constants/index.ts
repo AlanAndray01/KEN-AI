@@ -181,6 +181,18 @@ export const AUTO_MODEL_ID = "auto";
 /** Prefix of the SSE route reason, formatted as `AUTO_ROUTE|<task>`. */
 export const AUTO_ROUTE_REASON = "AUTO_ROUTE";
 
+/**
+ * Prefix for a turn that started on a different model because the picked one is
+ * still inside a remembered cooldown, rather than because anything failed on
+ * this turn.
+ *
+ * The distinction is the whole point: a cooldown lasts up to ten minutes, so
+ * without it every message in that window re-announced a hop the user was told
+ * about once already. The UI keeps naming the model that is really answering —
+ * it just stops raising a notification about news it has already delivered.
+ */
+export const MODEL_COOLDOWN_REASON = "MODEL_COOLDOWN";
+
 /** What Auto decided a turn needs, in the order the router settles them. */
 export const AUTO_TASKS = ["files", "vision", "tools", "code", "reasoning", "quick", "chat"] as const;
 

@@ -149,6 +149,7 @@ export {
   AUTO_PROVIDER_ID,
   AUTO_ROUTE_REASON,
   AUTO_TASKS,
+  MODEL_COOLDOWN_REASON,
   isAutoSelection,
 } from "./constants/index.js";
 export type { AutoTask } from "./constants/index.js";

@@ -1,7 +1,18 @@
 import { logger } from "../../config/logger.js";
 import { redisClient } from "../../config/redis.js";
 
-export const GENERATION_TIMEOUT_MS = 180_000;
+/**
+ * Hard ceiling on one generation, start to finish — not an idle timeout.
+ *
+ * Raised from 180s because it had become the binding limit rather than a
+ * backstop: a long budget is now 16k tokens, and a model emitting that at a
+ * realistic rate can legitimately still be streaming after three minutes. The
+ * turn was then killed mid-reply, which is one of the ways an answer appeared
+ * to simply stop. Node's own server.requestTimeout is raised alongside it in
+ * server.ts, or it would cut the request first and this number would be
+ * decorative.
+ */
+export const GENERATION_TIMEOUT_MS = 600_000;
 
 const ABORT_CHANNEL = "ken:generation:abort";
 

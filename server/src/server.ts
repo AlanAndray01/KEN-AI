@@ -7,6 +7,7 @@ import { captureError } from "./config/sentry.js";
 import { connectDatabase, disconnectDatabase } from "./config/database.js";
 import { app } from "./app.js";
 import { bootstrapProviders } from "./services/ai/bootstrap.js";
+import { GENERATION_TIMEOUT_MS } from "./services/chat/generationRegistry.js";
 import { toSafeError } from "./utils/redact.js";
 
 installProviderHttpKeepAlive();
@@ -65,6 +66,18 @@ async function start(): Promise<void> {
     );
     void warmupGeminiConnection(env.GEMINI_API_KEY);
   });
+
+  // Node defaults requestTimeout to 300s, which is shorter than a long chat
+  // generation is now allowed to run (GENERATION_TIMEOUT_MS). Left alone it
+  // destroys the socket mid-stream and the reply just stops, with no error for
+  // the client to report. Kept above the generation ceiling so the generation's
+  // own timeout is always the one that fires, and that path returns a real
+  // GENERATION_TIMEOUT to the UI.
+  server.requestTimeout = GENERATION_TIMEOUT_MS + 60_000;
+  // Only bounds the wait for headers, so it stays short.
+  server.headersTimeout = 60_000;
+  // Must exceed a proxy's idle keep-alive or the socket is reused as it closes.
+  server.keepAliveTimeout = 75_000;
 
   const shutdown = (signal: string): void => {
     logger.info({ signal }, "Shutting down");

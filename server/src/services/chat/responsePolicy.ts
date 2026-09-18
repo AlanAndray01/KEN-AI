@@ -117,10 +117,16 @@ export function replyMaxTokens(budget: ReplyBudget): number {
       return 256;
     case "short":
       return 1_024;
+    // Raised from 2_048 / 4_096. These are ceilings, not targets — a model stops
+    // at "stop" and is billed on what it actually emits — and the old ones were
+    // being hit: a real request for a React data-table component finished at
+    // `length`, mid-function, rather than at `stop`. minimal and short are
+    // untouched, since they cover the greeting-shaped turns that Groq now leads
+    // and are the ones that must stay clear of its per-minute output budget.
     case "medium":
-      return 2_048;
-    case "long":
       return 4_096;
+    case "long":
+      return 16_384;
   }
 }
 
@@ -196,7 +202,11 @@ export function renderPolicy(signals: TaskSignals): string {
   }
   if (signals.needsCode) {
     formatBits.push(
-      "This turn needs code: show a complete, copyable snippet in a language-tagged fence, and keep the explanation outside that fence.",
+      "This turn needs code: give the complete, runnable implementation in a language-tagged fence, and keep the explanation outside it. " +
+        "Include every import, type, and helper the code needs to run as written. " +
+        "Never abbreviate with placeholders like '// ... rest of the code', '// implementation here', or an ellipsis standing in for real lines — a reader must be able to paste it and have it work. " +
+        "Handle the error and empty states the code would actually meet rather than only the happy path. " +
+        "If the full answer genuinely will not fit, finish the file you are in and say which one is next, rather than trimming every file into a sketch.",
     );
   }
   if (signals.needsQuotes) {

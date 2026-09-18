@@ -6,6 +6,7 @@ import {
   AUTO_PROVIDER_ID,
   DEFAULT_GEMINI_MODEL_ID,
   DEFAULT_GROQ_MODEL_ID,
+  MODEL_COOLDOWN_REASON,
   resolveDeepSeekModelId,
   resolveGeminiModelId,
   resolveGroqModelId,
@@ -520,6 +521,8 @@ export async function runGeneration(
   let executedModelId = prepared.modelId;
   let fallbackFrom: string | undefined;
   let fallbackReason: string | undefined;
+  /** Set when the provider stopped on the decode ceiling rather than on its own. */
+  let truncated = false;
   const streamProviderId = prepared.providerId;
   let streamModelId = prepared.modelId;
 
@@ -537,7 +540,12 @@ export async function runGeneration(
       streamModelId = next;
       executedModelId = next;
       fallbackFrom = prepared.modelId;
-      fallbackReason = skip.reason;
+      // Tagged as a cooldown, not a fresh failure. Nothing failed on this turn —
+      // the model is simply still inside a skip recorded earlier, which lasts up
+      // to ten minutes for a quota error. Reporting it as a new fallback is what
+      // made the notification fire on every message for that whole window.
+      // The real reason stays appended for logs and the timing frame.
+      fallbackReason = `${MODEL_COOLDOWN_REASON}|${skip.reason}`;
     }
   }
 
@@ -734,6 +742,13 @@ export async function runGeneration(
         if (event.response.metadata && event.response.metadata["aborted"] === true) {
           finishStatus = "aborted";
         }
+        // "length" means the decode ceiling stopped the model, not the model
+        // itself — the reply ends mid-sentence, and on a code turn that is mid
+        // function. Saying so is the difference between a visibly incomplete
+        // answer and one that silently looks finished but is not.
+        if (event.response.finishReason === "length") {
+          truncated = true;
+        }
       }
       if (event.type === "error") {
         finishStatus = "error";
@@ -786,6 +801,11 @@ export async function runGeneration(
     if (prepared.autoTask) {
       // Kept on the reply so a reloaded thread still shows that Auto chose it.
       assistant.set("metadata", { ...(asRecord(assistant.metadata) ?? {}), autoTask: prepared.autoTask });
+    }
+    if (truncated) {
+      // Persisted, not just streamed, so reopening the thread still shows the
+      // reply was cut rather than presenting a half file as the whole answer.
+      assistant.set("metadata", { ...(asRecord(assistant.metadata) ?? {}), truncated: true });
     }
     if (finishStatus === "error") {
       assistant.set("metadata", {

@@ -9,7 +9,7 @@ import {
   sendMessageSchema,
 } from "@Ken/shared";
 import { AppError } from "../utils/AppError.js";
-import { writeSseDone, writeSseEvent, writeSseHeaders } from "../utils/sse.js";
+import { startSseHeartbeat, writeSseDone, writeSseEvent, writeSseHeaders } from "../utils/sse.js";
 import {
   abortGeneration,
   loadHistory,
@@ -264,6 +264,9 @@ async function streamFromPrepare(
     }
   };
   req.on("close", onClose);
+  // Started before the model is asked for anything: the silent window this
+  // covers is the one before the first token, not the one between tokens.
+  const stopHeartbeat = startSseHeartbeat(res);
   try {
     await runGeneration(
       prepared,
@@ -287,6 +290,7 @@ async function streamFromPrepare(
       });
     }
   } finally {
+    stopHeartbeat();
     req.off("close", onClose);
     if (!res.writableEnded) {
       writeSseDone(res);

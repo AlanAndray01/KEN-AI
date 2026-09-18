@@ -47,10 +47,26 @@ describe("buildCompatibleChatBody", () => {
     ).toMatchObject({ max_completion_tokens: 128 });
   });
 
-  it("caps Groq completion tokens at the free-tier OTPM ceiling", () => {
+  it("lets a budgeted turn past the unbudgeted default, up to the model's ceiling", () => {
+    // OTPM is a refilling per-minute budget, not a per-request cap: Groq served
+    // 8192 completion tokens on one request and 4975 on another. Flattening
+    // every reply to the 1000 default is what cut code off mid-function.
     expect(
-      buildCompatibleChatBody({ ...request, maxTokens: 2048 }, { stream: false, providerId: "groq" }),
-    ).toMatchObject({ max_completion_tokens: 1000 });
+      buildCompatibleChatBody({ ...request, maxTokens: 16_384 }, { stream: false, providerId: "groq" }),
+    ).toMatchObject({ max_completion_tokens: 16_384 });
+  });
+
+  it("clamps to the per-model ceiling Groq actually publishes", () => {
+    // gpt-oss-20b tops out at 65536, qwen3.8-27b at 16384 — asking above is a 400.
+    expect(
+      buildCompatibleChatBody({ ...request, maxTokens: 999_999 }, { stream: false, providerId: "groq" }),
+    ).toMatchObject({ max_completion_tokens: 65_536 });
+    expect(
+      buildCompatibleChatBody(
+        { ...request, modelId: "qwen/qwen3.8-27b", maxTokens: 999_999 },
+        { stream: false, providerId: "groq" },
+      ),
+    ).toMatchObject({ max_completion_tokens: 16_384 });
   });
 
   it("keeps Gemini thinking on the lowest budget the catalog accepts", () => {

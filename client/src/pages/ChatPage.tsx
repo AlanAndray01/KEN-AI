@@ -7,6 +7,7 @@ import {
   AUTO_PROVIDER_ID,
   AUTO_ROUTE_REASON,
   GEMINI_FLASH_MODEL_ID,
+  MODEL_COOLDOWN_REASON,
   isAutoSelection,
   type PublicConversation,
   type PublicFile,
@@ -422,6 +423,11 @@ export function ChatPage() {
           // Auto choosing a model is not a fallback: the footer names it, and the
           // picker stays on Auto rather than switching to what Auto picked.
           const autoHop = Boolean(event.fallbackFrom) && reason.startsWith(AUTO_ROUTE_REASON);
+          // Neither is a cooldown that was already announced. The skip it comes
+          // from lasts up to ten minutes, so telling the user again on every
+          // message inside that window is the same news repeated, not new news.
+          // The footer below still names whatever is actually answering.
+          const cooldownHop = Boolean(event.fallbackFrom) && reason.startsWith(MODEL_COOLDOWN_REASON);
           // The footer always names the model that is really answering.
           setLiveMessages((current) =>
             applyAssistantModel(current ?? messages, {
@@ -435,7 +441,7 @@ export function ChatPage() {
             const name = displayNameForRoutedModel(model, models, event.modelName);
             toast(attachmentRoutedMessage(name), "info");
             if (provider) applyThreadSelection(provider, model);
-          } else if (!autoHop && event.fallbackFrom && !fallbackNotifiedRef.current) {
+          } else if (!autoHop && !cooldownHop && event.fallbackFrom && !fallbackNotifiedRef.current) {
             // A pinned turn only leaves its model for a provider quota error. Say
             // so once per turn; the picker keeps the user's choice, so the next
             // message tries that model again.
