@@ -104,7 +104,7 @@ export function resolveGeminiModelId(modelId: string): string {
 }
 
 /** Fast Groq default when GROQ_API_KEY (or a user Groq credential) is present. */
-export const DEFAULT_GROQ_MODEL_ID = "qwen/qwen3.6-27b";
+export const DEFAULT_GROQ_MODEL_ID = "qwen/qwen3.8-27b";
 
 export const GROQ_OSS_20B_MODEL_ID = "openai/gpt-oss-20b";
 
@@ -122,6 +122,10 @@ export const GROQ_MODEL_ALIASES: Readonly<Record<string, string>> = {
   "llama3-70b-8192": GROQ_QUALITY_MODEL_ID,
   "llama-3.1-70b-versatile": GROQ_QUALITY_MODEL_ID,
   "deepseek-r1-distill-llama-70b": GROQ_QUALITY_MODEL_ID,
+  // Groq stopped serving 3.6 in favour of 3.8. Conversations created while it
+  // was the default still carry the old id on every row, so they resolve here
+  // rather than failing with MODEL_UNAVAILABLE on their next turn.
+  "qwen/qwen3.6-27b": DEFAULT_GROQ_MODEL_ID,
 };
 
 export function resolveGroqModelId(modelId: string): string {

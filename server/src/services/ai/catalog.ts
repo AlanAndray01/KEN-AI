@@ -81,7 +81,7 @@ export const BUILT_IN_PROVIDERS: BuiltInProviderDefinition[] = [
     models: [
       {
         id: DEFAULT_GROQ_MODEL_ID,
-        name: "Qwen 3.6 27B",
+        name: "Qwen 3.8 27B",
         description: "Default Groq model. Reasoning is off, so greetings and short replies start in under a second.",
         capabilities: TEXT_STREAM,
         contextWindow: 131_072,

@@ -17,7 +17,7 @@ test.describe("Composer accessibility", () => {
     await openEmptyChat(page);
 
     const trigger = page.locator("button.model-selector-trigger");
-    await expect(trigger).toHaveText(/Qwen 3.6 27B/);
-    await expect(trigger).toHaveAttribute("aria-label", "Select model: Qwen 3.6 27B");
+    await expect(trigger).toHaveText(/Qwen 3.8 27B/);
+    await expect(trigger).toHaveAttribute("aria-label", "Select model: Qwen 3.8 27B");
   });
 });

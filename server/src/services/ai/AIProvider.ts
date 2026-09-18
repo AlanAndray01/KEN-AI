@@ -93,13 +93,16 @@ export interface GenerateRequest {
   /**
    * How far the manager may stray from the requested model.
    *
-   * `any` (the default) lets auxiliary calls - a chat title, say - fail over on
-   * any retryable error, because nobody chose their model. `quota-only` is for a
-   * turn whose model the user picked: it runs on exactly that model, and only a
-   * provider quota error may move it, which the stream reports as a `fallback`
-   * event so the UI can say so.
+   * `any` (the default) lets auxiliary calls fail over on any retryable error,
+   * because nobody chose their model. `quota-only` is for a turn whose model the
+   * user picked: it runs on exactly that model, and only a provider quota error
+   * may move it, which the stream reports as a `fallback` event so the UI can
+   * say so. `none` never leaves the requested model — for calls whose whole
+   * point is which provider they land on, like the chat title deliberately
+   * routed to Groq to stay off Gemini's quota. Falling back there would spend
+   * the exact budget the routing exists to protect, on a cosmetic request.
    */
-  fallbackPolicy?: "any" | "quota-only";
+  fallbackPolicy?: "any" | "quota-only" | "none";
 }
 
 export interface ProviderRuntimeConfig {

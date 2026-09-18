@@ -33,14 +33,16 @@ describe("shared constants", () => {
     expect(resolveGeminiModelId("gemini-3.8-flash")).toBe("gemini-3.8-flash");
     expect(resolveGeminiModelId("gemini-3.5-flash-lite")).toBe("gemini-3.5-flash-lite");
     expect(GEMINI_IMAGE_MODEL_ID).toBe("gemini-3.1-flash-image");
-    expect(DEFAULT_GROQ_MODEL_ID).toBe("qwen/qwen3.6-27b");
+    expect(DEFAULT_GROQ_MODEL_ID).toBe("qwen/qwen3.8-27b");
     expect(GROQ_QUALITY_MODEL_ID).toBe("openai/gpt-oss-120b");
     expect(DEFAULT_OPENAI_MODEL_ID).toBe("gpt-4o-mini");
     expect(isLlamaModelId("llama-3.3-70b")).toBe(true);
-    expect(isLlamaModelId("qwen/qwen3.6-27b")).toBe(false);
+    expect(isLlamaModelId("qwen/qwen3.8-27b")).toBe(false);
     expect(resolveGroqModelId("llama-3.3-70b-versatile")).toBe("openai/gpt-oss-120b");
-    expect(resolveGroqModelId("llama-3.1-8b-instant")).toBe("qwen/qwen3.6-27b");
+    expect(resolveGroqModelId("llama-3.1-8b-instant")).toBe("qwen/qwen3.8-27b");
     expect(resolveGroqModelId("openai/gpt-oss-20b")).toBe("openai/gpt-oss-20b");
+    // Retired when Groq moved to 3.8; stored conversations must still resolve.
+    expect(resolveGroqModelId("qwen/qwen3.6-27b")).toBe("qwen/qwen3.8-27b");
   });
 
   it("estimates prompt tokens at about four characters each", () => {

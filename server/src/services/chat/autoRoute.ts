@@ -67,17 +67,23 @@ function ref(providerId: string, modelId: string): ModelRef {
  * available are ever chosen, so a missing key simply moves down the list.
  */
 export const AUTO_PREFERENCES: Readonly<Record<AutoTask, readonly ModelRef[]>> = {
+  // Groq leads the two highest-volume tiers. Both need nothing but "text"
+  // (TASK_REQUIREMENT below), which Groq satisfies, and it has a multi-key pool
+  // plus far looser free limits than Gemini's single shared bucket — so routine
+  // traffic no longer drains the one quota that vision genuinely depends on.
+  // Gemini stays in the list as the next hop, not as the default.
   quick: [
-    ref("gemini", DEFAULT_GEMINI_MODEL_ID),
     ref("groq", DEFAULT_GROQ_MODEL_ID),
     ref("cerebras", DEFAULT_CEREBRAS_MODEL_ID),
     ref("groq", GROQ_OSS_20B_MODEL_ID),
+    ref("gemini", DEFAULT_GEMINI_MODEL_ID),
     ref("openai", DEFAULT_OPENAI_MODEL_ID),
   ],
   chat: [
+    ref("groq", DEFAULT_GROQ_MODEL_ID),
+    ref("groq", GROQ_QUALITY_MODEL_ID),
     ref("gemini", DEFAULT_GEMINI_MODEL_ID),
     ref("gemini", GEMINI_FLASH_MODEL_ID),
-    ref("groq", DEFAULT_GROQ_MODEL_ID),
     ref("openai", DEFAULT_OPENAI_MODEL_ID),
   ],
   code: [

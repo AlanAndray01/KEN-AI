@@ -15,7 +15,7 @@ describe("pickDefaultModel", () => {
   it("prefers Gemini 3.5 Flash Lite over 3.8 Flash when both are available", () => {
     const lite = model({ id: "gemini-3.5-flash-lite", providerId: "gemini", name: "Gemini 3.5 Flash Lite" });
     const flash = model({ id: "gemini-3.8-flash", providerId: "gemini", name: "Gemini 3.8 Flash" });
-    const qwen = model({ id: "qwen/qwen3.6-27b", providerId: "groq", name: "Qwen 3.6 27B" });
+    const qwen = model({ id: "qwen/qwen3.8-27b", providerId: "groq", name: "Qwen 3.8 27B" });
     const llama = model({ id: "llama-3.3-70b", providerId: "cerebras", name: "Llama 3.3 70B (Cerebras)" });
 
     expect(pickDefaultModel([llama, qwen, flash, lite])).toEqual(lite);
@@ -23,13 +23,13 @@ describe("pickDefaultModel", () => {
 
   it("falls back to Gemini 3.8 Flash when Lite is missing", () => {
     const flash = model({ id: "gemini-3.8-flash", providerId: "gemini", name: "Gemini 3.8 Flash" });
-    const qwen = model({ id: "qwen/qwen3.6-27b", providerId: "groq", name: "Qwen 3.6 27B" });
+    const qwen = model({ id: "qwen/qwen3.8-27b", providerId: "groq", name: "Qwen 3.8 27B" });
 
     expect(pickDefaultModel([qwen, flash])).toEqual(flash);
   });
 
   it("falls back to Groq Qwen, never Llama, when Gemini is missing", () => {
-    const qwen = model({ id: "qwen/qwen3.6-27b", providerId: "groq", name: "Qwen 3.6 27B" });
+    const qwen = model({ id: "qwen/qwen3.8-27b", providerId: "groq", name: "Qwen 3.8 27B" });
     const llama = model({ id: "llama-3.3-70b", providerId: "cerebras", name: "Llama 3.3 70B (Cerebras)" });
     const openai = model({ id: "gpt-4o-mini", providerId: "openai", name: "GPT-4o mini" });
 
@@ -44,7 +44,7 @@ describe("pickDefaultModel", () => {
       name: "Gemini 3.5 Flash Lite",
       available: false,
     });
-    const qwen = model({ id: "qwen/qwen3.6-27b", providerId: "groq", name: "Qwen 3.6 27B" });
+    const qwen = model({ id: "qwen/qwen3.8-27b", providerId: "groq", name: "Qwen 3.8 27B" });
 
     expect(pickDefaultModel([gemini, qwen])).toEqual(qwen);
   });
@@ -53,7 +53,7 @@ describe("pickDefaultModel", () => {
 describe("shouldReplaceStoredModel", () => {
   const lite = model({ id: "gemini-3.5-flash-lite", providerId: "gemini", name: "Gemini 3.5 Flash Lite" });
   const flash = model({ id: "gemini-3.8-flash", providerId: "gemini", name: "Gemini 3.8 Flash" });
-  const qwen = model({ id: "qwen/qwen3.6-27b", providerId: "groq", name: "Qwen 3.6 27B" });
+  const qwen = model({ id: "qwen/qwen3.8-27b", providerId: "groq", name: "Qwen 3.8 27B" });
 
   it("replaces an empty or leftover retired Llama selection", () => {
     expect(shouldReplaceStoredModel({ providerId: "", modelId: "" }, lite, [lite, flash, qwen])).toBe(true);
@@ -90,8 +90,17 @@ describe("shouldReplaceStoredModel", () => {
   });
 
   it("keeps an explicit Groq pick that still exists", () => {
-    expect(shouldReplaceStoredModel({ providerId: "groq", modelId: "qwen/qwen3.6-27b" }, lite, [lite, flash, qwen])).toBe(
+    expect(shouldReplaceStoredModel({ providerId: "groq", modelId: "qwen/qwen3.8-27b" }, lite, [lite, flash, qwen])).toBe(
       false,
     );
+  });
+
+  it("replaces a retired Qwen 3.6 selection so the picker moves off a 404 model", () => {
+    // Groq answers qwen/qwen3.6-27b with model_not_found, and MODEL_UNAVAILABLE
+    // is non-retryable, so a stored 3.6 pick fails the turn outright instead of
+    // falling back. The alias has to move it rather than let it sit there.
+    expect(
+      shouldReplaceStoredModel({ providerId: "groq", modelId: "qwen/qwen3.6-27b" }, lite, [lite, flash, qwen]),
+    ).toBe(true);
   });
 });

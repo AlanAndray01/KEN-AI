@@ -4,9 +4,9 @@ vi.mock("../../models/AIModel.js", () => ({
   AIModel: {
     find: vi.fn(async () => [
       {
-        modelId: "qwen/qwen3.6-27b",
+        modelId: "qwen/qwen3.8-27b",
         providerId: "groq",
-        name: "Qwen 3.6 27B",
+        name: "Qwen 3.8 27B",
         capabilities: ["text", "streaming"],
         enabled: true,
       },
@@ -53,7 +53,7 @@ describe("ModelRegistry", () => {
 
     expect(publicModels.every((model) => model.available)).toBe(true);
     expect(publicModels.some((model) => model.providerId === "groq")).toBe(true);
-    expect(publicModels.find((model) => model.providerId === "groq")?.id).toBe("qwen/qwen3.6-27b");
+    expect(publicModels.find((model) => model.providerId === "groq")?.id).toBe("qwen/qwen3.8-27b");
     expect(publicModels.some((model) => model.providerId === "openai")).toBe(false);
     expect(JSON.stringify(publicModels)).not.toContain("encryptedApiKey");
     expect(JSON.stringify(publicModels)).not.toMatch(/"apiKey"/);

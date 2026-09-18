@@ -273,6 +273,7 @@ export class AIProviderManager {
    * error has authorised the move, later hops follow the normal retry rules.
    */
   private mayFallBack(request: GenerateRequest, error: unknown): boolean {
+    if (request.fallbackPolicy === "none") return false;
     if (request.fallbackPolicy === "quota-only") return isProviderQuotaError(error);
     return isRetryableProviderError(error);
   }

@@ -25,16 +25,16 @@ export const DEMO_USER = {
     language: "en",
     sendOnEnter: false,
     selectedProviderId: "groq",
-    selectedModelId: "qwen/qwen3.6-27b",
+    selectedModelId: "qwen/qwen3.8-27b",
   },
   createdAt: now,
   updatedAt: now,
 };
 
 export const DEMO_MODEL = {
-  id: "qwen/qwen3.6-27b",
+  id: "qwen/qwen3.8-27b",
   providerId: "groq",
-  name: "Qwen 3.6 27B",
+  name: "Qwen 3.8 27B",
   capabilities: ["text", "streaming", "vision", "tools"],
   enabled: true,
   available: true,

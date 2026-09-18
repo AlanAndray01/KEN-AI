@@ -1,7 +1,8 @@
-import { stripReasoning } from "@Ken/shared";
+import { DEFAULT_GROQ_MODEL_ID, stripReasoning } from "@Ken/shared";
 import { logger } from "../../config/logger.js";
 import { toSafeError } from "../../utils/redact.js";
 import { aiProviderManager } from "../ai/AIProviderManager.js";
+import { hasEnvApiKey } from "../ai/credentials.js";
 
 const STOP_WORDS = new Set([
   "a",
@@ -111,8 +112,28 @@ export function sanitizeTitle(raw: string): string | null {
 }
 
 /**
- * Asks the conversation's own model for a title. Returns null on any failure -
- * a naming call must never take a delivered answer down with it.
+ * Where a title call should land.
+ *
+ * Naming is cosmetic, but it used to run on the conversation's own model, which
+ * on a Gemini chat meant a second Gemini request for every new conversation —
+ * pure overhead against the tightest free-tier bucket in the system, and
+ * doubling it for the many chats that are one message long. Groq has a
+ * multi-key pool (GROQ_KEYS) and far looser limits, so when a platform Groq key
+ * is configured the title goes there instead and Gemini keeps its allowance for
+ * the answers users actually asked for.
+ *
+ * Only the platform key counts. A user's own Groq credential is their quota to
+ * spend on their own turns, so a BYOK-only setup keeps naming on the
+ * conversation's model exactly as before.
+ */
+function titleRoute(providerId: string, modelId: string): { providerId: string; modelId: string } {
+  if (hasEnvApiKey("groq")) return { providerId: "groq", modelId: DEFAULT_GROQ_MODEL_ID };
+  return { providerId, modelId };
+}
+
+/**
+ * Asks for a title. Returns null on any failure - a naming call must never take
+ * a delivered answer down with it.
  */
 export async function generateChatTitle(input: {
   userId: string;
@@ -121,14 +142,21 @@ export async function generateChatTitle(input: {
   userMessage: string;
   assistantReply: string;
 }): Promise<string | null> {
+  const route = titleRoute(input.providerId, input.modelId);
   try {
     const response = await aiProviderManager.generate({
-      providerId: input.providerId,
-      modelId: input.modelId,
+      providerId: route.providerId,
+      modelId: route.modelId,
       userId: input.userId,
       maxTokens: TITLE_MAX_TOKENS,
       // Naming is the app's idea, not the user's: it must not spend their quota.
       skipQuota: true,
+      // Never hop. The fallback chain opens with four Gemini entries, so a
+      // failed Groq title would spend the very quota this routing protects.
+      // No title is the correct outcome instead - the heuristic below covers it.
+      fallbackPolicy: "none",
+      // Qwen accepts "none", so the title does not wait on a think phase.
+      reasoningEffort: "none",
       messages: [
         { role: "system", content: TITLE_INSTRUCTION },
         {
@@ -139,7 +167,10 @@ export async function generateChatTitle(input: {
     });
     return sanitizeTitle(response.content);
   } catch (error) {
-    logger.warn({ err: toSafeError(error), providerId: input.providerId }, "chat title generation failed");
+    logger.warn(
+      { err: toSafeError(error), providerId: route.providerId, modelId: route.modelId },
+      "chat title generation failed",
+    );
     return null;
   }
 }

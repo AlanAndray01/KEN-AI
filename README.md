@@ -131,7 +131,7 @@ Provider keys stay on the server (environment variables or AES-256-GCM encrypted
 
 **Gemini (default adapter):** set `GEMINI_API_KEY` in `server/.env` from [Google AI Studio](https://aistudio.google.com/apikey). New chats pick `gemini-3.5-flash-lite` when that key is present. The same key unlocks Gemini 3.8 Flash and Gemini 3.6 Flash. Existing threads that saved `gemini-3.8-flash` keep that model. Retired Gemini 2.5 / 2.0 ids are aliased onto the current catalog so those chats stay on Google.
 
-**Groq (next hop):** set `GROQ_API_KEY`. Default Groq model is `qwen/qwen3.6-27b` (Groq retired Llama 3.1/3.3 IDs). Llama is never chosen as Ken's default.
+**Groq (next hop):** set `GROQ_API_KEY`, or `GROQ_KEYS` for a comma-separated pool. Default Groq model is `qwen/qwen3.8-27b` (Groq retired Llama 3.1/3.3 IDs, and 3.6 in favour of 3.8). Llama is never chosen as Ken's default. Groq also serves Auto-Mode's `quick` and `chat` tiers and every chat-title call, so it carries the routine traffic and leaves the tighter Gemini quota for vision.
 
 
 Optional keys: `OPENAI_API_KEY`, `OPENROUTER_API_KEY`. Custom OpenAI-compatible endpoints and Ollama are configured by an admin. Persist database keys with `ENCRYPTION_KEY` (required in production). Users can save personal keys through Settings or `POST /api/settings/keys`; those values are encrypted in MongoDB and never written to `.env`.

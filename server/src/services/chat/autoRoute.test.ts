@@ -72,10 +72,20 @@ describe("pickAutoRoute", () => {
   });
 
   it("routes quick turns to a fast model, not a heavyweight one", () => {
+    // Groq leads quick and chat: both need only "text", and it has a key pool
+    // where Gemini has one shared free-tier bucket. Gemini is the next hop, so
+    // the tier still degrades sensibly rather than jumping to a heavyweight.
     expect(pickAutoRoute([gpt41, geminiPro, geminiLite, groqFast], "quick")).toMatchObject({
+      modelId: DEFAULT_GROQ_MODEL_ID,
+    });
+    expect(pickAutoRoute([gpt41, geminiPro, geminiLite], "quick")).toMatchObject({
       modelId: DEFAULT_GEMINI_MODEL_ID,
     });
     expect(pickAutoRoute([gpt41, groqFast], "quick")).toMatchObject({ modelId: DEFAULT_GROQ_MODEL_ID });
+  });
+
+  it("keeps vision on Gemini even though Groq now leads the text tiers", () => {
+    expect(pickAutoRoute([groqFast, geminiLite], "vision")).toMatchObject({ providerId: "gemini" });
   });
 
   it("never chooses an unavailable model", () => {
