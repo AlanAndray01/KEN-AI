@@ -63,6 +63,15 @@ const baseEnvSchema = z.object({
   DEEPSEEK_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
   CF_ACCOUNT_ID: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
   CF_TOKEN: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+  /** Name of the AI Gateway to route through. Only used when a token is set. */
+  CF_AI_GATEWAY: z.string().min(1).default("ken-ai-gateway"),
+  /**
+   * AI Gateway authentication token — a different credential from CF_TOKEN,
+   * created per gateway in the dashboard. Setting it is what switches provider
+   * traffic onto the gateway; leaving it unset keeps every provider on its
+   * direct endpoint, which is the verified-working default.
+   */
+  CF_AI_GATEWAY_TOKEN: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
   OPENROUTER_API_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
   REDIS_URL: z.preprocess(emptyToUndefined, z.string().url().optional()),
   SENTRY_DSN: z.preprocess(emptyToUndefined, z.string().url().optional()),
@@ -199,6 +208,8 @@ export const env = {
   DEEPSEEK_KEY: parsed.data.DEEPSEEK_KEY,
   CF_ACCOUNT_ID: parsed.data.CF_ACCOUNT_ID,
   CF_TOKEN: parsed.data.CF_TOKEN,
+  CF_AI_GATEWAY: parsed.data.CF_AI_GATEWAY,
+  CF_AI_GATEWAY_TOKEN: parsed.data.CF_AI_GATEWAY_TOKEN,
   OPENROUTER_API_KEY: parsed.data.OPENROUTER_API_KEY,
   REDIS_URL: parsed.data.REDIS_URL,
   SENTRY_DSN: parsed.data.SENTRY_DSN,

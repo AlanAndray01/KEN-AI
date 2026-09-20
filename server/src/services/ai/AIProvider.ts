@@ -16,6 +16,12 @@ export interface ChatMessage {
 export interface ProviderCredentials {
   apiKey?: string;
   baseUrl?: string;
+  /**
+   * AI Gateway token, sent as `cf-aig-authorization` when the request is going
+   * through the gateway rather than straight to the vendor. Separate from
+   * `apiKey`, which still authenticates against the vendor behind it.
+   */
+  gatewayToken?: string;
 }
 
 export interface ProviderModelDescriptor {

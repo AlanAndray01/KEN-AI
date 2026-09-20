@@ -221,7 +221,16 @@ export const AUTO_ROUTE_REASON = "AUTO_ROUTE";
 export const MODEL_COOLDOWN_REASON = "MODEL_COOLDOWN";
 
 /** What Auto decided a turn needs, in the order the router settles them. */
-export const AUTO_TASKS = ["files", "vision", "tools", "code", "reasoning", "quick", "chat"] as const;
+export const AUTO_TASKS = [
+  "files",
+  "vision",
+  "tools",
+  "code",
+  "reasoning",
+  "longContext",
+  "quick",
+  "chat",
+] as const;
 
 export type AutoTask = (typeof AUTO_TASKS)[number];
 

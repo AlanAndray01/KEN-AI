@@ -10,6 +10,7 @@ import {
   GEMINI_PRO_MODEL_ID,
   GROQ_OSS_20B_MODEL_ID,
   GROQ_QUALITY_MODEL_ID,
+  estimatePromptTokens,
   type AutoTask,
   type ChatToolId,
   type ModelCapability,
@@ -18,6 +19,16 @@ import {
 import { attachmentNeed } from "../ai/attachmentRoute.js";
 import { detectDeepCodeRequest } from "./codeGeneration.js";
 import { detectTaskSignals } from "./responsePolicy.js";
+
+/**
+ * Point past which a turn is routed for its size rather than its difficulty.
+ *
+ * Sits below Groq's 6,000-token input budget (PROVIDER_INPUT_TOKENS in
+ * ContextManager) with room left for the system prompt and some history, so
+ * the switch happens while the document would still have survived — not after
+ * it has already been cut.
+ */
+const LONG_CONTEXT_TOKENS = 4_000;
 
 /**
  * Auto mode: choose a model per turn from what the request actually needs.
@@ -47,6 +58,12 @@ export function classifyAutoTask(input: AutoTaskInput): AutoTask {
   if (detectDeepCodeRequest(input.content)) return "code";
   const signals = detectTaskSignals(input.content);
   if (signals.needsMath || signals.budget === "long") return "reasoning";
+  // Checked after the harder signals — a long code request is still a code
+  // request — but before the size-agnostic tiers, because those now lead with
+  // Groq, whose input budget is 6,000 tokens. A pasted document past this size
+  // reaches it already trimmed, which is the silent half-answer this avoids;
+  // Gemini holds the whole thing.
+  if (estimatePromptTokens(input.content) > LONG_CONTEXT_TOKENS) return "longContext";
   if (signals.budget === "minimal" || signals.budget === "short") return "quick";
   return "chat";
 }
@@ -99,6 +116,18 @@ export const AUTO_PREFERENCES: Readonly<Record<AutoTask, readonly ModelRef[]>> =
     ref("groq", GROQ_QUALITY_MODEL_ID),
     ref("deepseek", DEFAULT_DEEPSEEK_MODEL_ID),
   ],
+  // Ordered by context window, not by how clever the model is: the whole point
+  // is holding the document. Gemini's million-token window leads, and Lite goes
+  // first rather than Pro because they share that window while Lite has the
+  // healthier quota. Groq trails deliberately — its 131k model still only gets
+  // a 6,000-token input budget, so it is a last resort for this tier.
+  longContext: [
+    ref("gemini", DEFAULT_GEMINI_MODEL_ID),
+    ref("gemini", GEMINI_FLASH_MODEL_ID),
+    ref("gemini", GEMINI_PRO_MODEL_ID),
+    ref("openai", "gpt-4.1"),
+    ref("groq", GROQ_QUALITY_MODEL_ID),
+  ],
   vision: [
     ref("gemini", DEFAULT_GEMINI_MODEL_ID),
     ref("gemini", GEMINI_FLASH_MODEL_ID),
@@ -122,6 +151,7 @@ const TASK_REQUIREMENT: Readonly<Record<AutoTask, ModelCapability>> = {
   chat: "text",
   code: "text",
   reasoning: "text",
+  longContext: "text",
   vision: "vision",
   files: "files",
   tools: "tools",

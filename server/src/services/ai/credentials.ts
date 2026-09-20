@@ -3,6 +3,7 @@ import { env } from "../../config/env.js";
 import { AIProvider } from "../../models/AIProvider.js";
 import { UserProviderCredential } from "../../models/UserProviderCredential.js";
 import { AppError } from "../../utils/AppError.js";
+import { gatewayBaseUrl } from "./aiGateway.js";
 import { getBuiltInProvider } from "./catalog.js";
 import { decryptSecret, lastFour } from "./encryption.js";
 import { isMockAiAllowed } from "./providers/MockProvider.js";
@@ -68,6 +69,7 @@ export function cloudflareBaseUrl(): string | undefined {
   if (!env.CF_ACCOUNT_ID) return undefined;
   return `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/ai/v1`;
 }
+
 
 export function hasEnvApiKey(providerId: string): boolean {
   if (providerId === "cloudflare" && !env.CF_ACCOUNT_ID) return false;
@@ -173,10 +175,12 @@ export async function resolveCredentials(
   const enabled = stored?.enabled ?? true;
   const name = stored?.name ?? builtIn?.name ?? providerId;
   const type = stored?.type ?? builtIn?.type ?? "custom";
+  // An admin's explicitly stored base URL still wins — the gateway only
+  // redirects providers that were otherwise going to their vendor default.
   const baseUrl =
     providerId === "cloudflare"
       ? (stored?.baseUrl ?? cloudflareBaseUrl() ?? builtIn?.defaultBaseUrl)
-      : (stored?.baseUrl ?? builtIn?.defaultBaseUrl);
+      : (stored?.baseUrl ?? gatewayBaseUrl(providerId) ?? builtIn?.defaultBaseUrl);
   const capabilities = stored?.capabilities.length ? stored.capabilities : (builtIn?.capabilities ?? []);
 
   if (userId) {

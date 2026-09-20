@@ -119,3 +119,43 @@ describe("planAutoRoute", () => {
     expect(plan).toEqual({ task: "files", route: undefined });
   });
 });
+
+describe("long-context routing", () => {
+  const words = "the quick brown fox jumps over the lazy dog analysis report section".split(" ");
+  const document = Array.from({ length: 3_000 }, (_, i) => words[i % words.length]).join(" ");
+
+  it("sends a pasted document to the size tier rather than ordinary chat", () => {
+    // chat now leads with Groq, whose input budget is 6,000 tokens, so a
+    // document this size would arrive already trimmed.
+    expect(classifyAutoTask({ content: `Summarise this document:\n\n${document}` })).toBe("longContext");
+  });
+
+  it("leaves ordinary turns alone", () => {
+    expect(classifyAutoTask({ content: "hi" })).toBe("quick");
+    expect(classifyAutoTask({ content: "What does this function do? It adds two numbers together." })).not.toBe(
+      "longContext",
+    );
+  });
+
+  it("still prefers the code tier for a long code request", () => {
+    // Size is checked after difficulty, so a big code paste is still code.
+    expect(
+      classifyAutoTask({
+        content: `Write a complete production-ready React data table component.\n\n${document}`,
+      }),
+    ).toBe("code");
+  });
+
+  it("picks Gemini's million-token window over Groq for the size tier", () => {
+    expect(pickAutoRoute([groqFast, geminiLite], "longContext")).toMatchObject({
+      providerId: "gemini",
+      modelId: DEFAULT_GEMINI_MODEL_ID,
+    });
+    // The same two models still route an ordinary chat turn to Groq.
+    expect(pickAutoRoute([groqFast, geminiLite], "chat")).toMatchObject({ providerId: "groq" });
+  });
+
+  it("falls back to Groq for the size tier when no Gemini model is configured", () => {
+    expect(pickAutoRoute([groqFast], "longContext")).toMatchObject({ providerId: "groq" });
+  });
+});

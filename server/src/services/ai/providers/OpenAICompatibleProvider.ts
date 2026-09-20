@@ -39,6 +39,24 @@ export class OpenAICompatibleProvider implements AIProvider {
     return getBuiltInProvider(this.id)?.capabilities ?? ["text", "streaming"];
   }
 
+  /**
+   * Auth headers for one request.
+   *
+   * Two independent credentials can be in play: the vendor key, and — when the
+   * request is going through the AI Gateway rather than straight to the vendor
+   * — the gateway's own token. The gateway rejects at its front door with a 401
+   * before the vendor ever sees the request, so a missing `cf-aig-authorization`
+   * fails everything regardless of how valid the vendor key is.
+   */
+  private authHeaders(apiKey?: string): Record<string, string> {
+    return {
+      ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+      ...(this.credentials.gatewayToken
+        ? { "cf-aig-authorization": `Bearer ${this.credentials.gatewayToken}` }
+        : {}),
+    };
+  }
+
   async getModels(): Promise<ProviderModelDescriptor[]> {
     return getBuiltInProvider(this.id)?.models ?? [];
   }
@@ -55,7 +73,7 @@ export class OpenAICompatibleProvider implements AIProvider {
 
     try {
       const response = await fetch(`${baseUrl}/models`, {
-        headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
+        headers: this.authHeaders(apiKey),
       });
       if (response.status === 200) return { status: "connected", message: "Connected" };
       if (response.status === 401 || response.status === 403) {
@@ -78,7 +96,7 @@ export class OpenAICompatibleProvider implements AIProvider {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+          ...this.authHeaders(apiKey),
         },
         body: JSON.stringify(buildCompatibleChatBody(request, { stream: false, providerId: this.id })),
       };
@@ -133,7 +151,7 @@ export class OpenAICompatibleProvider implements AIProvider {
         headers: {
           "Content-Type": "application/json",
           Accept: "text/event-stream",
-          ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+          ...this.authHeaders(apiKey),
         },
         body: JSON.stringify(buildCompatibleChatBody(request, { stream: true, providerId: this.id })),
       };
