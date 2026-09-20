@@ -38,6 +38,10 @@ describe("shared constants", () => {
     expect(DEFAULT_OPENAI_MODEL_ID).toBe("gpt-4o-mini");
     expect(isLlamaModelId("llama-3.3-70b")).toBe(true);
     expect(isLlamaModelId("qwen/qwen3.8-27b")).toBe(false);
+    // Cloudflare names every model it serves `@cf/meta/llama-...`, so a plain
+    // substring test hid the whole provider from the picker.
+    expect(isLlamaModelId("@cf/meta/llama-3.3-70b-instruct-fp8-fast")).toBe(false);
+    expect(isLlamaModelId("@cf/meta/llama-4-scout-17b-16e-instruct")).toBe(false);
     expect(resolveGroqModelId("llama-3.3-70b-versatile")).toBe("openai/gpt-oss-120b");
     expect(resolveGroqModelId("llama-3.1-8b-instant")).toBe("qwen/qwen3.8-27b");
     expect(resolveGroqModelId("openai/gpt-oss-20b")).toBe("openai/gpt-oss-20b");

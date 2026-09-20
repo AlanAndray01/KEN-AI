@@ -132,8 +132,21 @@ export function resolveGroqModelId(modelId: string): string {
   return GROQ_MODEL_ALIASES[modelId] ?? modelId;
 }
 
-/** True when a catalog id is a Llama family model (never used as Ken's default). */
+/**
+ * True when a catalog id is a bare Llama id of the kind Groq and Cerebras
+ * retired — hidden from the picker, never chosen as a default, and replaced if
+ * one is still stored from an older session.
+ *
+ * Cloudflare is deliberately exempt. Every model it serves is named
+ * `@cf/meta/llama-...`, so a plain substring test swallowed the entire
+ * provider: all three were filtered out of /api/models and could never be
+ * selected, while `shouldReplaceStoredModel` would have discarded the choice
+ * on the next load of anyone who managed to pick one anyway. These are current
+ * first-class models, verified live, not the dead ids this rule was written
+ * for — and the `@cf/` namespace is what distinguishes them.
+ */
 export function isLlamaModelId(modelId: string): boolean {
+  if (modelId.startsWith("@cf/")) return false;
   return /llama/i.test(modelId);
 }
 
