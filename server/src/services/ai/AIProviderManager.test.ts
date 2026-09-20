@@ -889,3 +889,80 @@ describe("AIProviderManager with a pinned model (fallbackPolicy: quota-only)", (
     });
   });
 });
+
+describe("AIProviderManager Cloudflare context fit", () => {
+  beforeEach(() => {
+    clearModelSkips();
+    fakeGenerate.mockReset();
+    assertModelAvailable.mockReset();
+    resolveCredentials.mockReset();
+    listPublicModels.mockReset();
+    delete (fakeAdapter as { stream?: AIProvider["stream"] }).stream;
+    listPublicModels.mockResolvedValue([]);
+    resolveCredentials.mockResolvedValue({
+      providerId: "cloudflare",
+      name: "Cloudflare Workers AI",
+      type: "openai-compatible",
+      apiKey: "test-cf-token",
+      enabled: true,
+      configured: true,
+      source: "environment",
+      capabilities: ["text", "streaming"],
+    });
+    assertModelAvailable.mockResolvedValue({
+      id: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+      providerId: "cloudflare",
+      name: "Llama 3.3 70B (Cloudflare)",
+      capabilities: ["text"],
+      enabled: true,
+      available: true,
+    });
+    fakeGenerate.mockResolvedValue({
+      content: "ok",
+      model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+      provider: "cloudflare",
+      finishReason: "stop",
+    });
+  });
+
+  it("re-trims a long history to fit the real per-model window before it reaches the adapter", async () => {
+    // Real prose, not a repeated character — BPE tokenizers compress
+    // "xxxx...x" far below its char count, which would understate what this
+    // test is checking. Twenty of these messages are sized for a much larger
+    // provider's budget than Cloudflare 70B's real 24,000-token ceiling.
+    const words =
+      "the quick brown fox jumps over the lazy dog near the riverbank while clouds drift".split(" ");
+    const paragraph = Array.from({ length: 500 }, (_, i) => words[i % words.length]).join(" ");
+    const longHistory = Array.from({ length: 20 }, (_, i) => ({
+      role: (i % 2 === 0 ? "user" : "assistant") as const,
+      content: paragraph,
+    }));
+
+    const { AIProviderManager } = await import("./AIProviderManager.js");
+    const manager = new AIProviderManager();
+    await manager.generate({
+      providerId: "cloudflare",
+      modelId: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+      messages: longHistory,
+    });
+
+    expect(fakeGenerate).toHaveBeenCalledTimes(1);
+    const sent = fakeGenerate.mock.calls[0]?.[0] as { messages: Array<{ content: string }> };
+    expect(sent.messages.length).toBeLessThan(longHistory.length);
+  });
+
+  it("leaves a short conversation untouched, since it already fits", async () => {
+    const shortHistory = [{ role: "user" as const, content: "Hi" }];
+
+    const { AIProviderManager } = await import("./AIProviderManager.js");
+    const manager = new AIProviderManager();
+    await manager.generate({
+      providerId: "cloudflare",
+      modelId: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+      messages: shortHistory,
+    });
+
+    const sent = fakeGenerate.mock.calls[0]?.[0] as { messages: Array<{ content: string }> };
+    expect(sent.messages.at(-1)?.content).toBe("Hi");
+  });
+});

@@ -1,3 +1,4 @@
+import { estimatePromptTokens } from "@Ken/shared";
 import type { GenerateRequest } from "../AIProvider.js";
 import { toOpenAIMessages } from "../normalizers/normalize.js";
 
@@ -84,6 +85,49 @@ export function geminiMaxOutputTokens(
 }
 
 /**
+ * Cloudflare's ceiling is on input+output *combined* (`max_total_tokens`), not
+ * an output-only cap like Groq's — verified live per model, since Cloudflare's
+ * own docs give only a "Context Window" figure without saying whether it is
+ * one-sided: a 70B request asking for 100,000 output tokens came back
+ * `max_total_tokens=24000` in the error body, confirming it covers both sides
+ * of the request together.
+ *
+ * withProviderContextFit (AIProviderManager.ts) already re-trims the prompt to
+ * fit this same ceiling before a request reaches here, but a deep-code turn
+ * can still ask for up to 16,384 output tokens regardless of how much of the
+ * ceiling the prompt already used — this is the second half of that guard,
+ * shrinking the *output* ask to whatever room is actually left.
+ */
+const CLOUDFLARE_MAX_TOTAL_TOKENS: Readonly<Record<string, number>> = {
+  "@cf/meta/llama-3.3-70b-instruct-fp8-fast": 24_000,
+  "@cf/meta/llama-4-scout-17b-16e-instruct": 131_000,
+  "@cf/meta/llama-3.2-3b-instruct": 80_000,
+};
+
+/** Matches the tightest known Cloudflare ceiling, since an unlisted model's real limit is unverified. */
+const CLOUDFLARE_UNKNOWN_MODEL_TOTAL = 24_000;
+
+/** Held back so estimator error (the ~4-chars/token heuristic) cannot still tip the request over. */
+const CLOUDFLARE_SAFETY_MARGIN = 512;
+
+/** Never request less than this — an unusably short reply is worse than risking a 400 on a huge prompt. */
+const CLOUDFLARE_MIN_OUTPUT_TOKENS = 256;
+
+function estimateMessagesTokens(messages: GenerateRequest["messages"]): number {
+  return messages.reduce((sum, message) => sum + estimatePromptTokens(message.content) + 4, 0);
+}
+
+export function cloudflareMaxTokens(
+  modelId: string,
+  messages: GenerateRequest["messages"],
+  requested?: number,
+): number {
+  const total = CLOUDFLARE_MAX_TOTAL_TOKENS[modelId] ?? CLOUDFLARE_UNKNOWN_MODEL_TOTAL;
+  const room = Math.max(CLOUDFLARE_MIN_OUTPUT_TOKENS, total - estimateMessagesTokens(messages) - CLOUDFLARE_SAFETY_MARGIN);
+  return Math.min(requested ?? room, room);
+}
+
+/**
  * OpenAI-compatible chat/completions body. Groq's GPT-OSS family counts
  * reasoning tokens against `max_completion_tokens`, so that field is used
  * instead of `max_tokens` on the Groq adapter.
@@ -110,6 +154,11 @@ export function buildCompatibleChatBody(
   if (options.providerId === "gemini") {
     Object.assign(body, geminiReasoningParams(request.reasoningEffort));
     body.max_tokens = geminiMaxOutputTokens(request.maxTokens, request.reasoningEffort);
+    return body;
+  }
+
+  if (options.providerId === "cloudflare") {
+    body.max_tokens = cloudflareMaxTokens(request.modelId, request.messages, request.maxTokens);
     return body;
   }
 

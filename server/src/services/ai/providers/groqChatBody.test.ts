@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildCompatibleChatBody,
+  cloudflareMaxTokens,
   GEMINI_LOW_THINKING_TOKEN_RESERVE,
   GEMINI_THINKING_TOKEN_RESERVE,
   geminiMaxOutputTokens,
@@ -111,5 +112,51 @@ describe("buildCompatibleChatBody", () => {
     expect(body).toMatchObject({ model: "gpt-4o-mini", max_tokens: 32 });
     expect(body).not.toHaveProperty("reasoning_effort");
     expect(body).not.toHaveProperty("max_completion_tokens");
+  });
+
+  it("sends Cloudflare requests through cloudflareMaxTokens, never a raw max_tokens", () => {
+    const body = buildCompatibleChatBody(
+      { ...request, providerId: "cloudflare", modelId: "@cf/meta/llama-3.3-70b-instruct-fp8-fast", maxTokens: 16_384 },
+      { stream: false, providerId: "cloudflare" },
+    );
+    // The tiny "Hi" prompt leaves nearly the whole 24k ceiling free, so the
+    // request should pass straight through, not get silently reduced.
+    expect(body).toMatchObject({ max_tokens: 16_384 });
+  });
+});
+
+describe("cloudflareMaxTokens", () => {
+  const model = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+
+  it("passes a small request through unclamped when there is plenty of room", () => {
+    const messages = [{ role: "user" as const, content: "Hi" }];
+    expect(cloudflareMaxTokens(model, messages, 1_024)).toBe(1_024);
+  });
+
+  it("shrinks the output ask once a long prompt has already used most of the 24k ceiling", () => {
+    // ~500 words * 20 messages is well past what remains of a 24k total after
+    // the 512-token safety margin, so the clamp must bite here.
+    const big = "word ".repeat(500);
+    const messages = Array.from({ length: 20 }, () => ({ role: "user" as const, content: big }));
+    const clamped = cloudflareMaxTokens(model, messages, 16_384);
+    expect(clamped).toBeLessThan(16_384);
+    expect(clamped).toBeGreaterThanOrEqual(256);
+  });
+
+  it("never returns below the minimum floor even when the prompt alone exceeds the ceiling", () => {
+    const messages = [{ role: "user" as const, content: "word ".repeat(50_000) }];
+    expect(cloudflareMaxTokens(model, messages, 16_384)).toBe(256);
+  });
+
+  it("falls back to the tightest known ceiling for a model id it does not recognise", () => {
+    const messages = [{ role: "user" as const, content: "Hi" }];
+    // Same numeric ceiling as the 70B model (24000), since an unverified model
+    // id gets the conservative default rather than an optimistic one.
+    expect(cloudflareMaxTokens("@cf/some/unlisted-model", messages, 30_000)).toBeLessThan(24_000);
+  });
+
+  it("clamps to the caller's own smaller ask rather than always maxing out the room", () => {
+    const messages = [{ role: "user" as const, content: "Hi" }];
+    expect(cloudflareMaxTokens(model, messages, 100)).toBe(100);
   });
 });

@@ -15,6 +15,7 @@ import {
   type ToolExecuteResult,
   type ToolManager,
 } from "../tools/ToolManager.js";
+import { contextManager } from "../chat/ContextManager.js";
 import { describeSelectedModel, withKenIdentity } from "../chat/identity.js";
 import type { AIProvider, AIResponse, GenerateRequest, StreamEvent } from "./AIProvider.js";
 import { createProviderAdapter } from "./createProviderAdapter.js";
@@ -404,8 +405,34 @@ export class AIProviderManager {
   private prepareRequest(request: GenerateRequest): GenerateRequest {
     const aliased = this.withAliasedModel(request);
     const resolved = this.withVisionModel(aliased);
-    const messages = withKenIdentity(resolved.messages, describeSelectedModel(resolved.modelId));
-    return messages === resolved.messages ? resolved : { ...resolved, messages };
+    const fitted = this.withProviderContextFit(resolved);
+    const messages = withKenIdentity(fitted.messages, describeSelectedModel(fitted.modelId));
+    return messages === fitted.messages ? fitted : { ...fitted, messages };
+  }
+
+  /**
+   * The chat service builds context once, sized for whichever model the turn
+   * *started* on — chatService.ts calls contextManager.build() a single time,
+   * before the fallback chain runs. That is fine as long as every hop's real
+   * window is roughly the same order of magnitude, which held until Cloudflare
+   * gained a 70B option with a real 24k-token ceiling: a turn that started on
+   * Gemini (sized for a 32k-token prompt) landing there via fallback would
+   * carry a prompt already bigger than the model's entire budget, input and
+   * output combined, and 400 on the one turn Cloudflare exists to save.
+   *
+   * Re-running the same trim here, scoped to whichever model is actually about
+   * to receive the request, is a cheap, pure, and idempotent way to make every
+   * hop respect its own real window rather than one built for the first hop.
+   * It is a no-op whenever the incoming messages already fit — which is the
+   * common case for every provider except this one.
+   */
+  private withProviderContextFit(request: GenerateRequest): GenerateRequest {
+    const messages = contextManager.build({
+      messages: request.messages,
+      providerId: request.providerId,
+      modelId: request.modelId,
+    });
+    return { ...request, messages };
   }
 
   private withAliasedModel(request: GenerateRequest): GenerateRequest {

@@ -1,5 +1,6 @@
 import type { ModelCapability, ProviderType } from "@Ken/shared";
 import {
+  CLOUDFLARE_QUALITY_MODEL_ID,
   CLOUDFLARE_VISION_MODEL_ID,
   DEFAULT_CEREBRAS_MODEL_ID,
   DEFAULT_CLOUDFLARE_MODEL_ID,
@@ -179,19 +180,32 @@ export const BUILT_IN_PROVIDERS: BuiltInProviderDefinition[] = [
     type: "openai-compatible",
     envKey: "CF_TOKEN",
     capabilities: ["text", "vision", "streaming"],
+    // Context windows below are each model's real ceiling from Cloudflare's own
+    // model pages, not a shared placeholder — they differ by nearly 5x across
+    // this one provider (24k for 70B vs 131k for Scout), and ContextManager
+    // reads this value per hop via withProviderContextFit, so getting it wrong
+    // here is what causes a real request to 400 once history grows.
     models: [
+      {
+        id: CLOUDFLARE_QUALITY_MODEL_ID,
+        name: "Llama 3.3 70B (Cloudflare)",
+        description: "Last-resort fallback once every other provider has failed. Real limit is 24k tokens, input and output combined.",
+        capabilities: TEXT_STREAM,
+        contextWindow: 24_000,
+      },
       {
         id: DEFAULT_CLOUDFLARE_MODEL_ID,
         name: "Llama 3.2 3B (Cloudflare)",
+        description: "Smaller and faster than the 70B fallback above; tried after it.",
         capabilities: TEXT_STREAM,
-        contextWindow: 128_000,
+        contextWindow: 80_000,
       },
       {
         id: CLOUDFLARE_VISION_MODEL_ID,
         name: "Llama 4 Scout (Cloudflare)",
         description: "Used for image prompts when Cloudflare is configured.",
         capabilities: ["text", "vision", "streaming"],
-        contextWindow: 128_000,
+        contextWindow: 131_000,
       },
     ],
   },

@@ -155,9 +155,23 @@ export function resolveDeepSeekModelId(modelId: string): string {
 
 export const DEFAULT_CEREBRAS_MODEL_ID = "llama-3.3-70b";
 
+/** Fast/small Cloudflare default — real 80k-token window, verified live against the API. */
 export const DEFAULT_CLOUDFLARE_MODEL_ID = "@cf/meta/llama-3.2-3b-instruct";
 
 export const CLOUDFLARE_VISION_MODEL_ID = "@cf/meta/llama-4-scout-17b-16e-instruct";
+
+/**
+ * Cloudflare only ever runs as the last hop in FREE_FALLBACK_CHAIN, after every
+ * other provider has failed — traffic there is rare enough that 70B's higher
+ * per-token price is negligible, so quality should win over speed here, unlike
+ * Groq's DEFAULT/QUALITY split which is about latency on a model that answers
+ * routine traffic directly. Real limit is 24,000 tokens input+output combined
+ * (verified live: a 100k-token request came back "max_total_tokens=24000"),
+ * far tighter than the other two Cloudflare models — see
+ * withProviderContextFit in AIProviderManager.ts and cloudflareMaxTokens in
+ * groqChatBody.ts, both of which exist specifically to respect this number.
+ */
+export const CLOUDFLARE_QUALITY_MODEL_ID = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 
 /** Heuristic token estimate used in the composer and server context trimmer (~4 chars/token). */
 export function estimatePromptTokens(text: string): number {
