@@ -1,5 +1,10 @@
+import { logger } from "../../config/logger.js";
 import { AppError } from "../../utils/AppError.js";
+import { redactSensitive } from "../../utils/redact.js";
 import type { GeneratedImage, ImageGenerationProvider, ImageGenerationRequest } from "./ImageGenerationProvider.js";
+
+const OPENAI_IMAGE_URL = "https://api.openai.com/v1/images/generations";
+const OPENAI_IMAGE_MODEL_ID = "dall-e-3";
 
 export class OpenAIImageProvider implements ImageGenerationProvider {
   readonly id = "openai";
@@ -15,54 +20,122 @@ export class OpenAIImageProvider implements ImageGenerationProvider {
   }
 
   async generate(request: ImageGenerationRequest): Promise<GeneratedImage> {
-    const response = await fetch("https://api.openai.com/v1/images/generations", {
+    const response = await fetch(OPENAI_IMAGE_URL, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${this.apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "dall-e-3",
+        model: OPENAI_IMAGE_MODEL_ID,
         prompt: request.prompt,
         size: "1024x1024",
         n: 1,
         response_format: "b64_json",
       }),
     });
-    if (!response.ok) {
-      throw new AppError("Image generation provider request failed", {
-        statusCode: 502,
-        code: "IMAGE_GENERATION_PROVIDER_ERROR",
-      });
+    const bodyText = await response.text().catch(() => "");
+    let body: unknown;
+    try {
+      body = bodyText ? JSON.parse(bodyText) : undefined;
+    } catch {
+      body = undefined;
     }
-    const body = (await response.json()) as {
-      data?: Array<{ b64_json?: string; url?: string }>;
-    };
-    const item = body.data?.[0];
-    if (item?.b64_json) {
+    if (!response.ok) {
+      logger.warn(
+        {
+          status: response.status,
+          model: OPENAI_IMAGE_MODEL_ID,
+          body: redactSensitive(bodyText).slice(0, 240),
+        },
+        "openai image generation failed",
+      );
+      throw openaiHttpError(response.status, body);
+    }
+    const item = extractOpenAIImage(body);
+    if (item?.b64) {
       return {
         mimeType: "image/png",
-        buffer: Buffer.from(item.b64_json, "base64"),
+        buffer: Buffer.from(item.b64, "base64"),
         prompt: request.prompt,
       };
     }
     if (item?.url) {
-      const image = await fetch(item.url);
-      if (!image.ok) {
-        throw new AppError("Image generation provider request failed", {
-          statusCode: 502,
-          code: "IMAGE_GENERATION_PROVIDER_ERROR",
-        });
-      }
-      return {
-        mimeType: image.headers.get("content-type") || "image/png",
-        buffer: Buffer.from(await image.arrayBuffer()),
-        prompt: request.prompt,
-      };
+      return fetchRemoteImage(item.url, request.prompt);
     }
+    logger.warn({ status: response.status, model: OPENAI_IMAGE_MODEL_ID }, "openai returned no image bytes");
     throw new AppError("Image generation provider returned no image", {
       statusCode: 502,
       code: "IMAGE_GENERATION_PROVIDER_ERROR",
+      expose: true,
     });
   }
+}
+
+async function fetchRemoteImage(url: string, prompt: string): Promise<GeneratedImage> {
+  const image = await fetch(url);
+  if (!image.ok) {
+    const body = await image.text().catch(() => "");
+    logger.warn(
+      {
+        status: image.status,
+        model: OPENAI_IMAGE_MODEL_ID,
+        body: redactSensitive(body).slice(0, 240),
+      },
+      "openai image URL fetch failed",
+    );
+    throw new AppError("Image generation provider request failed", {
+      statusCode: 502,
+      code: "IMAGE_GENERATION_PROVIDER_ERROR",
+      expose: true,
+    });
+  }
+  return {
+    mimeType: image.headers.get("content-type") || "image/png",
+    buffer: Buffer.from(await image.arrayBuffer()),
+    prompt,
+  };
+}
+
+function openaiHttpError(status: number, body: unknown): AppError {
+  const vendor = extractOpenAIError(body);
+  if (status === 429 || /insufficient_quota|exceeded your current quota/i.test(vendor ?? "")) {
+    return new AppError("OpenAI image generation is out of quota. Wait a bit, or check the OpenAI plan.", {
+      statusCode: 429,
+      code: "IMAGE_GENERATION_PROVIDER_ERROR",
+      expose: true,
+      extra: { httpStatus: 429, errorClass: "quota_exceeded" },
+    });
+  }
+  if (status === 401 || status === 403) {
+    return new AppError("OpenAI rejected the image request. Check IMAGE_GENERATION_API_KEY or OPENAI_API_KEY.", {
+      statusCode: 502,
+      code: "IMAGE_GENERATION_PROVIDER_ERROR",
+      expose: true,
+    });
+  }
+  return new AppError(
+    vendor ? `Image generation failed. ${vendor.slice(0, 200)}` : "Image generation provider request failed",
+    { statusCode: 502, code: "IMAGE_GENERATION_PROVIDER_ERROR", expose: true },
+  );
+}
+
+export function extractOpenAIError(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== "object") return undefined;
+  const error = (payload as { error?: { message?: string } | string }).error;
+  if (typeof error === "string" && error.trim()) return error;
+  if (error && typeof error === "object" && typeof error.message === "string" && error.message.trim()) {
+    return error.message;
+  }
+  return undefined;
+}
+
+function extractOpenAIImage(payload: unknown): { b64?: string; url?: string } | undefined {
+  if (!payload || typeof payload !== "object") return undefined;
+  const data = (payload as { data?: Array<{ b64_json?: string; url?: string }> }).data;
+  const item = Array.isArray(data) ? data[0] : undefined;
+  if (!item) return undefined;
+  if (typeof item.b64_json === "string" && item.b64_json) return { b64: item.b64_json };
+  if (typeof item.url === "string" && item.url) return { url: item.url };
+  return undefined;
 }

@@ -178,9 +178,10 @@ export async function resolveCredentials(
   // An admin's explicitly stored base URL still wins — the gateway only
   // redirects providers that were otherwise going to their vendor default.
   const baseUrl =
-    providerId === "cloudflare"
-      ? (stored?.baseUrl ?? cloudflareBaseUrl() ?? builtIn?.defaultBaseUrl)
-      : (stored?.baseUrl ?? gatewayBaseUrl(providerId) ?? builtIn?.defaultBaseUrl);
+    stored?.baseUrl ??
+    gatewayBaseUrl(providerId) ??
+    (providerId === "cloudflare" ? cloudflareBaseUrl() : undefined) ??
+    builtIn?.defaultBaseUrl;
   const capabilities = stored?.capabilities.length ? stored.capabilities : (builtIn?.capabilities ?? []);
 
   if (userId) {

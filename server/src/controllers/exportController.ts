@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { exportFormatSchema } from "@Ken/shared";
+import { exportAllConversationsQuerySchema, exportConversationQuerySchema } from "@Ken/shared";
 import { AppError } from "../utils/AppError.js";
 import { exportAllConversations, exportConversation } from "../services/export/exportService.js";
 
@@ -20,13 +20,13 @@ function sendExport(
 }
 
 export async function exportConversationHandler(req: Request, res: Response): Promise<void> {
-  const format = exportFormatSchema.parse(typeof req.query.format === "string" ? req.query.format : "md");
+  const { format } = exportConversationQuerySchema.parse(req.query);
   const file = await exportConversation(requireUserId(req), req.params.id ?? "", format);
   sendExport(res, file);
 }
 
 export async function exportAllConversationsHandler(req: Request, res: Response): Promise<void> {
-  const format = exportFormatSchema.parse(typeof req.query.format === "string" ? req.query.format : "json");
+  const { format } = exportAllConversationsQuerySchema.parse(req.query);
   const file = await exportAllConversations(requireUserId(req), format);
   sendExport(res, file);
 }

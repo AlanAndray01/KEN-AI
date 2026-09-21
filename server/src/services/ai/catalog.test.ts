@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  CLOUDFLARE_IMAGE_MODEL_ID,
   CLOUDFLARE_QUALITY_MODEL_ID,
+  CLOUDFLARE_TINY_MODEL_ID,
   CLOUDFLARE_VISION_MODEL_ID,
   DEFAULT_CLOUDFLARE_MODEL_ID,
   DEFAULT_GEMINI_MODEL_ID,
@@ -46,12 +48,81 @@ describe("Cloudflare catalog", () => {
     expect(byId.get(CLOUDFLARE_VISION_MODEL_ID)?.contextWindow).toBe(131_000);
   });
 
+  it("exposes the Workers AI chat models that answered 200 on this account", () => {
+    // Paid-plan and agreement-gated ids were verified 403 live and must stay
+    // out of the picker — listing them is how a click becomes an immediate fail.
+    const ids = getBuiltInProvider("cloudflare")!.models.map((model) => model.id);
+    expect(ids).toEqual(expect.arrayContaining([
+      "@cf/openai/gpt-oss-120b",
+      "@cf/qwen/qwen3.8-27b",
+      "@cf/qwen/qwen2.5-coder-32b-instruct",
+      "@cf/google/gemma-4-26b-a4b-it",
+    ]));
+    expect(ids).not.toContain("@cf/moonshotai/kimi-k2.6");
+    expect(ids).not.toContain("@cf/zai-org/glm-5.3");
+    expect(ids).toContain(CLOUDFLARE_IMAGE_MODEL_ID);
+    expect(getBuiltInProvider("cloudflare")!.models.find((model) => model.id === CLOUDFLARE_IMAGE_MODEL_ID)?.capabilities).toEqual([
+      "imageGeneration",
+    ]);
+  });
+
   it("lists the quality model before the small default, matching fallback priority", () => {
     // Cloudflare only ever runs as the last hop once everything else has
-    // failed, so it should prefer the 70B model over the 3B one — this is the
-    // order pickConfiguredModel walks in primaryModel.ts.
+    // failed. The picker still lists 70B first so a manual choice can pick
+    // quality; automatic fallback is the cheap 3B/1B pair (primaryModel.ts).
     const cloudflare = getBuiltInProvider("cloudflare");
     const ids = cloudflare!.models.map((model) => model.id);
     expect(ids.indexOf(CLOUDFLARE_QUALITY_MODEL_ID)).toBeLessThan(ids.indexOf(DEFAULT_CLOUDFLARE_MODEL_ID));
+  });
+
+  it("tags Scout with vision and leaves text-only Llama tiers without it", () => {
+    const cloudflare = getBuiltInProvider("cloudflare");
+    const byId = new Map(cloudflare!.models.map((model) => [model.id, model]));
+    expect(byId.get(CLOUDFLARE_VISION_MODEL_ID)?.capabilities).toEqual(
+      expect.arrayContaining(["text", "vision", "streaming"]),
+    );
+    expect(byId.get(DEFAULT_CLOUDFLARE_MODEL_ID)?.capabilities).not.toContain("vision");
+  });
+
+  it("keeps every live-traffic Cloudflare id in the catalog, once", () => {
+    const ids = getBuiltInProvider("cloudflare")!.models.map((model) => model.id);
+    expect(ids).toEqual(
+      expect.arrayContaining([
+        CLOUDFLARE_QUALITY_MODEL_ID,
+        DEFAULT_CLOUDFLARE_MODEL_ID,
+        CLOUDFLARE_TINY_MODEL_ID,
+        CLOUDFLARE_VISION_MODEL_ID,
+        CLOUDFLARE_IMAGE_MODEL_ID,
+      ]),
+    );
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("does not list embeddings, SDXL, or agreement-gated vision as chat ids", () => {
+    const ids = getBuiltInProvider("cloudflare")!.models.map((model) => model.id);
+    expect(ids).not.toContain("@cf/baai/bge-small-en-v1.5");
+    expect(ids).not.toContain("@cf/stabilityai/stable-diffusion-xl-base-1.0");
+    expect(ids).not.toContain("@cf/meta/llama-3.2-11b-vision-instruct");
+  });
+
+  it("sends Flux through image generation only, never as a /chat/completions id", () => {
+    const flux = getBuiltInProvider("cloudflare")!.models.find((model) => model.id === CLOUDFLARE_IMAGE_MODEL_ID);
+    expect(flux?.capabilities).toEqual(["imageGeneration"]);
+    expect(flux?.capabilities).not.toContain("text");
+  });
+});
+
+describe("OpenAI and OpenRouter catalog", () => {
+  it("marks GPT-4o variants as vision and file capable", () => {
+    const openai = getBuiltInProvider("openai");
+    for (const model of openai!.models) {
+      expect(model.capabilities).toEqual(expect.arrayContaining(["vision", "files"]));
+    }
+  });
+
+  it("marks OpenRouter GPT-4o mini as vision-capable so image_url is allowed", () => {
+    const openrouter = getBuiltInProvider("openrouter");
+    const mini = openrouter!.models.find((model) => model.id === "openai/gpt-4o-mini");
+    expect(mini?.capabilities).toEqual(expect.arrayContaining(["vision"]));
   });
 });

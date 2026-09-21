@@ -7,13 +7,15 @@ import {
   type FormEvent,
   type KeyboardEvent,
 } from "react";
-import { AudioLines, Globe, Image as ImageIcon, Mic, Plus, Send, Square, X } from "lucide-react";
-import { estimatePromptTokens, type ModelCapability, type PublicFile } from "@Ken/shared";
+import { X } from "lucide-react";
+import type { ModelCapability, PublicFile } from "@Ken/shared";
 import { AttachmentChips } from "@/components/AttachmentChips";
+import { ComposerMentions } from "@/components/ComposerMentions";
+import { ComposerToolbar } from "@/components/ComposerToolbar";
 import { cn } from "@/utils/cn";
-import { composerAccept } from "@/utils/attachmentGate";
+import { filesFromClipboard } from "@/utils/composerPaste";
 import { applyMention, filterMentions, mentionTokenAt, type MentionCandidate } from "@/utils/mentions";
-import { isCoarsePointer, shouldSubmitOnKey, submitModifierLabel } from "@/utils/keyboard";
+import { isCoarsePointer, shouldSubmitOnKey } from "@/utils/keyboard";
 
 interface ChatComposerProps {
   value: string;
@@ -159,17 +161,6 @@ export function ChatComposer({
     if (!busy && canSend) onSubmit();
   }
 
-  /** Gives a clipboard payload a stable, human name; it usually has none. */
-  function named(file: File): File {
-    if (file.name && file.name !== "image.png" && file.name !== "blob") return file;
-    const extension = file.type.split("/")[1]?.split("+")[0] ?? "png";
-    const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-    return new File([file], `pasted-${stamp}.${extension}`, {
-      type: file.type,
-      lastModified: file.lastModified,
-    });
-  }
-
   function takeFiles(list: FileList | File[]): void {
     const next = [...list];
     if (next.length === 0) return;
@@ -179,39 +170,24 @@ export function ChatComposer({
   /**
    * Ctrl/Cmd+V of an image or document, on every viewport.
    *
-   * Both collections are read: Chrome and Firefox populate `files`, while Safari
-   * (desktop and iOS) only fills `items`, so a screenshot pasted on an iPad
-   * arrives through the second path alone. Entries are de-duplicated because a
-   * browser may list the same payload in both.
-   *
-   * The default is only prevented when the clipboard carries no text. A paste
-   * holding both - copying a cell out of a spreadsheet, say - still types its
-   * text and attaches its image, and an ordinary text paste is never touched.
+   * preventDefault runs as soon as clipboard files exist so the browser cannot
+   * fire a second paste/drop of the same image. Text that arrived with the
+   * files is inserted by hand after that.
    */
   function onPaste(event: ClipboardEvent<HTMLFormElement>): void {
     if (streaming || disabled || !onAddFiles) return;
     const clipboard = event.clipboardData;
     if (!clipboard) return;
-
-    const seen = new Set<string>();
-    const files: File[] = [];
-    const collect = (file: File | null): void => {
-      if (!file || file.size === 0) return;
-      const key = `${file.name}:${file.size}:${file.type}:${file.lastModified}`;
-      if (seen.has(key)) return;
-      seen.add(key);
-      files.push(named(file));
-    };
-
-    for (const item of clipboard.items ?? []) {
-      if (item.kind === "file") collect(item.getAsFile());
-    }
-    for (const file of clipboard.files ?? []) collect(file);
-
+    const files = filesFromClipboard(clipboard);
     if (files.length === 0) return;
-    // A screenshot has no filename of its own, so the chip would read "image.png"
-    // for every paste in the thread.
-    if (!clipboard.getData("text")) event.preventDefault();
+    event.preventDefault();
+    const text = clipboard.getData("text");
+    if (text) {
+      const start = textareaRef.current?.selectionStart ?? value.length;
+      const end = textareaRef.current?.selectionEnd ?? start;
+      onChange(value.slice(0, start) + text + value.slice(end));
+      setCursor(start + text.length);
+    }
     takeFiles(files);
   }
 
@@ -294,129 +270,32 @@ export function ChatComposer({
           onKeyDown={onKeyDown}
         />
         {mentionOpen ? (
-          <ul
-            id="composer-mentions"
-            role="listbox"
-            aria-label="Mention a GPT"
-            className="mx-3 mb-2 max-h-48 overflow-y-auto rounded-xl border border-border bg-canvas py-1"
-          >
-            {mentionMatches.map((item, index) => (
-              <li key={item.id}>
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={index === mentionIndex}
-                  className={cn(
-                    "flex w-full flex-col px-3 py-2 text-left text-sm hover:bg-surface-muted",
-                    index === mentionIndex && "bg-surface-muted",
-                  )}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => chooseMention(item)}
-                >
-                  <span className="font-medium">@{item.name}</span>
-                  {item.description ? <span className="text-xs text-fg-muted">{item.description}</span> : null}
-                </button>
-              </li>
-            ))}
-          </ul>
+          <ComposerMentions items={mentionMatches} activeIndex={mentionIndex} onChoose={chooseMention} />
         ) : null}
-        <div className="composer-toolbar flex items-center justify-between px-3 pb-2">
-          <div className="composer-tools flex items-center gap-1">
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              hidden
-              accept={composerAccept(capabilities)}
-              onChange={(event) => {
-                takeFiles(event.target.files ?? []);
-                event.target.value = "";
-              }}
-            />
-            <button
-              type="button"
-              className="rounded-lg p-2 text-fg-muted hover:bg-surface-muted hover:text-fg disabled:opacity-40"
-              aria-label="Attach files"
-              title="Attach images or documents. If this model cannot read them, Ken routes the turn to a vision-capable model."
-              disabled={streaming || disabled || !onAddFiles}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <Plus className="size-4" />
-            </button>
-            <button
-              type="button"
-              className={cn(
-                "rounded-lg p-2 hover:bg-surface-muted disabled:opacity-40",
-                webSearchEnabled ? "text-accent" : "text-fg-muted hover:text-fg",
-              )}
-              aria-label="Web search"
-              aria-pressed={webSearchEnabled}
-              title={webSearchDisabledReason ?? (webSearchEnabled ? "Disable web search" : "Search the web")}
-              disabled={streaming || disabled || Boolean(webSearchDisabledReason) || !onToggleWebSearch}
-              onClick={onToggleWebSearch}
-            >
-              <Globe className="size-4" />
-            </button>
-            <button
-              type="button"
-              className="rounded-lg p-2 text-fg-muted hover:bg-surface-muted hover:text-fg disabled:opacity-40"
-              aria-label="Generate image"
-              title={imageDisabledReason ?? "Generate an image from this prompt"}
-              disabled={streaming || disabled || generatingImage || Boolean(imageDisabledReason) || !onGenerateImage}
-              onClick={onGenerateImage}
-            >
-              <ImageIcon className="size-4" />
-            </button>
-            <button
-              type="button"
-              className={cn(
-                "rounded-lg p-2 hover:bg-surface-muted disabled:opacity-40",
-                recording ? "text-accent" : "text-fg-muted hover:text-fg",
-              )}
-              aria-label={recording ? "Stop recording" : "Voice input"}
-              title={voiceDisabledReason ?? (recording ? "Stop recording" : "Dictate a message")}
-              disabled={streaming || disabled || Boolean(voiceDisabledReason) || !onVoiceInput}
-              onClick={onVoiceInput}
-            >
-              <Mic className="size-4" />
-            </button>
-            <p className="composer-hint px-1 text-[11px] text-fg-muted">
-              {sendOnEnter ? "Enter to send · Shift+Enter for a new line" : `${submitModifierLabel()}+Enter to send · Enter for a new line`}
-              {value.trim() ? ` · ~${estimatePromptTokens(value)} tokens` : ""}
-            </p>
-          </div>
-          <div className="composer-actions flex items-center gap-2">
-            <button
-              type="button"
-              className="inline-flex size-9 items-center justify-center rounded-full border border-border text-fg-muted hover:bg-surface-muted hover:text-fg disabled:opacity-40"
-              aria-label="Live voice chat"
-              title={liveVoiceDisabledReason ?? "Talk to KEN hands-free"}
-              disabled={streaming || disabled || Boolean(liveVoiceDisabledReason) || !onLiveVoice}
-              onClick={onLiveVoice}
-            >
-              <AudioLines className="size-4" />
-            </button>
-            {streaming ? (
-              <button
-                type="button"
-                className="inline-flex size-9 items-center justify-center rounded-full border border-border text-fg hover:bg-surface-muted"
-                aria-label="Stop generating"
-                onClick={onStop}
-              >
-                <Square className="size-3.5 fill-current" />
-              </button>
-            ) : (
-              <button
-                type="submit"
-                disabled={disabled || uploading || generatingImage || !canSend}
-                aria-label="Send"
-                className="inline-flex size-9 items-center justify-center rounded-full bg-accent text-accent-fg disabled:opacity-40"
-              >
-                <Send className="size-4" />
-              </button>
-            )}
-          </div>
-        </div>
+        <ComposerToolbar
+          fileInputRef={fileInputRef}
+          capabilities={capabilities}
+          streaming={streaming}
+          disabled={disabled}
+          uploading={uploading}
+          generatingImage={generatingImage}
+          canSend={canSend}
+          sendOnEnter={sendOnEnter}
+          value={value}
+          webSearchEnabled={webSearchEnabled}
+          recording={recording}
+          onTakeFiles={takeFiles}
+          onStop={onStop}
+          {...(webSearchDisabledReason ? { webSearchDisabledReason } : {})}
+          {...(imageDisabledReason ? { imageDisabledReason } : {})}
+          {...(voiceDisabledReason ? { voiceDisabledReason } : {})}
+          {...(liveVoiceDisabledReason ? { liveVoiceDisabledReason } : {})}
+          {...(onAddFiles ? { onAddFiles } : {})}
+          {...(onToggleWebSearch ? { onToggleWebSearch } : {})}
+          {...(onGenerateImage ? { onGenerateImage } : {})}
+          {...(onVoiceInput ? { onVoiceInput } : {})}
+          {...(onLiveVoice ? { onLiveVoice } : {})}
+        />
       </div>
     </form>
   );

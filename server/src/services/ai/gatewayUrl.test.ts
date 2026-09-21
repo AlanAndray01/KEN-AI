@@ -28,12 +28,16 @@ describe("AI Gateway routing", () => {
   it("stays off until a gateway token is configured", async () => {
     const { module, restore } = await loadWith({
       CF_ACCOUNT_ID: "acct123",
-      CF_AI_GATEWAY_TOKEN: undefined,
+      // Empty, not deleted: dotenv refills a deleted key from the real .env.
+      CF_AI_GATEWAY_TOKEN: "",
     });
     // The whole point of the switch: without a token every provider keeps the
     // direct endpoint it is already known to work against.
     expect(module.gatewayEnabled()).toBe(false);
     expect(module.gatewayBaseUrl("groq")).toBeUndefined();
+    // Native Gemini keeps its direct Google host too, rather than being
+    // pointed at a gateway that is switched off.
+    expect(module.gatewayGeminiNativeBaseUrl()).toBeUndefined();
     restore();
   });
 
@@ -47,8 +51,15 @@ describe("AI Gateway routing", () => {
     expect(module.gatewayBaseUrl("groq")).toBe(
       "https://gateway.ai.cloudflare.com/v1/acct123/ken-ai-gateway/groq",
     );
-    // Cloudflare's slug for Gemini is not the name we use for it internally.
+    // Cloudflare's slug for Gemini is not the name we use for it internally,
+    // and the gateway proxies Google's own path shape rather than flattening
+    // it: the bare slug 404s, the suffixed one answers 200 (both verified live).
     expect(module.gatewayBaseUrl("gemini")).toBe(
+      "https://gateway.ai.cloudflare.com/v1/acct123/ken-ai-gateway/google-ai-studio/v1beta/openai",
+    );
+    // Native generateContent uses the slug plus `/v1/models/...` (Cloudflare's
+    // Google AI Studio native path), not the `/v1beta` prefix the compat hop needs.
+    expect(module.gatewayGeminiNativeBaseUrl()).toBe(
       "https://gateway.ai.cloudflare.com/v1/acct123/ken-ai-gateway/google-ai-studio",
     );
     expect(module.gatewayBaseUrl("openrouter")).toBe(
@@ -62,9 +73,13 @@ describe("AI Gateway routing", () => {
       CF_ACCOUNT_ID: "acct123",
       CF_AI_GATEWAY_TOKEN: "aig-token",
     });
-    // Cloudflare's own models already run on Cloudflare and are addressed on a
-    // different path shape; DeepSeek simply has no slug.
-    expect(module.gatewayBaseUrl("cloudflare")).toBeUndefined();
+    expect(module.gatewayBaseUrl("cloudflare")).toBe(
+      "https://gateway.ai.cloudflare.com/v1/acct123/ken-ai-gateway/workers-ai/v1",
+    );
+    expect(module.gatewayWorkersAiRunUrl("@cf/black-forest-labs/flux-1-schnell")).toBe(
+      "https://gateway.ai.cloudflare.com/v1/acct123/ken-ai-gateway/workers-ai/@cf/black-forest-labs/flux-1-schnell",
+    );
+    // DeepSeek simply has no slug.
     expect(module.gatewayBaseUrl("deepseek")).toBeUndefined();
     restore();
   });

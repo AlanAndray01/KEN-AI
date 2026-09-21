@@ -12,12 +12,28 @@ export async function recordUsage(input: {
   conversationId?: string;
   inputTokens?: number;
   outputTokens?: number;
+  estimatedInputTokens?: number;
   durationMs: number;
   deepCode?: boolean;
   success: boolean;
   errorCode?: string;
   route: string;
 }): Promise<void> {
+  const promptTokens = input.inputTokens ?? input.estimatedInputTokens;
+  logger.info(
+    {
+      providerId: input.providerId,
+      modelId: input.modelId,
+      route: input.route,
+      prompt_tokens: promptTokens,
+      completion_tokens: input.outputTokens,
+      prompt_tokens_source: input.inputTokens !== undefined ? "provider" : input.estimatedInputTokens !== undefined ? "estimate" : "missing",
+      success: input.success,
+      ...(input.errorCode ? { errorCode: input.errorCode } : {}),
+    },
+    "generation token usage",
+  );
+
   try {
     await UsageRecord.create({
       userId: input.userId,
@@ -25,7 +41,11 @@ export async function recordUsage(input: {
       modelId: input.modelId,
       ...(input.conversationId ? { conversationId: input.conversationId } : {}),
       requestCount: 1,
-      ...(input.inputTokens !== undefined ? { inputTokens: input.inputTokens } : {}),
+      ...(input.inputTokens !== undefined
+        ? { inputTokens: input.inputTokens }
+        : input.estimatedInputTokens !== undefined
+          ? { inputTokens: input.estimatedInputTokens }
+          : {}),
       ...(input.outputTokens !== undefined ? { outputTokens: input.outputTokens } : {}),
       durationMs: input.durationMs,
       deepCode: input.deepCode === true,
@@ -37,7 +57,7 @@ export async function recordUsage(input: {
     logger.error({ err: toSafeError(error) }, "Failed to record usage");
   }
 
-  const totalTokens = (input.inputTokens ?? 0) + (input.outputTokens ?? 0);
+  const totalTokens = (promptTokens ?? 0) + (input.outputTokens ?? 0);
   if (!input.success || totalTokens <= 0) return;
   try {
     const resolved = await resolveCredentials(input.providerId, input.userId);

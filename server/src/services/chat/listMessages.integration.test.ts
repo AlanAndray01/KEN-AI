@@ -55,8 +55,8 @@ async function seedTiedPairs(pairs: number): Promise<void> {
 }
 
 const contents = async (limit?: number): Promise<string[]> => {
-  const list = await listMessages(userId, conversationId, limit ? { limit } : {});
-  return list.map((message) => message.content);
+  const page = await listMessages(userId, conversationId, limit ? { limit } : {});
+  return page.messages.map((message) => message.content);
 };
 
 describe.skipIf(!mongo.ok)("listMessages ordering (real MongoDB)", () => {
@@ -112,5 +112,27 @@ describe.skipIf(!mongo.ok)("listMessages ordering (real MongoDB)", () => {
     expect(all).toHaveLength(50);
     expect(all[0]).toBe("q0");
     expect(all.at(-1)).toBe("a24");
+  });
+
+  it("pages oldest-first with hasMore instead of sending the whole thread", async () => {
+    await seedTiedPairs(4);
+
+    const newest = await listMessages(userId, conversationId, { limit: 2 });
+    expect(newest.messages.map((message) => message.content)).toEqual(["q3", "a3"]);
+    expect(newest.hasMore).toBe(true);
+
+    const older = await listMessages(userId, conversationId, {
+      limit: 2,
+      before: newest.messages[0]?.id,
+    });
+    expect(older.messages.map((message) => message.content)).toEqual(["q2", "a2"]);
+    expect(older.hasMore).toBe(true);
+
+    const rest = await listMessages(userId, conversationId, {
+      limit: 4,
+      before: older.messages[0]?.id,
+    });
+    expect(rest.messages.map((message) => message.content)).toEqual(["q0", "a0", "q1", "a1"]);
+    expect(rest.hasMore).toBe(false);
   });
 });

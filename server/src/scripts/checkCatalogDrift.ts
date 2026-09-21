@@ -1,5 +1,9 @@
 import { BUILT_IN_PROVIDERS } from "../services/ai/catalog.js";
 import { cloudflareBaseUrl, getEnvApiKey } from "../services/ai/credentials.js";
+import { cloudflareModelsUrl, parseCloudflareModelIds } from "../services/ai/providers/cloudflareModels.js";
+
+/** Upper bound on Workers AI listing pages, so a paging bug cannot loop forever. */
+const MAX_MODEL_PAGES = 20;
 
 /**
  * Diffs the hardcoded model catalog (catalog.ts) against what each provider's
@@ -25,7 +29,25 @@ interface SkippedReport {
   skipped: string;
 }
 
-async function fetchLiveModelIds(baseUrl: string, apiKey: string): Promise<string[]> {
+async function fetchLiveModelIds(baseUrl: string, apiKey: string, providerId: string): Promise<string[]> {
+  // Workers AI has no OpenAI-style listing route and answers 405 there, which
+  // used to skip Cloudflare on every run. Its own route also pages, and the
+  // catalogue is longer than one page.
+  const cloudflareUrl = providerId === "cloudflare" ? cloudflareModelsUrl(baseUrl) : undefined;
+  if (cloudflareUrl) {
+    const ids: string[] = [];
+    for (let page = 1; page <= MAX_MODEL_PAGES; page += 1) {
+      const response = await fetch(`${cloudflareUrl}?per_page=50&page=${page}`, {
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const pageIds = parseCloudflareModelIds(await response.json());
+      if (pageIds.length === 0) break;
+      ids.push(...pageIds);
+    }
+    return ids;
+  }
+
   const response = await fetch(`${baseUrl.replace(/\/$/, "")}/models`, {
     headers: { Authorization: `Bearer ${apiKey}` },
   });
@@ -53,7 +75,7 @@ async function checkProvider(providerId: string): Promise<DriftReport | SkippedR
   const apiKey = getEnvApiKey(providerId);
   if (!apiKey) return { providerId, skipped: "no platform key configured" };
 
-  const liveIds = new Set(await fetchLiveModelIds(baseUrl, apiKey));
+  const liveIds = new Set(await fetchLiveModelIds(baseUrl, apiKey, providerId));
   const catalogIds = builtIn.models.map((model) => model.id);
   return {
     providerId,

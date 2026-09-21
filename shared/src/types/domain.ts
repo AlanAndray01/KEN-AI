@@ -76,6 +76,8 @@ export interface PublicAIModel {
   name: string;
   description?: string;
   capabilities: ModelCapability[];
+  /** Short human label for the picker, derived from `capabilities` and the id. */
+  capability: string;
   contextWindow?: number;
   enabled: boolean;
   available: boolean;

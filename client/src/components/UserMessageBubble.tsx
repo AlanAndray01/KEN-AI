@@ -2,7 +2,6 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Check, ChevronDown, Copy, Pencil } from "lucide-react";
 import { DeferredMarkdown } from "@/components/DeferredMarkdown";
 import { cn } from "@/utils/cn";
-import { shouldSubmitOnKey } from "@/utils/keyboard";
 
 /**
  * A user turn, collapsed when it is long, with copy and edit controls.
@@ -244,30 +243,16 @@ function MessageEditor({
         value={value}
         onChange={(event) => setValue(event.target.value)}
         onKeyDown={(event) => {
-          // Same rule as the composer: Ctrl/⌘+Enter sends and Enter is a newline.
-          // The editor ignores the Enter-to-send opt-in: resubmitting an edit
-          // regenerates the reply, so an accidental send is expensive here.
-          if (
-            shouldSubmitOnKey(
-              {
-                key: event.key,
-                shiftKey: event.shiftKey,
-                ctrlKey: event.ctrlKey,
-                metaKey: event.metaKey,
-                altKey: event.altKey,
-                isComposing: event.nativeEvent.isComposing,
-              },
-              { sendOnEnter: false },
-            )
-          ) {
-            event.preventDefault();
-            submit();
-            return;
-          }
           if (event.key === "Escape") {
             event.preventDefault();
             onCancel();
+            return;
           }
+          if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing || event.altKey) {
+            return;
+          }
+          event.preventDefault();
+          submit();
         }}
         enterKeyHint="enter"
         aria-label="Edit your message"

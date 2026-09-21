@@ -25,7 +25,7 @@ describe("ContextManager", () => {
     expect(tokens).toBeLessThan(120);
   });
 
-  it("keeps a real conversation when the model window is huge and the turns are small", () => {
+  it("caps a long cheap-token thread at the ten-turn window", () => {
     const manager = new ContextManager();
     const messages = [
       { role: "system" as const, content: "Stay brief" },
@@ -42,12 +42,11 @@ describe("ContextManager", () => {
       contextWindow: 1_000_000,
     });
 
-    // Short turns cost almost nothing, so nothing should be thrown away here.
-    // Cutting this to three exchanges regardless of room is what made a long
-    // thread forget itself.
+    // Ten-turn window: the oldest exchanges fall off even when the model could
+    // physically hold them. That is the Cloudflare neuron budget talking.
     const history = result.filter((message) => message.role !== "system");
-    expect(history.length).toBe(19);
-    expect(history[0]?.content).toBe("turn-0");
+    expect(history.length).toBeLessThanOrEqual(MAX_HISTORY_MESSAGES);
+    expect(history.some((message) => message.content === "turn-0")).toBe(false);
     expect(history.at(-1)?.role).toBe("user");
     expect(history.at(-1)?.content).toBe("turn-18");
   });
@@ -107,6 +106,26 @@ describe("ContextManager", () => {
     expect(cost(gemini)).toBeGreaterThan(cost(groq));
   });
 
+  it("honours a tighter maxInputTokens and history cap from the neuron guardrail", () => {
+    const manager = new ContextManager();
+    const messages = Array.from({ length: 10 }, (_, index) => ({
+      role: (index % 2 === 0 ? "user" : "assistant") as "user" | "assistant",
+      content: `turn-${index} ${"word ".repeat(40)}`,
+    }));
+    const result = manager.build({
+      messages,
+      modelId: "@cf/meta/llama-3.2-3b-instruct",
+      providerId: "cloudflare",
+      contextWindow: 80_000,
+      maxInputTokens: 1_536,
+      maxHistoryMessages: 4,
+    });
+    const history = result.filter((message) => message.role !== "system");
+    expect(history.length).toBeLessThanOrEqual(4);
+    const tokens = history.reduce((sum, message) => sum + estimateTokens(message.content) + 4, 0);
+    expect(tokens).toBeLessThanOrEqual(1_536);
+  });
+
   it("strips a trailing assistant turn so Gemini is not sent a model-ending history", () => {
     const manager = new ContextManager();
     const result = manager.build({
@@ -144,5 +163,66 @@ describe("ContextManager", () => {
     expect(result.filter((message) => message.role !== "system").length).toBeLessThanOrEqual(
       MAX_HISTORY_MESSAGES,
     );
+  });
+
+  it("caps Cloudflare input at 4096 tokens so a 70B hop cannot empty the neuron day", () => {
+    const manager = new ContextManager();
+    const messages = [
+      ...Array.from({ length: 10 }, (_, index) => ({
+        role: (index % 2 === 0 ? "user" : "assistant") as "user" | "assistant",
+        content: "x".repeat(8_000),
+      })),
+      { role: "user" as const, content: "newest question" },
+    ];
+    const result = manager.build({
+      messages,
+      modelId: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+      providerId: "cloudflare",
+      contextWindow: 24_000,
+    });
+    const tokens = result.reduce((sum, message) => sum + estimateTokens(message.content) + 4, 0);
+    expect(tokens).toBeLessThanOrEqual(4_096);
+  });
+
+  it("drops earlier base64 images on a text-only follow-up", () => {
+    const manager = new ContextManager();
+    const result = manager.build({
+      messages: [
+        {
+          role: "user",
+          content: "draw a cat",
+          parts: [{ type: "inline", mimeType: "image/jpeg", data: "A".repeat(80_000) }],
+        },
+        { role: "assistant", content: "Here is the cat." },
+        { role: "user", content: "thanks" },
+      ],
+      modelId: "@cf/meta/llama-3.2-3b-instruct",
+      providerId: "cloudflare",
+      contextWindow: 80_000,
+    });
+    expect(result.some((message) => message.parts?.length)).toBe(false);
+    expect(result.some((message) => message.content.includes("omitted"))).toBe(true);
+    expect(result.at(-1)?.content).toBe("thanks");
+  });
+
+  it("keeps the current turn's image when the user actually attached one", () => {
+    const manager = new ContextManager();
+    const result = manager.build({
+      messages: [
+        { role: "user", content: "old", parts: [{ type: "inline", mimeType: "image/png", data: "OLD" }] },
+        { role: "assistant", content: "ok" },
+        {
+          role: "user",
+          content: "what is in this",
+          parts: [{ type: "inline", mimeType: "image/png", data: "NEW" }],
+        },
+      ],
+      modelId: "gemini-3.5-flash-lite",
+      providerId: "gemini",
+      contextWindow: 1_000_000,
+    });
+    const last = result.at(-1);
+    expect(last?.parts).toEqual([{ type: "inline", mimeType: "image/png", data: "NEW" }]);
+    expect(result.some((message) => message.parts?.some((part) => part.data === "OLD"))).toBe(false);
   });
 });

@@ -29,7 +29,7 @@ import { buildResponsePolicyMessages } from "../services/chat/responsePolicy.js"
 import { contextManager } from "../services/chat/ContextManager.js";
 import { iterateSseData } from "../utils/sse.js";
 import { DEFAULT_GROQ_MODEL_ID, createReasoningFilter } from "@Ken/shared";
-import { buildCompatibleChatBody } from "../services/ai/providers/groqChatBody.js";
+import { buildCompatibleChatBody } from "../services/ai/providers/compatibleChatBody.js";
 
 interface Sample {
   ttfbMs: number;

@@ -98,7 +98,7 @@ export function ModelSelector({
           id="model-selector-listbox"
           role="listbox"
           aria-label="Models"
-          className="model-selector-menu absolute top-full right-0 z-20 mt-1 max-h-80 w-72 overflow-y-auto rounded-xl border border-border bg-surface p-1 shadow-lg"
+          className="model-selector-menu absolute top-full right-0 z-20 mt-1 max-h-80 w-80 overflow-y-auto rounded-xl border border-border bg-surface p-1 shadow-lg"
         >
           <li className="px-1 py-1">
             <button
@@ -147,9 +147,9 @@ export function ModelSelector({
                     }}
                   >
                     <Check className={cn("mt-0.5 size-4 shrink-0", active ? "opacity-100" : "opacity-0")} />
-                    <span>
-                      <span className="block font-medium">{model.name}</span>
-                      <span className="block text-xs text-fg-muted">{model.id}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-medium">{model.name}</span>
+                      <span className="block truncate text-xs text-fg-muted">{model.capability}</span>
                     </span>
                   </button>
                 );

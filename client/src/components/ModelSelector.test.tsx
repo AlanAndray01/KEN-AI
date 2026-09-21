@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { PublicAIModel } from "@Ken/shared";
+import { CLOUDFLARE_IMAGE_MODEL_ID, type PublicAIModel } from "@Ken/shared";
 import { ModelSelector } from "./ModelSelector";
 
 const models: PublicAIModel[] = [
@@ -9,6 +9,7 @@ const models: PublicAIModel[] = [
     name: "Qwen 3.6 27B",
     providerId: "groq",
     capabilities: ["text", "streaming"],
+    capability: "Text & Chat",
     enabled: true,
     available: true,
   },
@@ -63,6 +64,7 @@ describe("ModelSelector", () => {
       "model-selector-listbox",
     );
     expect(screen.getByRole("listbox", { name: "Models" })).toHaveAttribute("id", "model-selector-listbox");
+    expect(screen.getByText("Text & Chat")).toBeInTheDocument();
   });
 });
 
@@ -102,5 +104,27 @@ describe("ModelSelector Auto mode", () => {
     fireEvent.click(screen.getByRole("option", { name: /Auto/ }));
 
     expect(onChange).toHaveBeenCalledWith("auto", "auto");
+  });
+});
+
+describe("ModelSelector Flux", () => {
+  it("lists Flux with the Image Generation badge", () => {
+    const flux: PublicAIModel = {
+      id: CLOUDFLARE_IMAGE_MODEL_ID,
+      name: "Flux 1 Schnell (Cloudflare)",
+      providerId: "cloudflare",
+      capabilities: ["imageGeneration"],
+      capability: "Image Generation",
+      enabled: true,
+      available: true,
+    };
+    const onChange = vi.fn();
+    render(<ModelSelector models={[...models, flux]} providerId="auto" modelId="auto" onChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "Select model: Auto" }));
+
+    expect(screen.getByText("Flux 1 Schnell (Cloudflare)")).toBeInTheDocument();
+    expect(screen.getByText("Image Generation")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("option", { name: /Flux 1 Schnell/ }));
+    expect(onChange).toHaveBeenCalledWith("cloudflare", CLOUDFLARE_IMAGE_MODEL_ID);
   });
 });

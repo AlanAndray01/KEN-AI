@@ -37,6 +37,29 @@ describe("GeminiImageProvider", () => {
     expect(result.mimeType).toBe("image/png");
     expect(result.buffer.toString("base64")).toBe("QUJD");
     expect(fetchMock).toHaveBeenCalledOnce();
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(body.generationConfig.responseModalities).toEqual(["TEXT", "IMAGE"]);
+  });
+
+  it("names a Gemini quota error instead of a generic provider drop", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            error: { code: 429, status: "RESOURCE_EXHAUSTED", message: "You exceeded your current quota" },
+          }),
+          { status: 429 },
+        ),
+      ),
+    );
+    await expect(new GeminiImageProvider("test-key").generate({ prompt: "x", userId: "u1" })).rejects.toMatchObject({
+      code: "IMAGE_GENERATION_PROVIDER_ERROR",
+      statusCode: 429,
+      expose: true,
+      message: expect.stringContaining("out of quota"),
+      extra: expect.objectContaining({ errorClass: "quota_exceeded", httpStatus: 429 }),
+    });
   });
 });
 

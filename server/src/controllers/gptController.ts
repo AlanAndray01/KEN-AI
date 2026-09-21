@@ -1,6 +1,5 @@
 import type { Request, Response } from "express";
-import { createGptSchema, GPT_CATEGORIES, patchGptSchema } from "@Ken/shared";
-import type { GptCategory } from "@Ken/shared";
+import { createGptSchema, listGptsQuerySchema, patchGptSchema } from "@Ken/shared";
 import { createGpt, deleteGpt, getAccessibleGpt, listGpts, updateGpt } from "../services/gpts/gptService.js";
 import { AppError } from "../utils/AppError.js";
 
@@ -12,17 +11,11 @@ function requireUserId(req: Request): string {
 }
 
 export async function listGptsHandler(req: Request, res: Response): Promise<void> {
-  const scopeRaw = typeof req.query.scope === "string" ? req.query.scope : undefined;
-  const scope = scopeRaw === "mine" || scopeRaw === "explore" || scopeRaw === "usable" ? scopeRaw : undefined;
-  const q = typeof req.query.q === "string" ? req.query.q : undefined;
-  const categoryRaw = typeof req.query.category === "string" ? req.query.category : undefined;
-  const category = (GPT_CATEGORIES as readonly string[]).includes(categoryRaw ?? "")
-    ? (categoryRaw as GptCategory)
-    : undefined;
+  const query = listGptsQuerySchema.parse(req.query);
   const gpts = await listGpts(requireUserId(req), {
-    ...(scope ? { scope } : {}),
-    ...(q ? { q } : {}),
-    ...(category ? { category } : {}),
+    ...(query.scope ? { scope: query.scope } : {}),
+    ...(query.q ? { q: query.q } : {}),
+    ...(query.category ? { category: query.category } : {}),
   });
   res.status(200).json({ gpts });
 }

@@ -4,11 +4,16 @@ import { join } from "node:path";
 import { logger } from "../../config/logger.js";
 import { redisClient } from "../../config/redis.js";
 import { AppError } from "../../utils/AppError.js";
+import { extraString, telemetry } from "../../utils/telemetry.js";
 import { isAbortError } from "../../utils/abort.js";
+import { isProviderLeaveError } from "./fallback.js";
 import { GEMINI_PRIMARY_MODEL_IDS } from "./primaryModel.js";
 
 const SKIP_FILE = join(tmpdir(), "ken-model-skips.json");
 let loadedFromDisk = false;
+
+/** Wildcard model id stored when the whole provider must be skipped (vendor 401). */
+const PROVIDER_SKIP_MODEL_ID = "*";
 
 const DEFAULT_RATE_LIMIT_SKIP_MS = 30_000;
 /** Long enough that a 7s Lite turn cannot expire the skip before the next send. */
@@ -106,6 +111,37 @@ export function rememberModelSkip(providerId: string, modelId: string, error: un
   skips.set(key, entry);
   persistSkips();
   publishSkip(key, entry);
+  const extra = error instanceof AppError ? error.extra : undefined;
+  const errorClass = extraString(extra, "errorClass");
+  // Workers AI neurons are account-wide. A 3B 429 would otherwise immediately
+  // spend another round-trip on 1B, then again in 30s, against an empty daily bucket.
+  const skipProvider =
+    isProviderLeaveError(error) || (providerId === "cloudflare" && errorClass === "quota_exceeded");
+  if (skipProvider && modelId !== PROVIDER_SKIP_MODEL_ID) {
+    const providerKey = skipKey(providerId, PROVIDER_SKIP_MODEL_ID);
+    skips.set(providerKey, entry);
+    persistSkips();
+    publishSkip(providerKey, entry);
+  }
+  logger.info(
+    telemetry({
+      event: "model_skip_set",
+      providerId,
+      modelId,
+      skipMs: retryMs,
+      skipUntil: entry.until,
+      skipCode: entry.code,
+      skipReason: entry.reason,
+      errorClass,
+      providerWide: skipProvider,
+    }),
+    "model skip recorded",
+  );
+}
+
+/** True when a vendor 401/403 cooled down every model on this provider. */
+export function isProviderBlocked(providerId: string): boolean {
+  return peekModelSkip(providerId, PROVIDER_SKIP_MODEL_ID) !== undefined;
 }
 
 function ensureSkipCache(): void {
@@ -148,6 +184,9 @@ export function skipDurationMs(error: unknown): number | undefined {
   if (error.code === "PROVIDER_UNAVAILABLE" || error.statusCode === 503) {
     return clampSkip(UNAVAILABLE_SKIP_MS);
   }
+  if (error.code === "PROVIDER_INVALID_CREDENTIALS") {
+    return clampSkip(UNAVAILABLE_SKIP_MS);
+  }
   return undefined;
 }
 
@@ -173,7 +212,13 @@ export function formatFallbackReason(error: unknown): string {
 
 export function classifyProviderMessage(message?: string): string | undefined {
   if (!message) return undefined;
-  if (/quota exceeded|exceeded your current quota|rate.?limit/i.test(message)) return "quota_exceeded";
+  if (
+    /quota exceeded|exceeded your current quota|rate.?limit|used up your daily free allocation|daily free allocation of .+ neurons/i.test(
+      message,
+    )
+  ) {
+    return "quota_exceeded";
+  }
   if (/unavailable|overloaded|high demand|try again later/i.test(message)) return "unavailable";
   return undefined;
 }

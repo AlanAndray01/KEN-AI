@@ -134,10 +134,17 @@ export async function listMessages(
   // the one dropped when the pair straddles the limit - which is what made an
   // answer vanish when reopening a thread. ObjectIds are monotonic, so ordering
   // by _id within a millisecond is insertion order.
-  const docs = await Message.find(filter).sort({ createdAt: -1, _id: -1 }).limit(limit);
-  const chronological = docs.reverse();
+  // One extra row tells the client whether an older page exists, without a
+  // second count query and without sending that row over the wire.
+  const docs = await Message.find(filter).sort({ createdAt: -1, _id: -1 }).limit(limit + 1);
+  const hasMore = docs.length > limit;
+  const page = hasMore ? docs.slice(0, limit) : docs;
+  const chronological = page.reverse();
   const attachmentMap = await publicAttachmentsForMessages(chronological.map((doc) => String(doc._id)));
-  return chronological.map((doc) => toPublicMessage(doc, attachmentMap.get(String(doc._id))));
+  return {
+    messages: chronological.map((doc) => toPublicMessage(doc, attachmentMap.get(String(doc._id)))),
+    hasMore,
+  };
 }
 
 export async function setMessageFeedback(

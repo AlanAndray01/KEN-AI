@@ -38,12 +38,16 @@ export const FILE_KINDS = ["image", "document", "audio", "other"] as const;
 
 export const FILE_STATUSES = ["uploaded", "processing", "ready", "failed"] as const;
 
+/** Word .docx (Office Open XML). Older .doc binary files are not accepted. */
+export const DOCX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
 export const ALLOWED_UPLOAD_MIME_TYPES = [
   "image/png",
   "image/jpeg",
   "image/webp",
   "image/gif",
   "application/pdf",
+  DOCX_MIME_TYPE,
   "text/plain",
   "text/markdown",
   "text/csv",
@@ -150,6 +154,28 @@ export function isLlamaModelId(modelId: string): boolean {
   return /llama/i.test(modelId);
 }
 
+const CODE_TIER_MODEL_ID = /coder|-code\b|codestral/i;
+
+/**
+ * Short capability label shown beside a model in the picker.
+ *
+ * Derived from what the model declares rather than hand-tagged per id, so a
+ * newly catalogued model gets a sensible label without a second list to keep
+ * in sync. Lives in shared because the registry stamps it onto every model it
+ * serves and the picker only renders what it is given.
+ *
+ * Flux is listed with `imageGeneration` and no `text`, so the picker badge
+ * reads "Image Generation". Video is still not a capability anyone here serves.
+ */
+export function modelCapabilityLabel(model: { id: string; capabilities: readonly string[] }): string {
+  const capabilities = model.capabilities ?? [];
+  if (capabilities.includes("imageGeneration")) return "Image Generation";
+  if (CODE_TIER_MODEL_ID.test(model.id)) return "Code & Deep Logic";
+  if (capabilities.includes("vision")) return "Vision & PDF Reader";
+  if (capabilities.includes("tools") || capabilities.includes("reasoning")) return "Code & Deep Logic";
+  return "Text & Chat";
+}
+
 export const MAX_STORED_MESSAGE_TURNS = 100;
 
 /** Unpinned chats and their messages auto-purge after 30 days. */
@@ -171,6 +197,9 @@ export const DEFAULT_CEREBRAS_MODEL_ID = "llama-3.3-70b";
 /** Fast/small Cloudflare default — real 80k-token window, verified live against the API. */
 export const DEFAULT_CLOUDFLARE_MODEL_ID = "@cf/meta/llama-3.2-3b-instruct";
 
+/** Cheapest Workers AI chat hop — titles and last-resort fallback, not a picker default. */
+export const CLOUDFLARE_TINY_MODEL_ID = "@cf/meta/llama-3.2-1b-instruct";
+
 export const CLOUDFLARE_VISION_MODEL_ID = "@cf/meta/llama-4-scout-17b-16e-instruct";
 
 /**
@@ -182,9 +211,23 @@ export const CLOUDFLARE_VISION_MODEL_ID = "@cf/meta/llama-4-scout-17b-16e-instru
  * (verified live: a 100k-token request came back "max_total_tokens=24000"),
  * far tighter than the other two Cloudflare models — see
  * withProviderContextFit in AIProviderManager.ts and cloudflareMaxTokens in
- * groqChatBody.ts, both of which exist specifically to respect this number.
+ * compatibleChatBody.ts, both of which exist specifically to respect this number.
  */
 export const CLOUDFLARE_QUALITY_MODEL_ID = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+
+/**
+ * Flux on Workers AI. Same CF_TOKEN as the Cloudflare chat models.
+ *
+ * Schnell rather than a flux-2 id: those take multipart input and reject the
+ * plain JSON `{ prompt }` body this one answers with a base64 JPEG. It is a
+ * listed picker model with `imageGeneration` only — prompts go to
+ * CloudflareImageProvider, never `/chat/completions`.
+ */
+export const CLOUDFLARE_IMAGE_MODEL_ID = "@cf/black-forest-labs/flux-1-schnell";
+
+export function isCloudflareImageModel(modelId: string): boolean {
+  return modelId === CLOUDFLARE_IMAGE_MODEL_ID;
+}
 
 /** Heuristic token estimate used in the composer and server context trimmer (~4 chars/token). */
 export function estimatePromptTokens(text: string): number {
@@ -194,6 +237,12 @@ export function estimatePromptTokens(text: string): number {
 
 /** Server-side safety cap. The composer does not impose a character limit. */
 export const MAX_MESSAGE_CONTENT_CHARS = 1_000_000;
+
+/**
+ * Flux Schnell (and the shared image tool) reject prompts longer than this.
+ * HTTP validation uses this before a draw is sent to any image backend.
+ */
+export const MAX_IMAGE_PROMPT_CHARS = 2048;
 
 /** OpenAI hop when Groq is rate-limited and OPENAI_API_KEY is configured. */
 export const DEFAULT_OPENAI_MODEL_ID = "gpt-4o-mini";
@@ -224,6 +273,9 @@ export const MODEL_COOLDOWN_REASON = "MODEL_COOLDOWN";
 export const AUTO_TASKS = [
   "files",
   "vision",
+  // Asking for a picture is a hard requirement like an attachment, not a
+  // judgement about difficulty, so it is settled before the content tiers.
+  "image",
   "tools",
   "code",
   "reasoning",

@@ -149,6 +149,8 @@ export interface RateLimitOptions {
   /** When true, the limiter runs even in NODE_ENV=test. */
   enabledInTest?: boolean;
   keyGenerator?: (req: Request) => string;
+  /** Shared store so chat-tool image gens and POST /tools/images share a bucket. */
+  store?: RateLimitStore;
 }
 
 export function clientKey(req: Request): string {
@@ -157,10 +159,38 @@ export function clientKey(req: Request): string {
   return userId ? `${userId}:${ip}` : ip;
 }
 
+/** Image gens are billed per account, not per socket — ToolManager only has userId. */
+export function imageLimitKey(req: Request): string {
+  return req.auth?.userId || clientKey(req);
+}
+
+function createStore(name: string, windowMs: number, max: number): RateLimitStore {
+  return redisClient ? new RedisRateLimitStore(name, windowMs, max) : new MemoryRateLimitStore(windowMs, max);
+}
+
+const imageGenerationStore = createStore("image", env.RATE_LIMIT_WINDOW_MS, env.RATE_LIMIT_IMAGE);
+
+/**
+ * Shared consume for the image bucket. Chat draws call this from the tool;
+ * POST /tools/images uses the middleware on the same store and then skips
+ * this so a dedicated request is not counted twice.
+ */
+export async function consumeImageGenerationLimit(
+  userId: string,
+  options?: { enabledInTest?: boolean },
+): Promise<void> {
+  if (isTest && !options?.enabledInTest) return;
+  const result = await imageGenerationStore.consume(userId);
+  if (!result.allowed) {
+    throw new AppError("Too many image generation requests. Try again later.", {
+      statusCode: 429,
+      code: "RATE_LIMITED",
+    });
+  }
+}
+
 export function createRateLimit(options: RateLimitOptions) {
-  const store: RateLimitStore = redisClient
-    ? new RedisRateLimitStore(options.name, options.windowMs, options.max)
-    : new MemoryRateLimitStore(options.windowMs, options.max);
+  const store: RateLimitStore = options.store ?? createStore(options.name, options.windowMs, options.max);
   const keyGenerator = options.keyGenerator ?? clientKey;
 
   // Returns a Promise so tests can await one call at a time; Express 4 does
@@ -231,6 +261,8 @@ export const rateLimitImage = createRateLimit({
   name: "image",
   windowMs: env.RATE_LIMIT_WINDOW_MS,
   max: env.RATE_LIMIT_IMAGE,
+  store: imageGenerationStore,
+  keyGenerator: imageLimitKey,
 });
 
 export const rateLimitVoice = createRateLimit({

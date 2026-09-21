@@ -111,6 +111,16 @@ describe("tool, voice, and analysis APIs", () => {
     expect(response.body.tools[0].configured).toBe(false);
   });
 
+  it("rejects an image prompt longer than the Flux 2048-character cap", async () => {
+    const { app } = await import("../app.js");
+    const response = await request(app)
+      .post("/api/tools/images")
+      .send({ prompt: "a".repeat(2049) });
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe("VALIDATION_ERROR");
+    expect(runTool).not.toHaveBeenCalled();
+  });
+
   it("returns SEARCH_NOT_CONFIGURED instead of fake hits", async () => {
     const { app } = await import("../app.js");
     const response = await request(app).post("/api/tools/search").send({ query: "latest news" });

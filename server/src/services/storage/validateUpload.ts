@@ -1,7 +1,8 @@
 import path from "node:path";
-import { ALLOWED_UPLOAD_MIME_TYPES, MAX_UPLOAD_BYTES } from "@Ken/shared";
+import { ALLOWED_UPLOAD_MIME_TYPES, DOCX_MIME_TYPE, MAX_UPLOAD_BYTES } from "@Ken/shared";
 import type { PublicFile } from "@Ken/shared";
 import { AppError } from "../../utils/AppError.js";
+import { extractDocumentText, isDocxMime, isPdfMime } from "./extractDocument.js";
 
 export type FileKind = PublicFile["kind"];
 
@@ -21,11 +22,12 @@ const EXTENSION_MIME: Record<string, string> = {
   ".markdown": "text/markdown",
   ".csv": "text/csv",
   ".json": "application/json",
+  ".docx": DOCX_MIME_TYPE,
 };
 
 export function kindForMime(mimeType: string): FileKind {
   if (IMAGE_MIMES.has(mimeType)) return "image";
-  if (mimeType === "application/pdf" || TEXT_MIMES.has(mimeType)) return "document";
+  if (isPdfMime(mimeType) || isDocxMime(mimeType) || TEXT_MIMES.has(mimeType)) return "document";
   return "other";
 }
 
@@ -37,9 +39,7 @@ export function isTextMime(mimeType: string): boolean {
   return TEXT_MIMES.has(mimeType);
 }
 
-export function isPdfMime(mimeType: string): boolean {
-  return mimeType === "application/pdf";
-}
+export { isDocxMime, isPdfMime } from "./extractDocument.js";
 
 export function validateUploadBuffer(input: {
   originalName: string;
@@ -64,7 +64,7 @@ export function validateUploadBuffer(input: {
     throw new AppError("File type does not match contents", { statusCode: 400, code: "FILE_TYPE_MISMATCH" });
   }
 
-  if (IMAGE_MIMES.has(sniffed) || sniffed === "application/pdf") {
+  if (IMAGE_MIMES.has(sniffed) || isPdfMime(sniffed) || isDocxMime(sniffed)) {
     const magicMime = sniffMime(input.buffer, input.originalName);
     if (magicMime && magicMime !== sniffed) {
       throw new AppError("File type does not match contents", { statusCode: 400, code: "FILE_TYPE_MISMATCH" });
@@ -79,11 +79,7 @@ export function validateUploadBuffer(input: {
 }
 
 export function extractTextDocument(buffer: Buffer, mimeType: string): string {
-  if (!isTextMime(mimeType)) return "";
-  const text = buffer.toString("utf8");
-  const maxChars = 100_000;
-  if (text.length <= maxChars) return text;
-  return `${text.slice(0, maxChars)}\n\n[Truncated attached file]`;
+  return extractDocumentText(buffer, mimeType);
 }
 
 function normalizeMime(mimeType: string, originalName: string): string {
@@ -112,6 +108,10 @@ function sniffMime(buffer: Buffer, originalName: string): string | undefined {
   }
   if (buffer.length >= 5 && buffer.subarray(0, 5).toString("ascii") === "%PDF-") {
     return "application/pdf";
+  }
+  if (buffer.length >= 4 && buffer.readUInt32LE(0) === 0x04034b50) {
+    const ext = path.extname(originalName).toLowerCase();
+    if (ext === ".docx") return DOCX_MIME_TYPE;
   }
   return EXTENSION_MIME[path.extname(originalName).toLowerCase()];
 }

@@ -7,7 +7,7 @@ import {
   geminiMaxOutputTokens,
   geminiReasoningParams,
   groqReasoningParams,
-} from "./groqChatBody.js";
+} from "./compatibleChatBody.js";
 
 const request = {
   providerId: "groq",
@@ -35,6 +35,7 @@ describe("buildCompatibleChatBody", () => {
     expect(buildCompatibleChatBody(request, { stream: true, providerId: "groq" })).toMatchObject({
       model: "openai/gpt-oss-20b",
       stream: true,
+      stream_options: { include_usage: true },
       reasoning_effort: "low",
       include_reasoning: false,
       temperature: 0.6,
@@ -122,6 +123,56 @@ describe("buildCompatibleChatBody", () => {
     // The tiny "Hi" prompt leaves nearly the whole 24k ceiling free, so the
     // request should pass straight through, not get silently reduced.
     expect(body).toMatchObject({ max_tokens: 16_384 });
+    expect(body).not.toHaveProperty("stream");
+  });
+
+  it("asks Cloudflare streams for a usage frame the same way Groq does", () => {
+    expect(
+      buildCompatibleChatBody(
+        { ...request, providerId: "cloudflare", modelId: "@cf/meta/llama-3.2-3b-instruct" },
+        { stream: true, providerId: "cloudflare" },
+      ),
+    ).toMatchObject({
+      model: "@cf/meta/llama-3.2-3b-instruct",
+      stream: true,
+      stream_options: { include_usage: true },
+    });
+  });
+
+  it("passes image_url through and keeps already-extracted PDF text, not file blocks", () => {
+    const body = buildCompatibleChatBody(
+      {
+        ...request,
+        providerId: "cloudflare",
+        modelId: "@cf/meta/llama-4-scout-17b-16e-instruct",
+        messages: [
+          {
+            role: "user",
+            content: "Read these\n\nAttached file: note.pdf\nCloudflare PDF",
+            parts: [
+              { type: "inline", mimeType: "image/png", data: "AAAA" },
+              {
+                type: "inline",
+                mimeType: "application/pdf",
+                data: Buffer.from("%PDF-1.1\nBT (should not unzip here) Tj ET\n", "latin1").toString("base64"),
+                filename: "note.pdf",
+              },
+            ],
+          },
+        ],
+      },
+      { stream: false, providerId: "cloudflare" },
+    );
+    const messages = body.messages as Array<{ content: unknown }>;
+    const content = messages[0]?.content as unknown[];
+    expect(content).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "image_url" }),
+        expect.objectContaining({ type: "text" }),
+      ]),
+    );
+    expect(JSON.stringify(body)).not.toContain('"type":"file"');
+    expect(JSON.stringify(content)).toContain("Cloudflare PDF");
   });
 });
 

@@ -11,15 +11,34 @@ dotenv.config({ path: path.join(serverDir, ".env") });
 const emptyToUndefined = (value: unknown): unknown =>
   value === "" || value === undefined ? undefined : value;
 
+function trimmedEnv(source: Record<string, unknown>, key: string): string {
+  const value = source[key];
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function withAlias(
+  source: Record<string, unknown>,
+  canonical: string,
+  aliases: readonly string[],
+): Record<string, unknown> {
+  if (trimmedEnv(source, canonical)) return source;
+  for (const alias of aliases) {
+    const value = trimmedEnv(source, alias);
+    if (value) return { ...source, [canonical]: value };
+  }
+  return source;
+}
+
 /**
  * Hosts often set MONGO_URI (Atlas / Render) while Ken's canonical name is
- * MONGODB_URI. Prefer the canonical value when both are present.
+ * MONGODB_URI. Cloudflare's SDK examples use CLOUDFLARE_ACCOUNT_ID /
+ * CLOUDFLARE_API_TOKEN (or CLOUDFLARE_API_KEY); Ken's names are CF_ACCOUNT_ID
+ * and CF_TOKEN. Prefer the canonical value when both are present.
  */
 export function applyEnvAliases(source: Record<string, unknown>): Record<string, unknown> {
-  const mongodb = typeof source.MONGODB_URI === "string" ? source.MONGODB_URI.trim() : "";
-  const mongo = typeof source.MONGO_URI === "string" ? source.MONGO_URI.trim() : "";
-  if (mongodb || !mongo) return source;
-  return { ...source, MONGODB_URI: mongo };
+  let next = withAlias(source, "MONGODB_URI", ["MONGO_URI"]);
+  next = withAlias(next, "CF_ACCOUNT_ID", ["CLOUDFLARE_ACCOUNT_ID"]);
+  return withAlias(next, "CF_TOKEN", ["CLOUDFLARE_API_TOKEN", "CLOUDFLARE_API_KEY"]);
 }
 
 const fromAddressSchema = z.string().trim().min(3).max(320).refine((value) => {
@@ -86,7 +105,7 @@ const baseEnvSchema = z.object({
   STORAGE_ENDPOINT: z.preprocess(emptyToUndefined, z.string().url().optional()),
   SEARCH_PROVIDER: z.preprocess(emptyToUndefined, z.enum(["tavily", "brave", "serper"]).optional()),
   SEARCH_API_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
-  IMAGE_GENERATION_PROVIDER: z.preprocess(emptyToUndefined, z.enum(["openai", "gemini"]).optional()),
+  IMAGE_GENERATION_PROVIDER: z.preprocess(emptyToUndefined, z.enum(["openai", "gemini", "cloudflare"]).optional()),
   IMAGE_GENERATION_API_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
   VOICE_PROVIDER: z.preprocess(emptyToUndefined, z.enum(["openai"]).optional()),
   VOICE_API_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),

@@ -6,15 +6,12 @@ const DEFAULT_CONTEXT_WINDOW = 128_000;
 const OUTPUT_RESERVE = 2_048;
 
 /**
- * Ceiling on how many user/assistant messages may be considered at all.
- *
- * Raised from 6. Six messages is three exchanges, so a thread lost its own
- * thread after three turns however much room the model had — which is what
- * "the context limit drops very soon" actually was. This is now only an upper
- * bound; the token budget below is what really decides, and it drops the
- * oldest messages first when a thread is genuinely long.
+ * Sliding window on user/assistant messages. Ten turns is five exchanges —
+ * enough to keep the thread, cheap enough that Cloudflare's 10k-neuron day
+ * is not spent re-prefilling a novel on every send. The token budget below
+ * can still drop older turns sooner.
  */
-export const MAX_HISTORY_MESSAGES = 24;
+export const MAX_HISTORY_MESSAGES = 10;
 
 /**
  * Input ceiling per provider, because the binding limit is not the context
@@ -36,6 +33,9 @@ const PROVIDER_INPUT_TOKENS: Readonly<Record<string, number>> = {
   openai: 24_000,
   openrouter: 16_000,
   deepseek: 16_000,
+  // Workers AI free tier is 10,000 neurons/day. A 12k-token prompt on 70B
+  // (the unlisted default below) burns that allowance in a handful of turns.
+  cloudflare: 4_096,
 };
 
 /** Used for a provider with no entry above, and as the ceiling for any of them. */
@@ -59,6 +59,9 @@ export class ContextManager {
     modelId: string;
     providerId: string;
     contextWindow?: number;
+    /** Tighter than the provider meter. Used by the neuron guardrail on lite turns. */
+    maxInputTokens?: number;
+    maxHistoryMessages?: number;
   }): ChatMessage[] {
     const window = input.contextWindow ?? lookupContextWindow(input.providerId, input.modelId);
     const reserve = Math.min(OUTPUT_RESERVE, Math.max(32, Math.floor(window * 0.1)));
@@ -66,9 +69,16 @@ export class ContextManager {
     // physically hold. The old code used one flat number for every provider,
     // which was simultaneously unreachable on Groq and a small fraction of what
     // Gemini offers.
-    const budget = Math.min(providerInputTokens(input.providerId), Math.max(32, window - reserve));
-    const system = clampSystem(input.messages.filter((message) => message.role === "system"), MAX_SYSTEM_TOKENS);
-    const rest = input.messages.filter((message) => message.role !== "system").slice(-MAX_HISTORY_MESSAGES);
+    const budget = Math.min(
+      providerInputTokens(input.providerId),
+      input.maxInputTokens ?? Number.POSITIVE_INFINITY,
+      Math.max(32, window - reserve),
+    );
+    const prepared = stripStaleInlineMedia(input.messages);
+    const system = clampSystem(prepared.filter((message) => message.role === "system"), MAX_SYSTEM_TOKENS);
+    const rest = prepared
+      .filter((message) => message.role !== "system")
+      .slice(-(input.maxHistoryMessages ?? MAX_HISTORY_MESSAGES));
 
     let tokens = system.reduce((sum, message) => sum + messageCost(message), 0);
     const kept: ChatMessage[] = [];
@@ -109,6 +119,34 @@ export function ensureEndsWithUserTurn(messages: ChatMessage[]): ChatMessage[] {
     rest.pop();
   }
   return [...system, ...rest];
+}
+
+/**
+ * Earlier turns' base64 images/PDFs are the silent token bomb: a single Flux
+ * JPEG is hundreds of kilobytes, and sending it again on a "thanks" follow-up
+ * is billed as tens of thousands of input tokens. Keep inline media only on
+ * the current user turn, and only when that turn actually has some.
+ */
+export function stripStaleInlineMedia(messages: ChatMessage[]): ChatMessage[] {
+  let lastUser = -1;
+  for (let index = 0; index < messages.length; index += 1) {
+    if (messages[index]?.role === "user") lastUser = index;
+  }
+  const current = lastUser >= 0 ? messages[lastUser] : undefined;
+  const currentNeedsMedia = Boolean(
+    current?.parts?.some((part) => part.mimeType.startsWith("image/") || part.mimeType === "application/pdf"),
+  );
+
+  return messages.map((message, index) => {
+    if (!message.parts?.length) return message;
+    if (currentNeedsMedia && index === lastUser) return message;
+    const hadImage = message.parts.some((part) => part.mimeType.startsWith("image/"));
+    const omitted =
+      hadImage && !message.content.includes("omitted") && !message.content.includes("Previously attached")
+        ? [message.content, "(Previous image omitted from context.)"].filter(Boolean).join("\n")
+        : message.content;
+    return { role: message.role, content: omitted };
+  });
 }
 
 function lookupContextWindow(providerId: string, modelId: string): number {

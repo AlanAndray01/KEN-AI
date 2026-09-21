@@ -88,17 +88,20 @@ describe("conversation APIs", () => {
     listConversations.mockResolvedValue([conversation]);
     createConversation.mockResolvedValue(conversation);
     getConversation.mockResolvedValue(conversation);
-    listMessages.mockResolvedValue([
-      {
-        id: "m1",
-        conversationId: "c1",
-        role: "user",
-        content: "Hi",
-        status: "complete",
-        createdAt: "2026-01-01T00:00:00.000Z",
-        updatedAt: "2026-01-01T00:00:00.000Z",
-      },
-    ]);
+    listMessages.mockResolvedValue({
+      messages: [
+        {
+          id: "m1",
+          conversationId: "c1",
+          role: "user",
+          content: "Hi",
+          status: "complete",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+      hasMore: false,
+    });
   });
 
   it("requires auth for conversation list", async () => {
@@ -122,6 +125,36 @@ describe("conversation APIs", () => {
     const response = await request(app).get("/api/conversations");
     expect(response.status).toBe(200);
     expect(response.body.conversations[0].title).toBe("Hello");
+  });
+
+  it("lists a page of messages with a hasMore cursor flag", async () => {
+    const { app } = await import("../app.js");
+    const response = await request(app).get("/api/conversations/c1/messages?limit=32");
+    expect(response.status).toBe(200);
+    expect(response.body.messages[0].content).toBe("Hi");
+    expect(response.body.hasMore).toBe(false);
+    expect(listMessages).toHaveBeenCalledWith("000000000000000000000001", "c1", expect.objectContaining({ limit: 32 }));
+  });
+
+  it("rejects a non-numeric messages limit before touching the database", async () => {
+    const { app } = await import("../app.js");
+    const response = await request(app).get("/api/conversations/c1/messages?limit=abc");
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe("VALIDATION_ERROR");
+    expect(listMessages).not.toHaveBeenCalled();
+  });
+
+  it("passes includeSuperseded and before through as typed query fields", async () => {
+    const { app } = await import("../app.js");
+    const response = await request(app).get(
+      "/api/conversations/c1/messages?limit=16&before=m0&includeSuperseded=true",
+    );
+    expect(response.status).toBe(200);
+    expect(listMessages).toHaveBeenCalledWith(
+      "000000000000000000000001",
+      "c1",
+      expect.objectContaining({ limit: 16, before: "m0", includeSuperseded: true }),
+    );
   });
 
   it("streams chat events and can abort", async () => {

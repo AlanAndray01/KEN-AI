@@ -1,5 +1,6 @@
 import { Types } from "mongoose";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { CLOUDFLARE_IMAGE_MODEL_ID } from "@Ken/shared";
 import { AppError } from "../../utils/AppError.js";
 import { clearModelSkips, rememberModelSkip } from "../ai/modelSkip.js";
 
@@ -82,6 +83,7 @@ vi.mock("../ai/ModelRegistry.js", () => ({
       providerId: "mock",
       name: "Mock Text",
       capabilities: ["text"],
+      capability: "Text-to-Text",
       enabled: true,
       available: true,
       contextWindow: 8192,
@@ -91,12 +93,13 @@ vi.mock("../ai/ModelRegistry.js", () => ({
 
 const stream = vi.fn();
 const generate = vi.fn();
+const applyEnabledTools = vi.fn(async () => ({ systemMessages: [], files: [] }));
 
 vi.mock("../ai/AIProviderManager.js", () => ({
   aiProviderManager: {
     stream: (...args: unknown[]) => stream(...args),
     generate: (...args: unknown[]) => generate(...args),
-    applyEnabledTools: vi.fn(async () => ({ systemMessages: [], files: [] })),
+    applyEnabledTools: (...args: unknown[]) => applyEnabledTools(...args),
   },
 }));
 
@@ -109,6 +112,7 @@ vi.mock("../storage/fileService.js", () => ({
   attachFilesToMessage: vi.fn(async () => []),
   loadOwnedFiles: vi.fn(async () => []),
   materializeFilesForModel: vi.fn(async () => ({ contentSuffix: "", parts: [] })),
+  providerSupportsNativeDocuments: (providerId: string) => providerId === "gemini" || providerId === "openai",
   publicAttachmentsForMessages: vi.fn(async () => new Map()),
 }));
 
@@ -126,6 +130,8 @@ describe("chatService abort", () => {
     conversations.clear();
     stream.mockReset();
     generate.mockReset();
+    applyEnabledTools.mockReset();
+    applyEnabledTools.mockResolvedValue({ systemMessages: [], files: [] });
     clearModelSkips();
   });
 
@@ -213,7 +219,10 @@ describe("chatService abort", () => {
     expect(events.find((event) => event.type === "complete")).toBeTruthy();
   });
 
-  it("starts on Lite immediately when 3.8 is quota-skipped, without removing 3.8 from the conversation", async () => {
+  it("still tries a pinned Gemini model even when it is quota-skipped", async () => {
+    // Pre-swapping a pinned turn is what answered Pro with Lite while the
+    // header still read Pro. A remembered skip may still move the turn later
+    // via quota-only fallback — but the first hop is the model the user picked.
     rememberModelSkip(
       "gemini",
       "gemini-3.8-flash",
@@ -256,16 +265,12 @@ describe("chatService abort", () => {
     });
 
     expect(events.find((event) => event.type === "start")).toMatchObject({
-      assistantMessage: { model: "gemini-3.5-flash-lite" },
+      assistantMessage: { model: "gemini-3.8-flash" },
       conversation: { modelId: "gemini-3.8-flash" },
-    });
-    expect(events.find((event) => event.type === "model")).toMatchObject({
-      activeModel: "gemini-3.5-flash-lite",
-      fallbackFrom: "gemini-3.8-flash",
     });
     expect(stream.mock.calls[0]?.[0]).toMatchObject({
       providerId: "gemini",
-      modelId: "gemini-3.5-flash-lite",
+      modelId: "gemini-3.8-flash",
     });
   });
 });
@@ -276,6 +281,8 @@ describe("chatService automatic titles", () => {
     conversations.clear();
     stream.mockReset();
     generate.mockReset();
+    applyEnabledTools.mockReset();
+    applyEnabledTools.mockResolvedValue({ systemMessages: [], files: [] });
     stream.mockImplementation(async function* () {
       yield { type: "start", model: "mock-text", provider: "mock" };
       yield { type: "chunk", text: "Photosynthesis converts light into sugar." };
@@ -360,6 +367,8 @@ describe("chatService attachments", () => {
     messages.clear();
     conversations.clear();
     stream.mockReset();
+    applyEnabledTools.mockReset();
+    applyEnabledTools.mockResolvedValue({ systemMessages: [], files: [] });
     clearModelSkips();
   });
 
@@ -426,6 +435,8 @@ describe("chatService keeps the model the user picked", () => {
     conversations.clear();
     stream.mockReset();
     generate.mockReset();
+    applyEnabledTools.mockReset();
+    applyEnabledTools.mockResolvedValue({ systemMessages: [], files: [] });
     clearModelSkips();
   });
 
@@ -438,7 +449,7 @@ describe("chatService keeps the model the user picked", () => {
       };
     };
 
-  it("tells the provider manager that only a quota error may move the turn", async () => {
+  it("tells the provider manager that a pinned turn must not hop", async () => {
     stream.mockImplementation(completeOn());
 
     const { prepareSend, runGeneration } = await import("./chatService.js");
@@ -450,7 +461,7 @@ describe("chatService keeps the model the user picked", () => {
     });
     await runGeneration(prepared, () => undefined, "test");
 
-    expect(stream.mock.calls[0]?.[0]).toMatchObject({ fallbackPolicy: "quota-only" });
+    expect(stream.mock.calls[0]?.[0]).toMatchObject({ fallbackPolicy: "none" });
   });
 
   it("does not start on another model for a cached 503 cool-down", async () => {
@@ -517,6 +528,7 @@ describe("chatService Auto mode", () => {
       providerId: "gemini",
       name: "Gemini 3.5 Flash Lite",
       capabilities: ["text", "vision", "streaming", "tools"],
+      capability: "Vision & Chat",
       enabled: true,
       available: true,
     },
@@ -525,6 +537,16 @@ describe("chatService Auto mode", () => {
       providerId: "openai",
       name: "GPT-4.1",
       capabilities: ["text", "vision", "files", "streaming", "tools"],
+      capability: "Vision & Documents",
+      enabled: true,
+      available: true,
+    },
+    {
+      id: CLOUDFLARE_IMAGE_MODEL_ID,
+      providerId: "cloudflare",
+      name: "Flux 1 Schnell (Cloudflare)",
+      capabilities: ["imageGeneration"],
+      capability: "Image Generation",
       enabled: true,
       available: true,
     },
@@ -535,6 +557,8 @@ describe("chatService Auto mode", () => {
     conversations.clear();
     stream.mockReset();
     generate.mockReset();
+    applyEnabledTools.mockReset();
+    applyEnabledTools.mockResolvedValue({ systemMessages: [], files: [] });
     clearModelSkips();
     const { modelRegistry } = await import("../ai/ModelRegistry.js");
     vi.mocked(modelRegistry.listPublicModels).mockResolvedValue(AUTO_MODELS as never);
@@ -609,7 +633,7 @@ describe("chatService Auto mode", () => {
       modelId: "mock-text",
     });
     await runGeneration(manual, () => undefined, "test");
-    expect(stream.mock.calls[0]?.[0]).toMatchObject({ fallbackPolicy: "quota-only" });
+    expect(stream.mock.calls[0]?.[0]).toMatchObject({ fallbackPolicy: "none" });
   });
 
   it("honours an explicit model choice instead of routing", async () => {
@@ -624,5 +648,309 @@ describe("chatService Auto mode", () => {
     expect(prepared).toMatchObject({ providerId: "mock", modelId: "mock-text" });
     expect(prepared.autoTask).toBeUndefined();
     expect(conversations.get(prepared.conversationId)).toMatchObject({ providerId: "mock", modelId: "mock-text" });
+  });
+
+  it("puts a generated image on the assistant turn, not the user prompt", async () => {
+    const fileId = new Types.ObjectId();
+    applyEnabledTools.mockResolvedValue({
+      systemMessages: [],
+      files: [
+        {
+          id: String(fileId),
+          originalName: "Ken-image.jpg",
+          mimeType: "image/jpeg",
+          size: 8,
+          kind: "image",
+          status: "ready",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+    const { loadOwnedFiles, attachFilesToMessage } = await import("../storage/fileService.js");
+    vi.mocked(loadOwnedFiles).mockResolvedValue([
+      {
+        _id: fileId,
+        originalName: "Ken-image.jpg",
+        mimeType: "image/jpeg",
+        size: 8,
+        kind: "image",
+      } as never,
+    ]);
+    vi.mocked(attachFilesToMessage).mockImplementation(async (input) =>
+      input.files.map((file) => ({
+        id: new Types.ObjectId().toString(),
+        fileId: String(file._id),
+        originalName: file.originalName,
+        mimeType: file.mimeType,
+        size: file.size,
+        kind: file.kind ?? "other",
+      })),
+    );
+
+    const { prepareSend } = await import("./chatService.js");
+    const prepared = await prepareSend({
+      userId: "000000000000000000000001",
+      content: "draw a cat",
+      providerId: "mock",
+      modelId: "mock-text",
+    });
+
+    expect(prepared.userMessage.attachments).toBeUndefined();
+    expect(prepared.assistantMessage.attachments).toEqual([
+      expect.objectContaining({ originalName: "Ken-image.jpg", mimeType: "image/jpeg" }),
+    ]);
+    expect(prepared.imageGenerated).toBe(true);
+    expect(prepared.generatedFileIds).toEqual([String(fileId)]);
+    expect(vi.mocked(attachFilesToMessage).mock.calls[0]?.[0]).toMatchObject({
+      messageId: prepared.assistantMessage.id,
+    });
+    vi.mocked(attachFilesToMessage).mockResolvedValue([]);
+    vi.mocked(loadOwnedFiles).mockResolvedValue([]);
+  });
+
+  it("finishes an image turn as complete when the caption model fails", async () => {
+    stream.mockImplementation(async function* () {
+      throw new AppError("That model could not authenticate the request.", {
+        statusCode: 502,
+        code: "PROVIDER_INVALID_CREDENTIALS",
+      });
+    });
+
+    const { prepareSend, runGeneration } = await import("./chatService.js");
+    const prepared = await prepareSend({
+      userId: "000000000000000000000001",
+      content: "draw a cat",
+      providerId: "mock",
+      modelId: "mock-text",
+    });
+    prepared.imageGenerated = true;
+    prepared.assistantMessage = {
+      ...prepared.assistantMessage,
+      attachments: [
+        {
+          id: "att1",
+          fileId: "file1",
+          originalName: "Ken-image.jpg",
+          mimeType: "image/jpeg",
+          size: 8,
+          kind: "image",
+        },
+      ],
+    };
+
+    const events: Array<{ type: string; assistantMessage?: { status?: string; attachments?: unknown[] } }> = [];
+    await runGeneration(prepared, (event) => events.push(event), "test");
+
+    expect(events.find((event) => event.type === "error")).toBeUndefined();
+    expect(events.find((event) => event.type === "complete")).toMatchObject({
+      assistantMessage: {
+        status: "complete",
+        attachments: [expect.objectContaining({ originalName: "Ken-image.jpg" })],
+      },
+    });
+  });
+
+  it("lets the caption hop after Flux, even when the user pinned a model", async () => {
+    applyEnabledTools.mockResolvedValue({
+      systemMessages: [],
+      files: [
+        {
+          id: "img1",
+          originalName: "Ken-image.jpg",
+          mimeType: "image/jpeg",
+          size: 8,
+          kind: "image",
+          status: "ready",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+    const { loadOwnedFiles } = await import("../storage/fileService.js");
+    vi.mocked(loadOwnedFiles).mockResolvedValue([]);
+
+    const { prepareSend, runGeneration } = await import("./chatService.js");
+    const prepared = await prepareSend({
+      userId: "000000000000000000000001",
+      content: "draw a cat",
+      providerId: "mock",
+      modelId: "mock-text",
+    });
+    expect(prepared.imageGenerated).toBe(true);
+
+    await runGeneration(prepared, () => undefined, "test");
+    expect(stream.mock.calls[0]?.[0]).not.toHaveProperty("fallbackPolicy");
+  });
+
+  it("routes an Auto picture request to Flux and skips the chat stream", async () => {
+    const fileId = new Types.ObjectId();
+    applyEnabledTools.mockResolvedValue({
+      systemMessages: [],
+      files: [
+        {
+          id: String(fileId),
+          originalName: "Ken-image.jpg",
+          mimeType: "image/jpeg",
+          size: 8,
+          kind: "image",
+          status: "ready",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+    const { loadOwnedFiles, attachFilesToMessage } = await import("../storage/fileService.js");
+    vi.mocked(loadOwnedFiles).mockResolvedValue([
+      {
+        _id: fileId,
+        originalName: "Ken-image.jpg",
+        mimeType: "image/jpeg",
+        size: 8,
+        kind: "image",
+      } as never,
+    ]);
+    vi.mocked(attachFilesToMessage).mockImplementation(async (input) =>
+      input.files.map((file) => ({
+        id: new Types.ObjectId().toString(),
+        fileId: String(file._id),
+        originalName: file.originalName,
+        mimeType: file.mimeType,
+        size: file.size,
+        kind: file.kind ?? "other",
+      })),
+    );
+
+    const { prepareSend, runGeneration } = await import("./chatService.js");
+    const prepared = await prepareSend({
+      userId: "000000000000000000000001",
+      content: "Hey so can you make me an image of 3d realistic cube with snow in the background",
+      providerId: "auto",
+      modelId: "auto",
+    });
+
+    expect(prepared).toMatchObject({
+      providerId: "cloudflare",
+      modelId: CLOUDFLARE_IMAGE_MODEL_ID,
+      autoTask: "image",
+      imageOnly: true,
+      imageGenerated: true,
+    });
+    expect(prepared.assistantMessage.attachments).toEqual([
+      expect.objectContaining({ originalName: "Ken-image.jpg" }),
+    ]);
+    expect(conversations.get(prepared.conversationId)).toMatchObject({ providerId: "auto", modelId: "auto" });
+    expect(applyEnabledTools.mock.calls[0]?.[0]).toMatchObject({
+      enabledTools: ["image_generation"],
+      capabilities: ["imageGeneration"],
+    });
+
+    const events: Array<{ type: string }> = [];
+    await runGeneration(prepared, (event) => events.push(event), "test");
+    expect(stream).not.toHaveBeenCalled();
+    expect(events.find((event) => event.type === "complete")).toBeTruthy();
+    expect(events.find((event) => event.type === "error")).toBeUndefined();
+
+    vi.mocked(attachFilesToMessage).mockResolvedValue([]);
+    vi.mocked(loadOwnedFiles).mockResolvedValue([]);
+  });
+
+  it("refuses Auto image when Flux is not available", async () => {
+    const { modelRegistry } = await import("../ai/ModelRegistry.js");
+    vi.mocked(modelRegistry.listPublicModels).mockResolvedValue(
+      AUTO_MODELS.filter((model) => model.id !== CLOUDFLARE_IMAGE_MODEL_ID) as never,
+    );
+
+    const { prepareSend } = await import("./chatService.js");
+    await expect(
+      prepareSend({
+        userId: "000000000000000000000001",
+        content: "draw a cat",
+        providerId: "auto",
+        modelId: "auto",
+      }),
+    ).rejects.toMatchObject({ code: "AUTO_ROUTE_UNAVAILABLE", statusCode: 503 });
+  });
+
+  it("sends every pinned Flux prompt to the image provider", async () => {
+    const fileId = new Types.ObjectId();
+    const { modelRegistry } = await import("../ai/ModelRegistry.js");
+    vi.mocked(modelRegistry.assertModelAvailable).mockResolvedValue({
+      id: CLOUDFLARE_IMAGE_MODEL_ID,
+      providerId: "cloudflare",
+      name: "Flux 1 Schnell (Cloudflare)",
+      capabilities: ["imageGeneration"],
+      capability: "Image Generation",
+      enabled: true,
+      available: true,
+    } as never);
+    applyEnabledTools.mockResolvedValue({
+      systemMessages: [],
+      files: [
+        {
+          id: String(fileId),
+          originalName: "Ken-image.jpg",
+          mimeType: "image/jpeg",
+          size: 8,
+          kind: "image",
+          status: "ready",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+    const { loadOwnedFiles, attachFilesToMessage } = await import("../storage/fileService.js");
+    vi.mocked(loadOwnedFiles).mockResolvedValue([
+      {
+        _id: fileId,
+        originalName: "Ken-image.jpg",
+        mimeType: "image/jpeg",
+        size: 8,
+        kind: "image",
+      } as never,
+    ]);
+    vi.mocked(attachFilesToMessage).mockImplementation(async (input) =>
+      input.files.map((file) => ({
+        id: new Types.ObjectId().toString(),
+        fileId: String(file._id),
+        originalName: file.originalName,
+        mimeType: file.mimeType,
+        size: file.size,
+        kind: file.kind ?? "other",
+      })),
+    );
+
+    const { prepareSend, runGeneration } = await import("./chatService.js");
+    const prepared = await prepareSend({
+      userId: "000000000000000000000001",
+      content: "hello",
+      providerId: "cloudflare",
+      modelId: CLOUDFLARE_IMAGE_MODEL_ID,
+    });
+
+    expect(prepared).toMatchObject({
+      providerId: "cloudflare",
+      modelId: CLOUDFLARE_IMAGE_MODEL_ID,
+      imageOnly: true,
+      imageGenerated: true,
+    });
+    expect(prepared.autoTask).toBeUndefined();
+    expect(applyEnabledTools).toHaveBeenCalled();
+
+    await runGeneration(prepared, () => undefined, "test");
+    expect(stream).not.toHaveBeenCalled();
+
+    vi.mocked(attachFilesToMessage).mockResolvedValue([]);
+    vi.mocked(loadOwnedFiles).mockResolvedValue([]);
+    vi.mocked(modelRegistry.assertModelAvailable).mockResolvedValue({
+      id: "mock-text",
+      providerId: "mock",
+      name: "Mock Text",
+      capabilities: ["text"],
+      capability: "Text-to-Text",
+      enabled: true,
+      available: true,
+      contextWindow: 8192,
+    } as never);
   });
 });

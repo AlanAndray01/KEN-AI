@@ -55,6 +55,29 @@ describe("gemini native multimodal", () => {
     );
     expect(nativeGeminiUrl("gemini-3.5-flash-lite", true)).toContain(":streamGenerateContent?alt=sse");
     expect(nativeGeminiUrl("gemini-3.5-flash-lite", false)).not.toContain("/openai");
+    expect(
+      nativeGeminiUrl(
+        "gemini-3.5-flash-lite",
+        false,
+        "https://gateway.ai.cloudflare.com/v1/acct123/ken-ai-gateway/google-ai-studio",
+      ),
+    ).toBe(
+      "https://gateway.ai.cloudflare.com/v1/acct123/ken-ai-gateway/google-ai-studio/v1/models/gemini-3.5-flash-lite:generateContent",
+    );
+    expect(
+      nativeGeminiUrl(
+        "gemini-3.5-flash-lite",
+        true,
+        "https://gateway.ai.cloudflare.com/v1/acct123/ken-ai-gateway/google-ai-studio",
+      ),
+    ).toContain("/v1/models/gemini-3.5-flash-lite:streamGenerateContent");
+    expect(
+      nativeGeminiUrl(
+        "gemini-3.5-flash-lite",
+        false,
+        "https://gateway.ai.cloudflare.com/v1/acct123/ken-ai-gateway/google-ai-studio",
+      ),
+    ).not.toContain("/v1beta/");
   });
 
   it("skips thought parts when reading a candidate", () => {
@@ -75,5 +98,12 @@ describe("gemini native multimodal", () => {
     expect(extracted.text).toBe("Visible answer");
     expect(extracted.finishReason).toBe("STOP");
     expect(extracted.usage).toEqual({ inputTokens: 4, outputTokens: 2, totalTokens: 6 });
+  });
+});
+
+describe("gemini native empty replies", () => {
+  it("extracts an empty string from a missing candidate list", () => {
+    const extracted = extractGeminiCandidateText({ candidates: [], promptFeedback: { blockReason: "SAFETY" } });
+    expect(extracted.text).toBe("");
   });
 });

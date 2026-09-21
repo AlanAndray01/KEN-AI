@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { PublicAIModel } from "@Ken/shared";
+import { CLOUDFLARE_IMAGE_MODEL_ID } from "@Ken/shared";
 import { pickDefaultModel, shouldReplaceStoredModel } from "./defaultModel";
 
 function model(partial: Partial<PublicAIModel> & Pick<PublicAIModel, "id" | "providerId" | "name">): PublicAIModel {
   return {
     capabilities: ["text", "streaming"],
+    capability: "Text-to-Text",
     enabled: true,
     available: true,
     ...partial,
@@ -47,6 +49,19 @@ describe("pickDefaultModel", () => {
     const qwen = model({ id: "qwen/qwen3.8-27b", providerId: "groq", name: "Qwen 3.8 27B" });
 
     expect(pickDefaultModel([gemini, qwen])).toEqual(qwen);
+  });
+
+  it("does not pick Flux as the default chat model", () => {
+    const flux = model({
+      id: CLOUDFLARE_IMAGE_MODEL_ID,
+      providerId: "cloudflare",
+      name: "Flux 1 Schnell (Cloudflare)",
+      capabilities: ["imageGeneration"],
+      capability: "Image Generation",
+    });
+    const llama = model({ id: "llama-3.3-70b", providerId: "cerebras", name: "Llama 3.3 70B (Cerebras)" });
+
+    expect(pickDefaultModel([flux, llama])).toEqual(llama);
   });
 });
 

@@ -808,6 +808,66 @@ describe("AIProviderManager with a pinned model (fallbackPolicy: quota-only)", (
     expect(events.some((event) => event.type === "fallback")).toBe(false);
   });
 
+  it("does not hop off the chosen model for a quota error when the policy is none", async () => {
+    const attempted: string[] = [];
+    fakeAdapter.stream = async function* (request: { modelId: string }) {
+      attempted.push(request.modelId);
+      throw quotaError();
+    };
+
+    const { AIProviderManager } = await import("./AIProviderManager.js");
+    const manager = new AIProviderManager();
+    const events: StreamEvent[] = [];
+    let error: unknown;
+    try {
+      for await (const event of manager.stream({
+        providerId: "gemini",
+        modelId: "gemini-3.1-pro-preview",
+        messages: [{ role: "user", content: "Hello" }],
+        skipAvailabilityCheck: true,
+        fallbackPolicy: "none",
+      })) {
+        events.push(event);
+      }
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(attempted).toEqual(["gemini-3.1-pro-preview"]);
+    expect(error).toMatchObject({ code: "PROVIDER_RATE_LIMITED" });
+    expect(events.some((event) => event.type === "fallback")).toBe(false);
+  });
+
+  it("tries the pinned model again despite a cached 429 when the policy is none", async () => {
+    rememberModelSkip(
+      "gemini",
+      "gemini-3.1-pro-preview",
+      quotaError(),
+    );
+    const attempted: string[] = [];
+    fakeAdapter.stream = async function* (request: { modelId: string }) {
+      attempted.push(request.modelId);
+      yield {
+        type: "complete",
+        response: { content: "Hi", model: request.modelId, provider: "gemini", finishReason: "stop" },
+      };
+    };
+
+    const { AIProviderManager } = await import("./AIProviderManager.js");
+    const manager = new AIProviderManager();
+    for await (const _event of manager.stream({
+      providerId: "gemini",
+      modelId: "gemini-3.1-pro-preview",
+      messages: [{ role: "user", content: "Hello" }],
+      skipAvailabilityCheck: true,
+      fallbackPolicy: "none",
+    })) {
+      /* drain */
+    }
+
+    expect(attempted).toEqual(["gemini-3.1-pro-preview"]);
+  });
+
   it("leaves the chosen model only for a quota error, and reports the switch", async () => {
     const attempted: string[] = [];
     fakeAdapter.stream = async function* (request: { modelId: string }) {
@@ -964,5 +1024,91 @@ describe("AIProviderManager Cloudflare context fit", () => {
 
     const sent = fakeGenerate.mock.calls[0]?.[0] as { messages: Array<{ content: string }> };
     expect(sent.messages.at(-1)?.content).toBe("Hi");
+  });
+
+  it("does not bounce a Gemini 401 image turn back onto Gemini", async () => {
+    listPublicModels.mockResolvedValue([
+      {
+        id: "gemini-3.5-flash-lite",
+        providerId: "gemini",
+        name: "Gemini 3.5 Flash Lite",
+        capabilities: ["text", "vision", "streaming"],
+        enabled: true,
+        available: true,
+      },
+      {
+        id: "gemini-3.8-flash",
+        providerId: "gemini",
+        name: "Gemini 3.8 Flash",
+        capabilities: ["text", "vision", "streaming"],
+        enabled: true,
+        available: true,
+      },
+      {
+        id: "qwen/qwen3.6-27b",
+        providerId: "groq",
+        name: "Qwen",
+        capabilities: ["text", "streaming"],
+        enabled: true,
+        available: true,
+      },
+      {
+        id: "@cf/meta/llama-4-scout-17b-16e-instruct",
+        providerId: "cloudflare",
+        name: "Scout",
+        capabilities: ["text", "vision", "streaming"],
+        enabled: true,
+        available: true,
+      },
+    ]);
+    resolveCredentials.mockImplementation(async (providerId: string) => ({
+      providerId,
+      name: providerId,
+      type: providerId,
+      apiKey: "test-key-zzzzzzzz",
+      enabled: true,
+      configured: true,
+      source: "environment",
+      capabilities: ["text"],
+    }));
+
+    const attempted: string[] = [];
+    fakeAdapter.stream = async function* (request: { providerId?: string; modelId: string }) {
+      attempted.push(`${request.providerId ?? "gemini"}:${request.modelId}`);
+      if ((request.providerId ?? fakeAdapter.id) === "gemini" || request.modelId.startsWith("gemini-")) {
+        throw new AppError("That model could not authenticate the request.", {
+          statusCode: 502,
+          code: "PROVIDER_INVALID_CREDENTIALS",
+          extra: { httpStatus: 401 },
+        });
+      }
+      yield { type: "chunk", text: "a cube" };
+      yield {
+        type: "complete",
+        response: { content: "a cube", model: request.modelId, provider: "cloudflare", finishReason: "stop" },
+      };
+    };
+
+    const { AIProviderManager } = await import("./AIProviderManager.js");
+    const manager = new AIProviderManager();
+    const events: StreamEvent[] = [];
+    for await (const event of manager.stream({
+      providerId: "gemini",
+      modelId: "gemini-3.5-flash-lite",
+      messages: [
+        {
+          role: "user",
+          content: "what is this",
+          parts: [{ type: "inline", mimeType: "image/png", data: "AA" }],
+        },
+      ],
+      skipAvailabilityCheck: true,
+    })) {
+      events.push(event);
+    }
+
+    expect(attempted.filter((id) => id.startsWith("gemini:")).length).toBe(1);
+    expect(attempted.some((id) => id.startsWith("cloudflare:"))).toBe(true);
+    expect(events.find((event) => event.type === "complete")).toBeTruthy();
   });
 });

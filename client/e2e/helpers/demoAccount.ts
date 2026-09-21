@@ -36,6 +36,7 @@ export const DEMO_MODEL = {
   providerId: "groq",
   name: "Qwen 3.8 27B",
   capabilities: ["text", "streaming", "vision", "tools"],
+  capability: "Code & Deep Logic",
   enabled: true,
   available: true,
 };

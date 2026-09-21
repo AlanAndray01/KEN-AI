@@ -1,10 +1,13 @@
+import { logger } from "../../../config/logger.js";
 import { AppError } from "../../../utils/AppError.js";
 import { combineAbortSignals, isAbortError } from "../../../utils/abort.js";
 import { toSafeError } from "../../../utils/redact.js";
 import { iterateSseData } from "../../../utils/sse.js";
 import type { AIResponse, ChatMessage, GenerateRequest, StreamEvent } from "../AIProvider.js";
+import { GATEWAY_URL_PREFIX } from "../aiGateway.js";
 import { compactUsage, normalizeAIResponse, toProviderContents } from "../normalizers/normalize.js";
-import { geminiMaxOutputTokens } from "./groqChatBody.js";
+import { geminiMaxOutputTokens } from "./compatibleChatBody.js";
+import { geminiEmptyReplyError } from "./geminiReply.js";
 import { parseProviderHttpError } from "./OpenAICompatibleProvider.js";
 
 /** Native Gemini generateContent surface (not the OpenAI-compat `/openai` prefix). */
@@ -16,12 +19,25 @@ export function requestHasInlineMedia(messages: ChatMessage[]): boolean {
   );
 }
 
-export function nativeGeminiUrl(modelId: string, stream: boolean): string {
+export function nativeGeminiUrl(modelId: string, stream: boolean, baseUrl?: string): string {
   const encoded = encodeURIComponent(modelId);
-  if (stream) {
-    return `${GEMINI_NATIVE_BASE_URL}/models/${encoded}:streamGenerateContent?alt=sse`;
+  const base = (baseUrl || GEMINI_NATIVE_BASE_URL).replace(/\/$/, "");
+  const method = stream ? "streamGenerateContent" : "generateContent";
+  const query = stream ? "?alt=sse" : "";
+  // Cloudflare's Google AI Studio native path is `/v1/models/{id}:generateContent`
+  // off the slug — not Google's `/v1beta/models/...`. The compat hop still uses
+  // `/v1beta/openai`; mixing that prefix into native is what 401'd image/PDF turns.
+  if (base.startsWith(GATEWAY_URL_PREFIX)) {
+    return `${base}/v1/models/${encoded}:${method}${query}`;
   }
-  return `${GEMINI_NATIVE_BASE_URL}/models/${encoded}:generateContent`;
+  return `${base}/models/${encoded}:${method}${query}`;
+}
+
+/** Credentials a native call needs: the vendor key, plus gateway addressing when it is on. */
+export interface NativeGeminiAuth {
+  apiKey: string;
+  baseUrl?: string;
+  gatewayToken?: string;
 }
 
 /**
@@ -77,13 +93,22 @@ export function extractGeminiCandidateText(payload: unknown): {
   };
 }
 
-export async function generateNativeGemini(request: GenerateRequest, apiKey: string): Promise<AIResponse> {
-  const fetched = await fetchNativeGemini(request, apiKey, false);
+export async function generateNativeGemini(request: GenerateRequest, auth: NativeGeminiAuth): Promise<AIResponse> {
+  const fetched = await fetchNativeGemini(request, auth, false);
   if (!fetched.response.ok) {
     await throwNativeGeminiError(fetched.response, request.modelId, fetched.connectMs);
   }
   const payload = (await fetched.response.json()) as unknown;
   const extracted = extractGeminiCandidateText(payload);
+  const empty = geminiEmptyReplyError({
+    text: extracted.text,
+    ...(extracted.finishReason ? { finishReason: extracted.finishReason } : {}),
+    payload,
+    candidateCount: Array.isArray((payload as { candidates?: unknown[] })?.candidates)
+      ? (payload as { candidates: unknown[] }).candidates.length
+      : 0,
+  });
+  if (empty) throw empty;
   return normalizeAIResponse({
     content: extracted.text,
     model: request.modelId,
@@ -93,14 +118,17 @@ export async function generateNativeGemini(request: GenerateRequest, apiKey: str
   });
 }
 
-export async function* streamNativeGemini(request: GenerateRequest, apiKey: string): AsyncIterable<StreamEvent> {
+export async function* streamNativeGemini(
+  request: GenerateRequest,
+  auth: NativeGeminiAuth,
+): AsyncIterable<StreamEvent> {
   yield { type: "start", model: request.modelId, provider: "gemini" };
   let content = "";
   let finishReason = "stop";
   let usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | undefined;
 
   try {
-    const fetched = await fetchNativeGemini(request, apiKey, true);
+    const fetched = await fetchNativeGemini(request, auth, true);
     if (!fetched.response.ok) {
       await throwNativeGeminiError(fetched.response, request.modelId, fetched.connectMs);
     }
@@ -127,6 +155,12 @@ export async function* streamNativeGemini(request: GenerateRequest, apiKey: stri
     }
   }
 
+  const empty = geminiEmptyReplyError({
+    text: content,
+    finishReason,
+  });
+  if (empty && !request.abortSignal?.aborted) throw empty;
+
   yield {
     type: "complete",
     response: normalizeAIResponse({
@@ -142,7 +176,28 @@ export async function* streamNativeGemini(request: GenerateRequest, apiKey: stri
 
 async function fetchNativeGemini(
   request: GenerateRequest,
-  apiKey: string,
+  auth: NativeGeminiAuth,
+  stream: boolean,
+): Promise<{ response: Response; connectMs: number }> {
+  const first = await postNativeGemini(request, auth, stream);
+  if (
+    !first.response.ok &&
+    (first.response.status === 401 || first.response.status === 403 || first.response.status === 404) &&
+    auth.baseUrl?.startsWith(GATEWAY_URL_PREFIX)
+  ) {
+    logger.warn(
+      { status: first.response.status, modelId: request.modelId },
+      "native Gemini via AI Gateway failed; retrying Google directly",
+    );
+    await first.response.arrayBuffer();
+    return postNativeGemini(request, { apiKey: auth.apiKey }, stream);
+  }
+  return first;
+}
+
+async function postNativeGemini(
+  request: GenerateRequest,
+  auth: NativeGeminiAuth,
   stream: boolean,
 ): Promise<{ response: Response; connectMs: number }> {
   const started = Date.now();
@@ -154,11 +209,12 @@ async function fetchNativeGemini(
         }, request.firstByteTimeoutMs)
       : undefined;
   try {
-    const response = await fetch(nativeGeminiUrl(request.modelId, stream), {
+    const response = await fetch(nativeGeminiUrl(request.modelId, stream, auth.baseUrl), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-goog-api-key": apiKey,
+        "x-goog-api-key": auth.apiKey,
+        ...(auth.gatewayToken ? { "cf-aig-authorization": `Bearer ${auth.gatewayToken}` } : {}),
         ...(stream ? { Accept: "text/event-stream" } : {}),
       },
       body: JSON.stringify(buildNativeGeminiBody(request)),

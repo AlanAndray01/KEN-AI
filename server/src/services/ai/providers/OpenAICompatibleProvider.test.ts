@@ -17,6 +17,15 @@ describe("parseProviderHttpError", () => {
     expect(error.message).toContain("decommissioned");
   });
 
+  it("maps a vendor 401 to a provider error, not a Ken session 401", () => {
+    const error = parseProviderHttpError(401, JSON.stringify({ error: { message: "Unauthorized" } }), "groq");
+    expect(error).toMatchObject({
+      code: "PROVIDER_INVALID_CREDENTIALS",
+      statusCode: 502,
+    });
+    expect(error.message).not.toMatch(/invalid credentials/i);
+  });
+
   it("maps 429 to PROVIDER_RATE_LIMITED", () => {
     const error = parseProviderHttpError(429, "{}", "groq");
     expect(error).toMatchObject({ code: "PROVIDER_RATE_LIMITED", statusCode: 429 });
@@ -80,5 +89,39 @@ describe("parseProviderHttpError", () => {
     );
     expect(error).toMatchObject({ code: "PROVIDER_ERROR", statusCode: 502 });
     expect(error.message).toBe("Internal server error from Groq");
+  });
+
+  it("reads Workers AI REST error arrays so a Cloudflare 400 is not an empty PROVIDER_ERROR", () => {
+    const error = parseProviderHttpError(
+      400,
+      JSON.stringify({
+        success: false,
+        errors: [{ code: 3006, message: "LoRA adapter id is required" }],
+      }),
+      "cloudflare",
+    );
+    expect(error).toMatchObject({ code: "PROVIDER_ERROR", statusCode: 502 });
+    expect(error.message).toContain("LoRA adapter");
+    expect(error.extra).toMatchObject({ httpStatus: 400, providerCode: "3006" });
+  });
+
+  it("classifies a Cloudflare neuron-bucket 429 as quota so fallback leaves the provider", () => {
+    const error = parseProviderHttpError(
+      429,
+      JSON.stringify({
+        errors: [
+          {
+            message:
+              "AiError: AiError: you have used up your daily free allocation of 10,000 neurons, please upgrade to Cloudflare's Workers Paid plan if you would like to continue",
+          },
+        ],
+      }),
+      "cloudflare",
+    );
+    expect(error).toMatchObject({
+      code: "PROVIDER_RATE_LIMITED",
+      statusCode: 429,
+    });
+    expect(error.extra).toMatchObject({ httpStatus: 429, errorClass: "quota_exceeded" });
   });
 });

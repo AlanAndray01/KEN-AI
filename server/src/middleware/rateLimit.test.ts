@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { NextFunction, Request, Response } from "express";
-import { createRateLimit } from "./rateLimit.js";
+import { env } from "../config/env.js";
+import { consumeImageGenerationLimit, createRateLimit, imageLimitKey } from "./rateLimit.js";
 import { AppError } from "../utils/AppError.js";
 
 function mockReq(ip = "1.1.1.1"): Request {
@@ -41,5 +42,39 @@ describe("createRateLimit", () => {
     expect(error.code).toBe("RATE_LIMITED");
     expect(res.headers["retry-after"]).toBeTruthy();
     expect(res.headers["x-ratelimit-limit"]).toBe("2");
+  });
+
+  it("keys image limits by user id so chat draws and POST /tools/images share a bucket", () => {
+    const req = { ip: "1.2.3.4", auth: { userId: "user-1" }, socket: { remoteAddress: "1.2.3.4" } } as unknown as Request;
+    expect(imageLimitKey(req)).toBe("user-1");
+  });
+
+  it("shares the image bucket across consumeImageGenerationLimit calls for one user", async () => {
+    const userId = `img-limit-${Date.now()}-${Math.random()}`;
+    const max = env.RATE_LIMIT_IMAGE;
+    for (let i = 0; i < max; i += 1) {
+      await consumeImageGenerationLimit(userId, { enabledInTest: true });
+    }
+    await expect(consumeImageGenerationLimit(userId, { enabledInTest: true })).rejects.toMatchObject({
+      statusCode: 429,
+      code: "RATE_LIMITED",
+      message: expect.stringContaining("image generation"),
+    });
+  });
+
+  it("does not count one user's image gens against another user", async () => {
+    const a = `img-a-${Date.now()}-${Math.random()}`;
+    const b = `img-b-${Date.now()}-${Math.random()}`;
+    for (let i = 0; i < env.RATE_LIMIT_IMAGE; i += 1) {
+      await consumeImageGenerationLimit(a, { enabledInTest: true });
+    }
+    await expect(consumeImageGenerationLimit(b, { enabledInTest: true })).resolves.toBeUndefined();
+  });
+
+  it("does not consume the image bucket in tests unless enabledInTest is set", async () => {
+    const userId = `img-skip-${Date.now()}-${Math.random()}`;
+    for (let i = 0; i < env.RATE_LIMIT_IMAGE + 2; i += 1) {
+      await expect(consumeImageGenerationLimit(userId)).resolves.toBeUndefined();
+    }
   });
 });

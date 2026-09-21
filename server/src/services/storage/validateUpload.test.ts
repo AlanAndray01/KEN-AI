@@ -34,6 +34,18 @@ describe("validateUploadBuffer", () => {
     });
     expect(result.kind).toBe("document");
   });
+
+  it("accepts a Word document whose zip magic matches .docx", () => {
+    const zip = Buffer.alloc(8);
+    zip.writeUInt32LE(0x04034b50, 0);
+    const result = validateUploadBuffer({
+      originalName: "brief.docx",
+      mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      buffer: zip,
+    });
+    expect(result.kind).toBe("document");
+    expect(result.mimeType).toBe("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+  });
 });
 
 describe("assertAttachmentsAllowed", () => {
@@ -43,22 +55,19 @@ describe("assertAttachmentsAllowed", () => {
     ).toThrow(/cannot analyze images/i);
   });
 
-  it("blocks PDFs when the model cannot read files", () => {
+  it("allows PDFs on a text-only model so extraction can run", () => {
     expect(() =>
       assertAttachmentsAllowed(["text", "streaming"], [{ mimeType: "application/pdf", originalName: "a.pdf" }]),
-    ).toThrow(/cannot read pdfs/i);
+    ).not.toThrow();
   });
 
-  it("blocks PDFs on a vision-only model", () => {
-    // `vision` used to satisfy the PDF check, but the normalizer then dropped
-    // the part and the model answered as if nothing was attached. Rejecting the
-    // upload turns that silent no-op into an error the user can act on.
+  it("allows PDFs on a vision-only model so extraction can run", () => {
     expect(() =>
       assertAttachmentsAllowed(
         ["text", "vision", "streaming"],
         [{ mimeType: "application/pdf", originalName: "a.pdf" }],
       ),
-    ).toThrow(/cannot read pdfs/i);
+    ).not.toThrow();
   });
 
   it("allows PDFs on a file-capable model", () => {
@@ -66,6 +75,20 @@ describe("assertAttachmentsAllowed", () => {
       assertAttachmentsAllowed(
         ["text", "vision", "files", "streaming"],
         [{ mimeType: "application/pdf", originalName: "a.pdf" }],
+      ),
+    ).not.toThrow();
+  });
+
+  it("allows Word documents without a files capability", () => {
+    expect(() =>
+      assertAttachmentsAllowed(
+        ["text", "streaming"],
+        [
+          {
+            mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            originalName: "notes.docx",
+          },
+        ],
       ),
     ).not.toThrow();
   });

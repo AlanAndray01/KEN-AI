@@ -11,6 +11,7 @@ import { storageService } from "./index.js";
 import { S3CompatibleStorage } from "./S3CompatibleStorage.js";
 import {
   extractTextDocument,
+  isDocxMime,
   isImageMime,
   isPdfMime,
   isTextMime,
@@ -118,9 +119,13 @@ export async function loadOwnedFiles(userId: string, fileIds: string[]) {
   return docs;
 }
 
+/** Gemini generateContent and OpenAI chat `type: "file"` can take a raw PDF. Word is always extracted. */
+export function providerSupportsNativeDocuments(providerId: string): boolean {
+  return providerId === "gemini" || providerId === "openai";
+}
+
 export function assertAttachmentsAllowed(capabilities: ModelCapability[], files: Array<{ mimeType: string; originalName: string }>): void {
   const vision = capabilities.includes("vision");
-  const filesCapability = capabilities.includes("files");
   for (const file of files) {
     if (isImageMime(file.mimeType) && !vision) {
       throw new AppError("This model cannot analyze images. Choose a vision-capable model.", {
@@ -128,35 +133,45 @@ export function assertAttachmentsAllowed(capabilities: ModelCapability[], files:
         code: "VISION_UNSUPPORTED",
       });
     }
-    // `vision` used to satisfy this too, but an image-only model has no way to
-    // receive a PDF: the part was dropped in the normalizer and the model
-    // answered as though nothing was attached. Requiring `files` turns that
-    // silent no-op into an error the user can act on.
-    if (isPdfMime(file.mimeType) && !filesCapability) {
-      throw new AppError("This model cannot read PDFs. Choose a file-capable model.", {
-        statusCode: 400,
-        code: "FILES_UNSUPPORTED",
-      });
-    }
-    if (!isImageMime(file.mimeType) && !isPdfMime(file.mimeType) && !isTextMime(file.mimeType)) {
+    if (
+      !isImageMime(file.mimeType) &&
+      !isPdfMime(file.mimeType) &&
+      !isDocxMime(file.mimeType) &&
+      !isTextMime(file.mimeType)
+    ) {
       throw new AppError("File type is not allowed", { statusCode: 400, code: "FILE_TYPE_UNSUPPORTED" });
     }
   }
 }
 
-export async function materializeFilesForModel(files: Array<{
-  originalName: string;
-  mimeType: string;
-  storageKey: string;
-}>): Promise<{ contentSuffix: string; parts: ChatContentPart[] }> {
+export async function materializeFilesForModel(
+  files: Array<{
+    originalName: string;
+    mimeType: string;
+    storageKey: string;
+  }>,
+  options?: { nativeDocuments?: boolean },
+): Promise<{ contentSuffix: string; parts: ChatContentPart[] }> {
   const notes: string[] = [];
   const parts: ChatContentPart[] = [];
+  const nativeDocuments = options?.nativeDocuments === true;
 
   for (const file of files) {
     const buffer = await storageService.get(file.storageKey);
-    if (isTextMime(file.mimeType)) {
+    if (isTextMime(file.mimeType) || isDocxMime(file.mimeType) || (isPdfMime(file.mimeType) && !nativeDocuments)) {
       const extracted = extractTextDocument(buffer, file.mimeType);
-      notes.push(`Attached file: ${file.originalName}\n${extracted}`);
+      notes.push(attachmentNote(file.originalName, extracted));
+      continue;
+    }
+    if (isPdfMime(file.mimeType) && nativeDocuments) {
+      const extracted = extractTextDocument(buffer, file.mimeType);
+      notes.push(attachmentNote(file.originalName, extracted));
+      parts.push({
+        type: "inline",
+        mimeType: file.mimeType,
+        data: buffer.toString("base64"),
+        filename: file.originalName,
+      });
       continue;
     }
     parts.push({
@@ -172,6 +187,11 @@ export async function materializeFilesForModel(files: Array<{
     contentSuffix: notes.join("\n\n"),
     parts,
   };
+}
+
+function attachmentNote(originalName: string, extracted: string): string {
+  if (extracted) return `Attached file: ${originalName}\n${extracted}`;
+  return `Attached file: ${originalName}\n[No extractable text]`;
 }
 
 export async function attachFilesToMessage(input: {

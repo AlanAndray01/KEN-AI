@@ -4,7 +4,6 @@ import { isAbortError } from "../../utils/abort.js";
 const NON_RETRYABLE_CODES = new Set([
   "MODEL_UNAVAILABLE",
   "PROVIDER_NOT_CONFIGURED",
-  "PROVIDER_INVALID_CREDENTIALS",
   "UNAUTHORIZED",
   "FORBIDDEN",
   "VALIDATION_ERROR",
@@ -24,8 +23,22 @@ export function isRetryableProviderError(error: unknown): boolean {
       error.statusCode === 429 ||
       error.code === "PROVIDER_ERROR" ||
       error.code === "PROVIDER_RATE_LIMITED" ||
-      error.code === "PROVIDER_UNAVAILABLE"
+      error.code === "PROVIDER_UNAVAILABLE" ||
+      error.code === "PROVIDER_INVALID_CREDENTIALS" ||
+      isProviderLeaveError(error)
     );
   }
   return true;
+}
+
+/**
+ * Vendor auth / client rejection (401/403). The key is unusable for every
+ * model on that provider, so retry must leave the provider rather than
+ * bouncing Lite → Flash → Pro on the same credentials.
+ */
+export function isProviderLeaveError(error: unknown): boolean {
+  if (!(error instanceof AppError)) return false;
+  if (error.code === "PROVIDER_INVALID_CREDENTIALS") return true;
+  const httpStatus = error.extra && typeof error.extra.httpStatus === "number" ? error.extra.httpStatus : undefined;
+  return httpStatus === 401 || httpStatus === 403;
 }

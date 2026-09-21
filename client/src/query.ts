@@ -1,5 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { api } from "@/services/api";
+import { HISTORY_PAGE_SIZE } from "@/utils/chatMessages";
 
 /** Default React Query freshness for profile, models, credentials, and prefs. */
 export const QUERY_STALE_MS = 5 * 60_000;
@@ -50,7 +51,7 @@ export function prefetchSignedInWorkspace(
     if (!conversationId) return;
     void queryClient.prefetchQuery({
       queryKey: ["messages", conversationId],
-      queryFn: () => api.conversations.messages(conversationId),
+      queryFn: () => api.conversations.messages(conversationId, { limit: HISTORY_PAGE_SIZE }),
       staleTime: MESSAGE_STALE_MS,
     });
   };

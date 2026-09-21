@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { createEvent, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { UserMessageBubble } from "./UserMessageBubble";
 
@@ -127,7 +127,7 @@ describe("UserMessageBubble", () => {
       expect(onEdit).toHaveBeenCalledWith("the new question");
     });
 
-    it("treats Enter as a newline and submits on Ctrl+Enter", () => {
+    it("submits on Enter and inserts a newline on Shift+Enter", () => {
       stubContentHeight(80);
       const onEdit = vi.fn();
       render(<UserMessageBubble content="first" onEdit={onEdit} />);
@@ -136,11 +136,14 @@ describe("UserMessageBubble", () => {
       const editor = screen.getByRole("textbox", { name: /edit your message/i });
       fireEvent.change(editor, { target: { value: "second" } });
 
-      fireEvent.keyDown(editor, { key: "Enter" });
-      fireEvent.keyDown(editor, { key: "Enter", shiftKey: true });
+      const shiftEnter = createEvent.keyDown(editor, { key: "Enter", shiftKey: true });
+      fireEvent(editor, shiftEnter);
+      expect(shiftEnter.defaultPrevented).toBe(false);
       expect(onEdit).not.toHaveBeenCalled();
 
-      fireEvent.keyDown(editor, { key: "Enter", ctrlKey: true });
+      const enter = createEvent.keyDown(editor, { key: "Enter" });
+      fireEvent(editor, enter);
+      expect(enter.defaultPrevented).toBe(true);
       expect(onEdit).toHaveBeenCalledWith("second");
     });
 

@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   GPT_CATEGORIES,
   GPT_VISIBILITY,
+  MAX_IMAGE_PROMPT_CHARS,
   MAX_MESSAGE_CONTENT_CHARS,
   MODEL_CAPABILITIES,
   PROVIDER_TYPES,
@@ -223,7 +224,7 @@ export const webSearchSchema = z.object({
 });
 
 export const imageGenerationSchema = z.object({
-  prompt: z.string().trim().min(1).max(4000),
+  prompt: z.string().trim().min(1).max(MAX_IMAGE_PROMPT_CHARS),
 });
 
 export const speakSchema = z.object({
@@ -286,3 +287,61 @@ export const patchMeSchema = z
   .refine((value) => value.name !== undefined || value.preferences !== undefined, {
     message: "Name or preferences is required",
   });
+
+/** Express query values are strings; empty params are treated as omitted. */
+function omitEmptyQuery(value: unknown): unknown {
+  return typeof value === "string" && value.trim() === "" ? undefined : value;
+}
+
+function queryIntSchema(min: number, max: number) {
+  return z.preprocess(omitEmptyQuery, z.coerce.number().int().min(min).max(max).optional());
+}
+
+function queryBooleanSchema() {
+  return z.preprocess(
+    omitEmptyQuery,
+    z
+      .union([z.literal("true"), z.literal("false"), z.literal("1"), z.literal("0"), z.boolean()])
+      .optional()
+      .transform((value) => value === true || value === "true" || value === "1")
+      .default(false),
+  );
+}
+
+function queryStringSchema(max: number) {
+  return z.preprocess(omitEmptyQuery, z.string().trim().min(1).max(max).optional());
+}
+
+export const listMessagesQuerySchema = z.object({
+  limit: queryIntSchema(1, 200),
+  before: queryStringSchema(64),
+  includeSuperseded: queryBooleanSchema(),
+});
+
+export const listConversationsQuerySchema = z.object({
+  archived: queryBooleanSchema(),
+  limit: queryIntSchema(1, 100),
+});
+
+export const listMemoriesQuerySchema = z.object({
+  limit: queryIntSchema(1, 100),
+});
+
+export const listGptsQuerySchema = z.object({
+  scope: z.preprocess(omitEmptyQuery, z.enum(["mine", "explore", "usable"]).optional()),
+  q: queryStringSchema(200),
+  category: z.preprocess(omitEmptyQuery, z.enum(GPT_CATEGORIES).optional()),
+});
+
+export const listToolsQuerySchema = z.object({
+  providerId: queryStringSchema(64),
+  modelId: queryStringSchema(160),
+});
+
+export const exportConversationQuerySchema = z.object({
+  format: z.preprocess(omitEmptyQuery, exportFormatSchema.optional()).transform((value) => value ?? "md"),
+});
+
+export const exportAllConversationsQuerySchema = z.object({
+  format: z.preprocess(omitEmptyQuery, exportFormatSchema.optional()).transform((value) => value ?? "json"),
+});

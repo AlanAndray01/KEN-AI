@@ -109,6 +109,11 @@ export interface GenerateRequest {
    * the exact budget the routing exists to protect, on a cosmetic request.
    */
   fallbackPolicy?: "any" | "quota-only" | "none";
+  /**
+   * Providers that already failed this turn (vendor 401/403). Attachment
+   * retry must not bounce the payload back onto them.
+   */
+  blockedProviders?: string[];
 }
 
 export interface ProviderRuntimeConfig {

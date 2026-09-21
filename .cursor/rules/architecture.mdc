@@ -1,7 +1,6 @@
 ---
-description: Core Ken architecture, layers, and phase discipline
-globs: ""
-alwaysApply: false
+description: Core Ken architecture, layers, file size, and phase discipline
+alwaysApply: true
 ---
 
 # Architecture
@@ -16,6 +15,10 @@ Never use Next.js, Firebase, or Supabase as the backend/database.
 Never put business logic, provider SDKs, or database access in React.
 Never call Gemini/OpenAI/etc. outside `server/src/services/ai/providers/`.
 Application code talks to `AIProviderManager`, never to a vendor SDK.
+
+Do not grow god files. Target ≤400 lines for a new or heavily edited service/page. `chatService.ts`, `ChatPage.tsx`, `HomePage.tsx`, and `useLandingScenes.ts` are already over that; extract a module instead of adding another concern.
+
+Catalog IDs are not live traffic. A model runs only when the registry marks it `available` (key present). Do not document or code as if unused providers are in the request path. Ken has no Anthropic provider — do not invent Claude catalog entries.
 
 Do not implement later phases while foundational errors remain.
 Do not fake production AI, search, or storage. If a provider is missing, return a clear error. Mock AI only when `ENABLE_MOCK_AI=true`.

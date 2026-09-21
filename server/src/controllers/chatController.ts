@@ -3,6 +3,8 @@ import {
   abortGenerationSchema,
   createConversationSchema,
   editMessageSchema,
+  listConversationsQuerySchema,
+  listMessagesQuerySchema,
   messageFeedbackSchema,
   patchConversationSchema,
   regenerateMessageSchema,
@@ -58,11 +60,10 @@ function requireUserId(req: Request): string {
 }
 
 export async function listConversationsHandler(req: Request, res: Response): Promise<void> {
-  const archived = req.query.archived === "true";
-  const limit = Number(req.query.limit);
+  const query = listConversationsQuerySchema.parse(req.query);
   const conversations = await listConversations(requireUserId(req), {
-    archived,
-    ...(Number.isFinite(limit) ? { limit } : {}),
+    archived: query.archived,
+    ...(query.limit !== undefined ? { limit: query.limit } : {}),
   });
   res.status(200).json({ conversations });
 }
@@ -90,13 +91,13 @@ export async function deleteConversationHandler(req: Request, res: Response): Pr
 }
 
 export async function listMessagesHandler(req: Request, res: Response): Promise<void> {
-  const limit = Number(req.query.limit);
-  const messages = await listMessages(requireUserId(req), req.params.id ?? "", {
-    ...(Number.isFinite(limit) ? { limit } : {}),
-    ...(typeof req.query.before === "string" ? { before: req.query.before } : {}),
-    includeSuperseded: req.query.includeSuperseded === "true",
+  const query = listMessagesQuerySchema.parse(req.query);
+  const page = await listMessages(requireUserId(req), req.params.id ?? "", {
+    ...(query.limit !== undefined ? { limit: query.limit } : {}),
+    ...(query.before ? { before: query.before } : {}),
+    includeSuperseded: query.includeSuperseded,
   });
-  res.status(200).json({ messages });
+  res.status(200).json(page);
 }
 
 export async function sendConversationMessageHandler(req: Request, res: Response): Promise<void> {

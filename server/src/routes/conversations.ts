@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { exportConversationQuerySchema, listConversationsQuerySchema, listMessagesQuerySchema } from "@Ken/shared";
 import {
   abortHandler,
   createConversationHandler,
@@ -21,16 +22,17 @@ import {
 import { requireAuth } from "../middleware/requireAuth.js";
 import { rateLimitChat } from "../middleware/rateLimit.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import { validateQuery } from "../validators/validate.js";
 
 export const conversationsRouter = Router();
 
 conversationsRouter.use(requireAuth);
-conversationsRouter.get("/", asyncHandler(listConversationsHandler));
+conversationsRouter.get("/", validateQuery(listConversationsQuerySchema), asyncHandler(listConversationsHandler));
 conversationsRouter.post("/", asyncHandler(createConversationHandler));
 conversationsRouter.get("/:id", asyncHandler(getConversationHandler));
 conversationsRouter.patch("/:id", asyncHandler(updateConversationHandler));
 conversationsRouter.delete("/:id", asyncHandler(deleteConversationHandler));
-conversationsRouter.get("/:id/messages", asyncHandler(listMessagesHandler));
+conversationsRouter.get("/:id/messages", validateQuery(listMessagesQuerySchema), asyncHandler(listMessagesHandler));
 conversationsRouter.post("/:id/messages", rateLimitChat, asyncHandler(sendConversationMessageHandler));
 conversationsRouter.post("/:id/messages/:messageId/edit", rateLimitChat, asyncHandler(editMessageHandler));
 conversationsRouter.post("/:id/messages/:messageId/regenerate", rateLimitChat, asyncHandler(regenerateHandler));
@@ -39,4 +41,4 @@ conversationsRouter.post("/:id/generation/abort", asyncHandler(abortHandler));
 conversationsRouter.get("/:id/share", asyncHandler(getConversationShareHandler));
 conversationsRouter.post("/:id/share", asyncHandler(createConversationShareHandler));
 conversationsRouter.delete("/:id/share", asyncHandler(revokeConversationShareHandler));
-conversationsRouter.get("/:id/export", asyncHandler(exportConversationHandler));
+conversationsRouter.get("/:id/export", validateQuery(exportConversationQuerySchema), asyncHandler(exportConversationHandler));

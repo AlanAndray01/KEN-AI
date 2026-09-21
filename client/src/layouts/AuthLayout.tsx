@@ -3,6 +3,7 @@ import { Link, Outlet } from "react-router-dom";
 import { APP_NAME, CLIENT_ROUTES } from "@Ken/shared";
 import { KenMark } from "@/components/KenMark";
 import { PageFallback } from "@/components/PageFallback";
+import "@/app.css";
 
 export function AuthLayout() {
   return (

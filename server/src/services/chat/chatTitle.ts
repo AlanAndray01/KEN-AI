@@ -1,4 +1,4 @@
-import { DEFAULT_GROQ_MODEL_ID, stripReasoning } from "@Ken/shared";
+import { CLOUDFLARE_TINY_MODEL_ID, DEFAULT_GROQ_MODEL_ID, stripReasoning } from "@Ken/shared";
 import { logger } from "../../config/logger.js";
 import { toSafeError } from "../../utils/redact.js";
 import { aiProviderManager } from "../ai/AIProviderManager.js";
@@ -114,21 +114,23 @@ export function sanitizeTitle(raw: string): string | null {
 /**
  * Where a title call should land.
  *
- * Naming is cosmetic, but it used to run on the conversation's own model, which
- * on a Gemini chat meant a second Gemini request for every new conversation —
- * pure overhead against the tightest free-tier bucket in the system, and
- * doubling it for the many chats that are one message long. Groq has a
- * multi-key pool (GROQ_KEYS) and far looser limits, so when a platform Groq key
- * is configured the title goes there instead and Gemini keeps its allowance for
- * the answers users actually asked for.
- *
- * Only the platform key counts. A user's own Groq credential is their quota to
- * spend on their own turns, so a BYOK-only setup keeps naming on the
- * conversation's model exactly as before.
+ * Naming is cosmetic. It used to run on the conversation's own model, which on
+ * a Gemini chat meant a second Gemini request, and on a Cloudflare chat meant
+ * Llama 70B — both of which drain the tightest free-tier buckets. Groq (when a
+ * platform key exists) sits off the Workers AI neuron meter entirely. Otherwise
+ * Llama 3.2 1B is the cheapest Workers AI chat hop. Never 70B, never Pro.
  */
+export function resolveTitleRoute(
+  conversation: { providerId: string; modelId: string },
+  keys: { groq: boolean; cloudflare: boolean },
+): { providerId: string; modelId: string } {
+  if (keys.groq) return { providerId: "groq", modelId: DEFAULT_GROQ_MODEL_ID };
+  if (keys.cloudflare) return { providerId: "cloudflare", modelId: CLOUDFLARE_TINY_MODEL_ID };
+  return conversation;
+}
+
 function titleRoute(providerId: string, modelId: string): { providerId: string; modelId: string } {
-  if (hasEnvApiKey("groq")) return { providerId: "groq", modelId: DEFAULT_GROQ_MODEL_ID };
-  return { providerId, modelId };
+  return resolveTitleRoute({ providerId, modelId }, { groq: hasEnvApiKey("groq"), cloudflare: hasEnvApiKey("cloudflare") });
 }
 
 /**

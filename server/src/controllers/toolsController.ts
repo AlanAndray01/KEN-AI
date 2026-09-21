@@ -3,6 +3,7 @@ import type { ModelCapability } from "@Ken/shared";
 import {
   createAnalysisJobSchema,
   imageGenerationSchema,
+  listToolsQuerySchema,
   webSearchSchema,
 } from "@Ken/shared";
 import { modelRegistry } from "../services/ai/ModelRegistry.js";
@@ -18,8 +19,9 @@ function requireUserId(req: Request): string {
 
 export async function listToolsHandler(req: Request, res: Response): Promise<void> {
   const userId = requireUserId(req);
-  const providerId = typeof req.query.providerId === "string" ? req.query.providerId : undefined;
-  const modelId = typeof req.query.modelId === "string" ? req.query.modelId : undefined;
+  const query = listToolsQuerySchema.parse(req.query);
+  const providerId = query.providerId;
+  const modelId = query.modelId;
   let capabilities: ModelCapability[] | undefined;
   if (providerId && modelId) {
     try {
@@ -48,7 +50,7 @@ export async function generateImageHandler(req: Request, res: Response): Promise
   const result = await aiProviderManager.runTool(
     "image_generation",
     { prompt: body.prompt },
-    { userId: requireUserId(req) },
+    { userId: requireUserId(req), skipImageRateLimit: true },
   );
   if (result.type !== "image") {
     throw new AppError("Image generation failed", { statusCode: 502, code: "IMAGE_GENERATION_PROVIDER_ERROR" });

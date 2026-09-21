@@ -1,0 +1,1220 @@
+/*
+ * App chrome: auth, chat, markdown, and workspace layout.
+ * Imported from those routes so the landing chunk does not pay for it.
+ */
+
+.auth-shell {
+  background: #121212;
+  overflow-x: clip;
+  overflow-y: auto;
+}
+
+.auth-grain {
+  position: fixed;
+  inset: -50%;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.045;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.auth-vignette {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(70% 55% at 50% 18%, rgba(0, 255, 65, 0.08), transparent 58%),
+    radial-gradient(120% 90% at 50% 40%, transparent 45%, rgba(0, 0, 0, 0.62) 100%);
+}
+
+.auth-brand {
+  filter: drop-shadow(0 0 10px rgba(0, 255, 65, 0.28));
+}
+
+.auth-shell h1 {
+  font-weight: 300;
+  letter-spacing: -0.03em;
+}
+
+.auth-glass {
+  background:
+    linear-gradient(180deg, rgba(0, 255, 65, 0.05), transparent 42%),
+    rgb(22 22 22 / 0.88);
+  backdrop-filter: blur(18px);
+  border: 1px solid rgba(0, 255, 65, 0.22);
+  box-shadow:
+    0 0 0 1px rgba(0, 255, 65, 0.05),
+    0 24px 80px rgb(0 0 0 / 0.55),
+    0 0 60px rgba(0, 255, 65, 0.07);
+}
+
+html.dark .auth-glass {
+  background:
+    linear-gradient(180deg, rgba(0, 255, 65, 0.05), transparent 42%),
+    rgb(22 22 22 / 0.88);
+  backdrop-filter: blur(18px);
+  border-color: rgba(0, 255, 65, 0.22);
+  box-shadow:
+    0 0 0 1px rgba(0, 255, 65, 0.05),
+    0 24px 80px rgb(0 0 0 / 0.55),
+    0 0 60px rgba(0, 255, 65, 0.07);
+}
+
+.auth-shell .auth-glass input,
+.auth-shell .auth-glass select,
+.auth-shell .auth-glass textarea {
+  background: rgba(18, 18, 18, 0.72);
+  border-color: rgba(245, 245, 245, 0.16);
+}
+
+.auth-shell .auth-glass input:focus,
+.auth-shell .auth-glass select:focus,
+.auth-shell .auth-glass textarea:focus {
+  border-color: rgba(0, 255, 65, 0.55);
+  box-shadow: 0 0 0 1px rgba(0, 255, 65, 0.22), 0 0 18px rgba(0, 255, 65, 0.12);
+}
+
+.auth-field-error {
+  border-color: var(--danger) !important;
+  box-shadow: 0 0 0 1px var(--danger);
+}
+
+.auth-field-ok {
+  border-color: rgba(0, 255, 65, 0.55) !important;
+  box-shadow: 0 0 0 1px rgba(0, 255, 65, 0.28), 0 0 16px rgba(0, 255, 65, 0.12);
+}
+
+.auth-mode-nav {
+  display: flex;
+  width: 100%;
+  align-items: stretch;
+  justify-content: center;
+  border: 1px solid rgba(0, 255, 65, 0.18);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.auth-mode-nav a {
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  overflow: visible;
+  white-space: nowrap;
+}
+
+.auth-tab-compact {
+  display: none;
+}
+
+.auth-mode-nav a.auth-mode-tab-on {
+  background: rgba(0, 255, 65, 0.12);
+  color: var(--accent);
+  box-shadow: none;
+}
+
+.auth-google {
+  border-color: rgba(245, 245, 245, 0.16);
+  background: rgba(245, 245, 245, 0.02);
+}
+
+.auth-google:hover {
+  border-color: rgba(0, 255, 65, 0.4);
+  color: var(--accent);
+  background: rgba(0, 255, 65, 0.08);
+}
+
+.auth-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.auth-or span {
+  background: rgba(0, 255, 65, 0.22);
+}
+
+.auth-submit {
+  display: flex;
+  width: 100%;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 10px;
+  background: #00ff41;
+  padding: 12px 22px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: #071a0c;
+  transition:
+    transform 0.3s cubic-bezier(0.22, 0.61, 0.36, 1),
+    box-shadow 0.3s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.auth-submit:hover:not(:disabled) {
+  box-shadow: 0 8px 34px rgba(0, 255, 65, 0.26);
+  transform: translateY(-2px);
+}
+
+.auth-submit:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.auth-submit:disabled {
+  opacity: 0.6;
+}
+
+
+
+.markdown {
+  font-size: 0.95rem;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.markdown > *:first-child {
+  margin-top: 0;
+}
+
+.markdown > *:last-child {
+  margin-bottom: 0;
+}
+
+.markdown p,
+.markdown ul,
+.markdown ol,
+.markdown blockquote,
+.markdown pre,
+.markdown table {
+  margin: 0.75rem 0;
+}
+
+.markdown h1,
+.markdown h2,
+.markdown h3,
+.markdown h4 {
+  margin: 1.1rem 0 0.5rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.markdown h1 {
+  font-size: 1.35rem;
+}
+
+.markdown h2 {
+  font-size: 1.15rem;
+}
+
+.markdown h3 {
+  font-size: 1.05rem;
+}
+
+.markdown ul,
+.markdown ol {
+  padding-left: 1.25rem;
+}
+
+.markdown li + li {
+  margin-top: 0.25rem;
+}
+
+.markdown blockquote {
+  margin: 0.85rem 0;
+  border-left: 3px solid var(--accent);
+  padding: 0.35rem 0 0.35rem 0.9rem;
+  color: var(--fg);
+}
+
+.markdown .katex-display {
+  margin: 0.9rem 0;
+  /* `overflow-x: auto` forces overflow-y to compute to a non-visible value, so
+     this box clips anything rising above its line box — the numerator and bar of
+     a \frac, a \sum's upper limit, a superscript. That is what sliced the top off
+     the fractions in mole-conversion answers. Clipping happens at the padding
+     edge, so vertical padding is what gives the overshoot room to paint. */
+  padding: 0.6em 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+/* Inline math is not in a scroll container, so it is never clipped — but a
+   \frac set inline still overlaps the line above at this line-height. The extra
+   leading keeps a mid-sentence fraction legible. */
+.markdown .katex {
+  font-size: 1.05em;
+}
+
+.markdown p:has(.katex) {
+  line-height: 1.9;
+}
+
+.markdown .math-block {
+  position: relative;
+}
+
+/* Hidden until the block is hovered or the control is keyboard-focused, so a
+   run of equations stays clean to read. */
+.markdown .math-block-copy {
+  position: absolute;
+  top: 0.15rem;
+  right: 0.15rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  background: var(--surface);
+  color: var(--fg-muted);
+  opacity: 0;
+  transition: opacity 120ms ease-in-out;
+}
+
+.markdown .math-block:hover .math-block-copy,
+.markdown .math-block-copy:focus-visible {
+  opacity: 1;
+}
+
+.markdown .math-block-copy:hover {
+  color: var(--fg);
+}
+
+@media (hover: none) {
+  /* No hover on touch, so the control has to stay visible to be reachable. */
+  .markdown .math-block-copy {
+    opacity: 0.65;
+  }
+}
+
+/* Tables need their own border token: --border is tuned for large
+   surfaces and disappears against the user bubble, which made cells read as one
+   run-on string. --table-line stays visible on every background we render on. */
+.markdown-table-wrap {
+  margin: 0.75rem 0;
+  overflow-x: auto;
+  border: 1px solid var(--table-line);
+  border-radius: 0.6rem;
+  /*
+   * Always-visible scrollbar, so a wide table announces that it scrolls.
+   *
+   * The global `* { scrollbar-width: thin }` rule makes Chromium ignore every
+   * ::-webkit-scrollbar style and fall back to a thin bar that auto-hides.
+   * Resetting both standard properties to `auto` here hands control back to the
+   * webkit pseudo-elements below, which Chromium and Safari render as a
+   * persistent bar with its own gutter. Firefox gets the standard properties in
+   * the @supports block instead.
+   */
+  scrollbar-width: auto;
+  scrollbar-color: auto;
+}
+
+.markdown-table-wrap::-webkit-scrollbar {
+  height: 10px;
+}
+
+.markdown-table-wrap::-webkit-scrollbar-track {
+  background: var(--surface-muted);
+  border-radius: 0 0 0.6rem 0.6rem;
+}
+
+.markdown-table-wrap::-webkit-scrollbar-thumb {
+  /* Neon green is reserved for signal; "this scrolls" is exactly that. */
+  background-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+  border-radius: 999px;
+}
+
+.markdown-table-wrap::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in srgb, var(--accent) 85%, transparent);
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  .markdown-table-wrap {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--accent) 55%, transparent) var(--surface-muted);
+  }
+}
+
+.markdown-table-wrap > table {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+.markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  /* Stops long cells collapsing to unreadable widths inside a narrow bubble. */
+  min-width: max-content;
+}
+
+.markdown thead {
+  background: var(--table-head);
+}
+
+.markdown th {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.markdown th,
+.markdown td {
+  border-right: 1px solid var(--table-line);
+  border-bottom: 1px solid var(--table-line);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.markdown th:last-child,
+.markdown td:last-child {
+  border-right: 0;
+}
+
+.markdown tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.markdown hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 1rem 0;
+}
+
+.code-block pre {
+  margin: 0;
+}
+
+.code-block .hljs,
+.markdown .hljs {
+  background: transparent;
+  color: var(--fg);
+}
+
+.hljs-comment,
+.hljs-quote {
+  color: var(--fg-muted);
+  font-style: italic;
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-addition {
+  color: var(--accent);
+}
+
+.hljs-string,
+.hljs-doctag,
+.hljs-regexp {
+  color: #9b2c2c;
+}
+
+html.dark .hljs-string,
+html.dark .hljs-doctag,
+html.dark .hljs-regexp {
+  color: #f0a3a3;
+}
+
+.hljs-number,
+.hljs-literal,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-tag .hljs-attr {
+  color: #8a5a1a;
+}
+
+html.dark .hljs-number,
+html.dark .hljs-literal,
+html.dark .hljs-variable,
+html.dark .hljs-template-variable,
+html.dark .hljs-tag .hljs-attr {
+  color: #e2c08d;
+}
+
+.hljs-title,
+.hljs-section,
+.hljs-attribute,
+.hljs-name,
+.hljs-selector-id,
+.hljs-selector-class,
+.hljs-built_in,
+.hljs-type {
+  color: #2f5d50;
+}
+
+html.dark .hljs-title,
+html.dark .hljs-section,
+html.dark .hljs-attribute,
+html.dark .hljs-name,
+html.dark .hljs-selector-id,
+html.dark .hljs-selector-class,
+html.dark .hljs-built_in,
+html.dark .hljs-type {
+  color: #8fbfb0;
+}
+
+.hljs-meta,
+.hljs-symbol,
+.hljs-bullet {
+  color: var(--fg-muted);
+}
+
+.streaming-cursor {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  height: 1.15rem;
+}
+
+.streaming-cursor span {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 999px;
+  background: var(--fg-muted);
+  animation: streaming-pulse 1s ease-in-out infinite;
+}
+
+.streaming-cursor span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.streaming-cursor span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+.streaming-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 0.15rem;
+  vertical-align: text-bottom;
+  background: var(--fg);
+  animation: streaming-caret 1s step-end infinite;
+}
+
+.rich-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 220ms ease;
+}
+
+.rich-collapse[data-open="true"] {
+  grid-template-rows: 1fr;
+}
+
+.rich-collapse > div {
+  overflow: hidden;
+}
+
+.thinking-pipeline {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 2.75rem;
+}
+
+.assistant-turn {
+  min-height: 2.75rem;
+}
+
+.chat-empty-title {
+  min-height: 2.25rem;
+}
+
+.markdown-stream,
+.markdown-placeholder {
+  margin: 0;
+  min-height: 1.5em;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.markdown img,
+.markdown video {
+  max-width: 100%;
+  height: auto;
+  background: color-mix(in srgb, var(--surface-muted) 80%, transparent);
+}
+
+/*
+ * The word stays a flat, quiet grey: the dots carry the colour, and two things
+ * shifting hue at once reads as noise. Each word remounts, so the fade plays on
+ * every change rather than only on the first paint.
+ */
+.thinking-word {
+  font-size: 0.9375rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--thinking-idle);
+  animation: thinking-word-in 300ms ease-out both;
+}
+
+@keyframes thinking-word-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.15rem);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/*
+ * The dots sit on one baseline via inline-flex with centred alignment, so the
+ * wave reads as a straight horizontal line beside the word.
+ */
+.thinking-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+/*
+ * A single keyframe carries both halves of the effect: the dot lifts from a
+ * muted grey resting state to full blue at its peak, then settles back. Staggered
+ * delays send that peak left to right, which is what makes it read as fluid
+ * motion rather than three dots blinking on their own clocks.
+ */
+.thinking-dot {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 999px;
+  background-color: var(--thinking-idle);
+  animation: thinking-wave 1.4s ease-in-out infinite;
+}
+
+.thinking-dot:nth-child(2) {
+  animation-delay: 0.18s;
+}
+
+.thinking-dot:nth-child(3) {
+  animation-delay: 0.36s;
+}
+
+@keyframes thinking-wave {
+  0%,
+  70%,
+  100% {
+    background-color: var(--thinking-idle);
+    opacity: 0.45;
+    transform: scale(0.85);
+  }
+  35% {
+    background-color: var(--thinking-active);
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/*
+ * "Reduce", not "remove".
+ *
+ * The blanket rule near the top of this file clamps every animation on the page
+ * to 0.01ms for a reader who asked for less motion. For most of the UI that is
+ * right, but it froze this indicator solid — and a progress indicator that never
+ * moves reads as a hung request, which is worse than the motion it avoided.
+ *
+ * These rules re-enable only the parts that carry no movement: opacity and
+ * colour cross-fades, with no scaling and no travel. Nothing here shifts
+ * position, which is the property that actually triggers vestibular symptoms.
+ * They need !important to outrank the blanket clamp, and win it on specificity.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .thinking-word {
+    animation: thinking-word-fade 300ms ease-out both !important;
+  }
+
+  .thinking-dot {
+    animation: thinking-dot-fade 1.4s ease-in-out infinite !important;
+  }
+
+  .thinking-dot:nth-child(2) {
+    animation-delay: 0.18s !important;
+  }
+
+  .thinking-dot:nth-child(3) {
+    animation-delay: 0.36s !important;
+  }
+}
+
+/* Same rhythm as thinking-wave, minus the scale. */
+@keyframes thinking-dot-fade {
+  0%,
+  70%,
+  100% {
+    background-color: var(--thinking-idle);
+    opacity: 0.45;
+  }
+  35% {
+    background-color: var(--thinking-active);
+    opacity: 1;
+  }
+}
+
+@keyframes thinking-word-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes streaming-pulse {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-1px);
+  }
+}
+
+@keyframes streaming-caret {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+/* Sidebar rows are uniform, so skipping their offscreen paint is safe.
+   Chat turns are not: a message can hold code, KaTeX, or a rich widget that
+   settles after mount, and the skipped placeholder shows up as an empty box
+   mid-layout-shift. History is paged from the server, so off-screen turns
+   skip the markdown pipeline instead of using content-visibility. */
+.chat-history-item {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 4.5rem;
+}
+
+.message-avatar {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+.model-selector-trigger {
+  min-height: 2.25rem;
+}
+
+/* Long user turns collapse so a pasted log cannot push the reply off screen.
+   The fade signals there is more text without needing a second label. */
+.user-message-clamped {
+  mask-image: linear-gradient(to bottom, #000 60%, transparent 100%);
+}
+
+.user-message-fade {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  height: 3rem;
+  pointer-events: none;
+}
+
+/*
+ * Compact screens — 1023px and below.
+ *
+ * Every rule in this block is gated on max-width so the desktop layout, spacing,
+ * type scale, and control sizes above stay exactly as they are. Tablet (md) still
+ * shows the static sidebar; these rules only shrink chrome that overflows the
+ * remaining column. Phone (max-md) is more aggressive: composer clutter gone,
+ * page padding cut, no horizontal scroll down to 320px.
+ */
+@media (max-width: 1023px) {
+  .workspace-shell,
+  .auth-shell {
+    max-width: 100%;
+    overflow-x: clip;
+  }
+
+  .auth-mode-nav a {
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    text-transform: none;
+    padding-left: 0.35rem;
+    padding-right: 0.35rem;
+  }
+
+  .chat-header-start {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .chat-header-end {
+    flex-shrink: 0;
+  }
+
+  .chat-header h1 {
+    min-width: 0;
+    font-size: 1rem;
+    line-height: 1.35;
+  }
+
+  .model-selector-trigger {
+    max-width: 9.5rem;
+  }
+
+  .chat-composer .composer-hint {
+    display: none;
+  }
+
+  .chat-composer .composer-toolbar {
+    flex-wrap: nowrap;
+    gap: 0.25rem;
+  }
+
+  .chat-composer .composer-tools {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .chat-composer .composer-actions {
+    flex-shrink: 0;
+  }
+
+  .markdown img,
+  .markdown video,
+  .markdown iframe {
+    max-width: 100%;
+    height: auto;
+  }
+}
+
+@media (max-width: 767px) {
+  .auth-shell {
+    align-items: flex-start;
+    padding-top: max(1.25rem, env(safe-area-inset-top, 0px));
+    padding-bottom: max(1.5rem, env(safe-area-inset-bottom, 0px));
+    padding-left: max(1rem, env(safe-area-inset-left, 0px));
+    padding-right: max(1rem, env(safe-area-inset-right, 0px));
+  }
+
+  .auth-glass {
+    padding: 1.35rem;
+  }
+
+  .auth-stack {
+    gap: 1.15rem;
+  }
+
+  .auth-shell h1 {
+    font-size: 1.35rem;
+  }
+
+  .auth-mode-nav a {
+    font-size: 0.6875rem;
+    letter-spacing: 0.02em;
+    line-height: 1.2;
+    padding-left: 0.25rem;
+    padding-right: 0.25rem;
+  }
+
+  .chat-header {
+    padding: 0.375rem 0.5rem;
+    gap: 0.35rem;
+  }
+
+  .chat-header-start {
+    gap: 0.125rem;
+  }
+
+  /* min-width/height (not just padding) so the 48px tap target holds even
+     though these buttons wrap a single icon with no other sizing hint. */
+  .chat-header-start > button,
+  .chat-header-end > button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 3rem;
+    min-height: 3rem;
+    padding: 0.375rem;
+  }
+
+  .model-selector-trigger {
+    max-width: 7.25rem;
+    gap: 0.25rem;
+    padding: 0.25rem 0.35rem;
+    font-size: 0.8125rem;
+  }
+
+  .model-selector-menu {
+    width: min(16rem, calc(100vw - 1.25rem));
+    max-height: min(20rem, 70vh);
+  }
+
+  .share-menu-panel {
+    width: min(13rem, calc(100vw - 1.25rem));
+  }
+
+  .chat-messages {
+    padding: 1rem 0.75rem;
+  }
+
+  .chat-empty-title {
+    font-size: 1.5rem;
+    line-height: 1.25;
+  }
+
+  .chat-message {
+    gap: 0.5rem;
+  }
+
+  /* The YOU / KEN chip is dropped on phones: the role is already obvious from
+     the bubble's side and colour, so the extra label just eats width from the
+     message. `display: none` (not just hiding it) lets `.chat-message`'s own
+     gap collapse instead of leaving a dead space where the chip used to sit. */
+  .message-avatar {
+    display: none;
+  }
+
+  /* Bubble chrome at roughly 3/4 of its desktop size: the base is rounded-xl
+     (0.75rem radius) with px-4 py-3 (1rem / 0.75rem) padding, so each figure
+     below is that value × 0.75. Message text is deliberately NOT scaled down
+     here — only the bubble shrinks; the words inside stay full size. */
+  .assistant-turn {
+    padding: 0.5625rem 0.75rem;
+    border-radius: 0.5625rem;
+  }
+
+  .user-message {
+    max-width: min(85%, calc(100% - 2rem));
+  }
+
+  .user-message > div:first-child {
+    padding: 0.5625rem 0.75rem;
+    border-radius: 0.5625rem;
+  }
+
+  /*
+   * Compact action rows. A 48x48 box per icon stacked a 48px-tall strip under
+   * every turn, which was most of the vertical sprawl on phones, and the
+   * 40px-wide hit target on top of a 14px icon read as gaps between the icons
+   * even at gap:0. Shrinking the button box itself (not just the gap) is what
+   * closes that visual distance. width/height stay at the 24px WCAG 2.2 floor;
+   * the ::after hit-slop makes up the difference on every side.
+   *
+   * The row keeps a small 4px gap rather than 0, specifically so the
+   * horizontal slop has somewhere to go: two neighbours' ::after regions abut
+   * exactly at the gap's midpoint (2px slop + 2px slop = the 4px gap) instead
+   * of overlapping into each other, which is what would make a tap near the
+   * boundary land on the wrong icon.
+   */
+  .assistant-actions button,
+  .user-message-actions button {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.75rem;
+    min-height: 1.75rem;
+    padding: 0.125rem;
+  }
+
+  .assistant-actions button::after,
+  .user-message-actions button::after {
+    content: "";
+    position: absolute;
+    top: -10px;
+    bottom: -10px;
+    left: -2px;
+    right: -2px;
+  }
+
+  .assistant-actions svg,
+  .user-message-actions svg {
+    width: 0.875rem;
+    height: 0.875rem;
+  }
+
+  .assistant-actions,
+  .user-message-actions {
+    gap: 0.25rem;
+  }
+
+  .chat-thread {
+    gap: 0.75rem;
+  }
+
+  .chat-composer {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
+  }
+
+  .chat-composer .composer-shell {
+    border-radius: 1.25rem;
+  }
+
+  .chat-composer .composer-shell .absolute.inset-0 {
+    border-radius: inherit;
+  }
+
+  .chat-composer .composer-input {
+    min-height: 2.5rem;
+    padding: 0.625rem 0.75rem 0.375rem;
+    font-size: 1rem;
+  }
+
+  .chat-composer .composer-toolbar {
+    padding-left: 0.375rem;
+    padding-right: 0.375rem;
+    padding-bottom: 0.375rem;
+  }
+
+  .chat-composer .composer-tools {
+    gap: 0;
+  }
+
+  /* Four of these sit in one non-wrapping row (attach/web/image/mic); at
+     320px there is no width budget to grow each one to 48px without the row
+     overflowing (measured: ~334px needed at a 48px floor vs. 320 available).
+     `position: relative` + an invisible ::after hit-slop reaches the same
+     48px tappable area without taking any extra layout width — the visible
+     icon and padding are untouched. */
+  .chat-composer .composer-tools button {
+    position: relative;
+    padding: 0.4rem;
+  }
+
+  .chat-composer .composer-tools button::after {
+    content: "";
+    position: absolute;
+    inset: -10px;
+  }
+
+  .chat-composer .composer-tools button svg {
+    width: 0.95rem;
+    height: 0.95rem;
+  }
+
+  .chat-composer .composer-actions {
+    gap: 0.35rem;
+  }
+
+  /* Previously shrunk to 2.15rem (34px) here — below the touch-target floor.
+     48px keeps send/live-voice/stop reachable without moving them. */
+  .chat-composer .composer-actions button {
+    flex-shrink: 0;
+    width: 3rem;
+    height: 3rem;
+  }
+
+  .chat-composer .composer-actions button svg {
+    width: 0.9rem;
+    height: 0.9rem;
+  }
+
+  .chat-composer .composer-mention-bar {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+    padding-top: 0.5rem;
+  }
+
+  .chat-composer .composer-mention-bar p {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .chat-composer [aria-label="Attachments"] {
+    padding-left: 0.625rem;
+    padding-right: 0.625rem;
+    padding-top: 0.625rem;
+    gap: 0.375rem;
+  }
+
+  .chat-composer [aria-label="Attachments"] img,
+  .chat-composer [aria-label="Attachments"] .h-20 {
+    width: 3.5rem;
+    height: 3.5rem;
+  }
+
+  .chat-composer > p {
+    margin-top: 0.4rem;
+    padding-left: 0.35rem;
+    padding-right: 0.35rem;
+    font-size: 0.625rem;
+    line-height: 1.4;
+  }
+
+  .markdown {
+    font-size: 0.9rem;
+  }
+
+  .thinking-pipeline {
+    min-height: 2.25rem;
+    gap: 0.3rem;
+  }
+
+  .thinking-word {
+    font-size: 0.8125rem;
+  }
+
+  #main-content.px-6,
+  #main-content .px-6 {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  #main-content.py-12,
+  #main-content.py-16,
+  #main-content .py-12,
+  #main-content .py-16 {
+    padding-top: 1.5rem;
+    padding-bottom: 1.5rem;
+  }
+
+  #main-content h1.text-3xl {
+    font-size: 1.5rem;
+    line-height: 1.25;
+  }
+
+  .workspace-shell input,
+  .workspace-shell select,
+  .workspace-shell textarea,
+  .auth-glass input,
+  .auth-glass select,
+  .auth-glass textarea {
+    font-size: 1rem;
+  }
+
+  .gpts-search {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .min-w-56 {
+    min-width: 0;
+  }
+
+  .toaster {
+    right: 0.5rem;
+    bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
+    width: min(calc(100% - 1rem), 22rem);
+  }
+
+  .live-voice-overlay {
+    padding-left: 1rem;
+    padding-right: 1rem;
+    gap: 1.5rem;
+  }
+
+  .shortcuts-dialog {
+    padding: 1.25rem;
+  }
+
+  .code-block .flex.items-center.justify-between {
+    gap: 0.5rem;
+    padding-left: 0.625rem;
+    padding-right: 0.625rem;
+  }
+}
+
+@media (max-width: 400px) {
+  .chat-gpt-label {
+    display: none;
+  }
+
+  .chat-header h1 {
+    font-size: 0.9375rem;
+  }
+
+  .model-selector-trigger {
+    max-width: 5.75rem;
+  }
+
+  .chat-messages {
+    padding: 0.75rem 0.5rem;
+  }
+
+  .chat-empty-title {
+    font-size: 1.25rem;
+  }
+
+  .chat-composer {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+
+  .chat-composer .composer-input {
+    padding-left: 0.625rem;
+    padding-right: 0.625rem;
+  }
+
+  .chat-composer .composer-tools button {
+    padding: 0.3rem;
+  }
+
+  /* The box shrinks further at this width, so the hit-slop set at 767px
+     widens to keep the same 48px tappable area. */
+  .chat-composer .composer-tools button::after {
+    inset: -12px;
+  }
+
+  .auth-glass {
+    padding: 1.25rem;
+    border-radius: 1rem;
+  }
+
+  .auth-mode-nav a {
+    font-size: 0.6875rem;
+    line-height: 1.2;
+    letter-spacing: 0;
+    text-transform: none;
+    overflow: visible;
+    white-space: nowrap;
+  }
+
+  .auth-mode-nav a:has(.auth-tab-compact) .auth-tab-full {
+    display: none;
+  }
+
+  .auth-tab-compact {
+    display: inline;
+  }
+
+  .otp-group {
+    gap: 0.35rem;
+  }
+
+  .otp-group input {
+    width: 2.15rem;
+    height: 2.5rem;
+    font-size: 1rem;
+  }
+}
+
+@media (hover: none) {
+  .user-message-actions {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-grain {
+    display: none;
+  }
+
+  .auth-submit:hover:not(:disabled) {
+    transform: none;
+  }
+}
+

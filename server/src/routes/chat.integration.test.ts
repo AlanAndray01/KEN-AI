@@ -112,6 +112,7 @@ describe.skipIf(!mongo.ok || !providerConfigured)("chat routes (real MongoDB)", 
     expect(response.status).toBe(200);
     expect(response.body.messages).toHaveLength(2);
     expect(response.body.messages[1].content).toBe("Hi there");
+    expect(response.body.hasMore).toBe(false);
   });
 
   it("stores feedback in MongoDB and returns it on reload", async () => {

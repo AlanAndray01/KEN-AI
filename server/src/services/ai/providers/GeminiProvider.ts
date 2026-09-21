@@ -1,6 +1,12 @@
 import { AppError } from "../../../utils/AppError.js";
 import type { GenerateRequest, ProviderRuntimeConfig } from "../AIProvider.js";
-import { generateNativeGemini, requestHasInlineMedia, streamNativeGemini } from "./geminiNative.js";
+import { gatewayGeminiNativeBaseUrl } from "../aiGateway.js";
+import {
+  generateNativeGemini,
+  requestHasInlineMedia,
+  streamNativeGemini,
+  type NativeGeminiAuth,
+} from "./geminiNative.js";
 import { OpenAICompatibleProvider } from "./OpenAICompatibleProvider.js";
 
 /** Google's official OpenAI-compatible Gemini endpoint (AI Studio / Gemini API). */
@@ -27,7 +33,7 @@ export class GeminiProvider extends OpenAICompatibleProvider {
     if (!requestHasInlineMedia(request.messages)) {
       return super.generate(request);
     }
-    return generateNativeGemini(request, this.requireGeminiKey());
+    return generateNativeGemini(request, this.nativeAuth());
   }
 
   override async *stream(request: GenerateRequest) {
@@ -35,14 +41,24 @@ export class GeminiProvider extends OpenAICompatibleProvider {
       yield* super.stream(request);
       return;
     }
-    yield* streamNativeGemini(request, this.requireGeminiKey());
+    yield* streamNativeGemini(request, this.nativeAuth());
   }
 
-  private requireGeminiKey(): string {
+  /**
+   * The native surface is a different host and path from the compat one, so it
+   * needs its own gateway address rather than the `baseUrl` this adapter was
+   * constructed with. Without it, attachment turns silently left the gateway.
+   */
+  private nativeAuth(): NativeGeminiAuth {
     const apiKey = this.credentials.apiKey;
     if (!apiKey) {
       throw new AppError("No AI provider configured.", { statusCode: 503, code: "PROVIDER_NOT_CONFIGURED" });
     }
-    return apiKey;
+    const baseUrl = gatewayGeminiNativeBaseUrl();
+    return {
+      apiKey,
+      ...(baseUrl ? { baseUrl } : {}),
+      ...(baseUrl && this.credentials.gatewayToken ? { gatewayToken: this.credentials.gatewayToken } : {}),
+    };
   }
 }

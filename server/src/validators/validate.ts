@@ -15,6 +15,18 @@ export function validateBody<T>(schema: ZodType<T>) {
   };
 }
 
+export function validateQuery<T>(schema: ZodType<T>) {
+  return (req: Request, _res: Response, next: NextFunction): void => {
+    const parsed = schema.safeParse(req.query);
+    if (!parsed.success) {
+      next(validationError(parsed.error));
+      return;
+    }
+
+    next();
+  };
+}
+
 function validationError(error: ZodError): AppError {
   return new AppError("Invalid request", {
     statusCode: 400,

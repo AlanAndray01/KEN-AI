@@ -12,6 +12,7 @@ export type ApiErrorCategory =
 
 export function categorizeApiError(error: unknown): ApiErrorCategory {
   if (error instanceof ApiError) {
+    if (error.code === "PROVIDER_INVALID_CREDENTIALS") return "server";
     if (error.status === 401) return "authentication";
     if (error.status === 403) return "authorization";
     if (error.status === 404) return "notFound";
@@ -49,6 +50,9 @@ export function describeApiError(error: unknown, fallback: string): string {
       }
       return "Too many requests to this app. Wait a moment and try again.";
     case "server":
+      if (error instanceof ApiError && error.code === "PROVIDER_INVALID_CREDENTIALS") {
+        return "That model could not be reached. Try another model, or retry this turn.";
+      }
       return "The server could not complete that request. Try again shortly.";
     case "network":
       return "Cannot reach the server. Check your connection and try again.";
@@ -57,6 +61,26 @@ export function describeApiError(error: unknown, fallback: string): string {
     default:
       return fallback;
   }
+}
+
+/**
+ * Copy for an SSE generation error. A vendor/gateway 401 must never reuse
+ * login language — that is what produced the "Invalid credentials" popup.
+ */
+export function describeGenerationError(code?: string, message?: string): string {
+  if (code === "PROVIDER_INVALID_CREDENTIALS") {
+    return "That model could not be reached. Try another model, or retry this turn.";
+  }
+  if (code === "PROVIDER_RATE_LIMITED") {
+    if (message && !/invalid credentials/i.test(message)) return message;
+    return "This model is rate limited right now. Retry this turn, or pick another model.";
+  }
+  if (code === "PROVIDER_UNAVAILABLE") {
+    if (message && !/invalid credentials/i.test(message)) return message;
+    return "This model is currently experiencing high demand. Retry this turn, or pick another model.";
+  }
+  if (message && !/invalid credentials/i.test(message)) return message;
+  return "Generation failed";
 }
 
 /** Structured developer log. Carries no credentials, cookies, or payload bodies. */

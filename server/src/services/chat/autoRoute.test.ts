@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
+  CLOUDFLARE_IMAGE_MODEL_ID,
+  CLOUDFLARE_VISION_MODEL_ID,
   DEFAULT_GEMINI_MODEL_ID,
   DEFAULT_GROQ_MODEL_ID,
   GEMINI_PRO_MODEL_ID,
@@ -7,13 +9,15 @@ import {
   type ModelCapability,
 } from "@Ken/shared";
 import { classifyAutoTask, pickAutoRoute, planAutoRoute, type RoutableModel } from "./autoRoute.js";
+import { AppError } from "../../utils/AppError.js";
+import { clearModelSkips, rememberModelSkip } from "../ai/modelSkip.js";
 
 function model(providerId: string, id: string, capabilities: ModelCapability[], available = true): RoutableModel {
   return { providerId, id, capabilities, available, enabled: true };
 }
 
 const TEXT: ModelCapability[] = ["text", "streaming"];
-const GEMINI: ModelCapability[] = ["text", "vision", "streaming", "tools"];
+const GEMINI: ModelCapability[] = ["text", "vision", "files", "streaming", "tools"];
 const FILES: ModelCapability[] = ["text", "vision", "files", "streaming", "tools"];
 
 const geminiLite = model("gemini", DEFAULT_GEMINI_MODEL_ID, GEMINI);
@@ -21,8 +25,14 @@ const geminiPro = model("gemini", GEMINI_PRO_MODEL_ID, GEMINI);
 const groqFast = model("groq", DEFAULT_GROQ_MODEL_ID, TEXT);
 const groqQuality = model("groq", GROQ_QUALITY_MODEL_ID, TEXT);
 const gpt41 = model("openai", "gpt-4.1", FILES);
+const cloudflareScout = model("cloudflare", CLOUDFLARE_VISION_MODEL_ID, ["text", "vision", "streaming"]);
+const cloudflareFlux = model("cloudflare", CLOUDFLARE_IMAGE_MODEL_ID, ["imageGeneration"]);
 const miniOpenAI = model("openai", "gpt-4o-mini", FILES);
 const ollama = model("ollama", "llama3.2", TEXT);
+
+afterEach(() => {
+  clearModelSkips();
+});
 
 describe("classifyAutoTask", () => {
   it("sends small talk and short facts to the quick tier", () => {
@@ -56,6 +66,9 @@ describe("classifyAutoTask", () => {
     expect(classifyAutoTask({ content: code, files: [{ mimeType: "application/pdf" }] })).toBe("files");
     expect(classifyAutoTask({ content: code, files: [{ mimeType: "image/png" }] })).toBe("vision");
     expect(classifyAutoTask({ content: "latest news", enabledTools: ["web_search"] })).toBe("tools");
+    expect(classifyAutoTask({ content: "draw a cat" })).toBe("image");
+    // An attached photo is still vision, even if the text also asks to draw.
+    expect(classifyAutoTask({ content: "draw a cat", files: [{ mimeType: "image/png" }] })).toBe("vision");
   });
 });
 
@@ -84,6 +97,15 @@ describe("pickAutoRoute", () => {
     expect(pickAutoRoute([gpt41, groqFast], "quick")).toMatchObject({ modelId: DEFAULT_GROQ_MODEL_ID });
   });
 
+  it("uses Cloudflare 3B, not 70B, when Auto has only Workers AI left", () => {
+    const cf70 = model("cloudflare", "@cf/meta/llama-3.3-70b-instruct-fp8-fast", TEXT);
+    const cf3b = model("cloudflare", "@cf/meta/llama-3.2-3b-instruct", TEXT);
+    expect(pickAutoRoute([cf70, cf3b], "quick")).toMatchObject({
+      modelId: "@cf/meta/llama-3.2-3b-instruct",
+      preferred: true,
+    });
+  });
+
   it("keeps vision on Gemini even though Groq now leads the text tiers", () => {
     expect(pickAutoRoute([groqFast, geminiLite], "vision")).toMatchObject({ providerId: "gemini" });
   });
@@ -95,9 +117,25 @@ describe("pickAutoRoute", () => {
 
   it("requires the capability the attachment needs", () => {
     expect(pickAutoRoute([groqFast, geminiLite], "vision")).toMatchObject({ providerId: "gemini" });
-    // Gemini declares vision but not files, so a PDF must go to a file-capable model.
     expect(pickAutoRoute([geminiLite, miniOpenAI], "files")).toMatchObject({ providerId: "openai" });
-    expect(pickAutoRoute([geminiLite, groqFast], "files")).toBeUndefined();
+    expect(pickAutoRoute([geminiLite, groqFast], "files")).toMatchObject({ providerId: "gemini" });
+    expect(pickAutoRoute([groqFast], "files")).toBeUndefined();
+  });
+
+  it("skips Gemini for Auto vision after a vendor 401 cooldown", () => {
+    rememberModelSkip(
+      "gemini",
+      DEFAULT_GEMINI_MODEL_ID,
+      new AppError("That model could not authenticate the request.", {
+        statusCode: 502,
+        code: "PROVIDER_INVALID_CREDENTIALS",
+        extra: { httpStatus: 401 },
+      }),
+    );
+    expect(pickAutoRoute([groqFast, geminiLite, cloudflareScout], "vision")).toMatchObject({
+      providerId: "cloudflare",
+      modelId: CLOUDFLARE_VISION_MODEL_ID,
+    });
   });
 
   it("uses a local daemon only when nothing hosted can serve the turn", () => {
@@ -114,20 +152,41 @@ describe("planAutoRoute", () => {
     expect(plan.route).toMatchObject({ providerId: "groq" });
   });
 
-  it("does not degrade an attachment turn that no model can read", () => {
+  it("routes a picture request to Flux, not a caption model", () => {
+    expect(classifyAutoTask({ content: "generate an image of a sunset" })).toBe("image");
+    expect(pickAutoRoute([groqFast, geminiLite, cloudflareFlux], "image")).toMatchObject({
+      providerId: "cloudflare",
+      modelId: CLOUDFLARE_IMAGE_MODEL_ID,
+      preferred: true,
+    });
+  });
+
+  it("does not degrade an image turn when Flux is missing", () => {
+    const plan = planAutoRoute([groqFast, geminiLite], { content: "generate an image of a sunset" });
+    expect(plan).toEqual({ task: "image", route: undefined });
+  });
+
+  it("degrades a PDF turn to chat when no file-capable model exists, so text extraction can run", () => {
     const plan = planAutoRoute([groqFast], { content: "summarise", files: [{ mimeType: "application/pdf" }] });
-    expect(plan).toEqual({ task: "files", route: undefined });
+    expect(plan.task).toBe("chat");
+    expect(plan.route).toMatchObject({ providerId: "groq" });
   });
 });
 
 describe("long-context routing", () => {
   const words = "the quick brown fox jumps over the lazy dog analysis report section".split(" ");
-  const document = Array.from({ length: 3_000 }, (_, i) => words[i % words.length]).join(" ");
+  /** Comfortably past the 8,000-token threshold at the ~4-chars/token estimate. */
+  const document = Array.from({ length: 8_000 }, (_, i) => words[i % words.length]).join(" ");
+  const midSized = Array.from({ length: 1_200 }, (_, i) => words[i % words.length]).join(" ");
 
   it("sends a pasted document to the size tier rather than ordinary chat", () => {
-    // chat now leads with Groq, whose input budget is 6,000 tokens, so a
-    // document this size would arrive already trimmed.
     expect(classifyAutoTask({ content: `Summarise this document:\n\n${document}` })).toBe("longContext");
+  });
+
+  it("leaves input below the threshold on the ordinary tiers", () => {
+    // ~1,800 tokens: Groq holds this within its 6,000-token input budget, so
+    // there is nothing to route away from.
+    expect(classifyAutoTask({ content: `Summarise this:\n\n${midSized}` })).not.toBe("longContext");
   });
 
   it("leaves ordinary turns alone", () => {
@@ -155,7 +214,20 @@ describe("long-context routing", () => {
     expect(pickAutoRoute([groqFast, geminiLite], "chat")).toMatchObject({ providerId: "groq" });
   });
 
-  it("falls back to Groq for the size tier when no Gemini model is configured", () => {
-    expect(pickAutoRoute([groqFast], "longContext")).toMatchObject({ providerId: "groq" });
+  it("prefers Cloudflare's 131k Scout over Groq once Gemini is out", () => {
+    // Groq is deliberately not listed for this tier: its 6,000-token input
+    // budget is below the threshold that routes here, so it would truncate the
+    // very document the tier exists to hold.
+    expect(pickAutoRoute([groqFast, cloudflareScout], "longContext")).toMatchObject({
+      providerId: "cloudflare",
+      modelId: CLOUDFLARE_VISION_MODEL_ID,
+      preferred: true,
+    });
+  });
+
+  it("still answers on Groq rather than failing when it is the only model left", () => {
+    // Unpreferred, not unavailable — a trimmed answer beats no answer once
+    // every model that could hold the document is gone.
+    expect(pickAutoRoute([groqFast], "longContext")).toMatchObject({ providerId: "groq", preferred: false });
   });
 });

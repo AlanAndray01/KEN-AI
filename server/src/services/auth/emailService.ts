@@ -34,7 +34,7 @@ export function emailUnavailableError(): AppError {
 
 /**
  * Production must actually deliver the code. Development and test may skip
- * Resend and print the code to the API console instead.
+ * Resend; in development the code is written only at logger.debug.
  */
 export async function deliverVerificationEmail(to: string, code: string): Promise<boolean> {
   const sent = await sendVerificationEmail(to, code);
@@ -50,7 +50,7 @@ export async function deliverPasswordResetEmail(to: string, code: string): Promi
 
 export function logDevAuthCode(kind: "verification" | "password_reset", to: string, secret: string): void {
   if (env.NODE_ENV !== "development") return;
-  logger.info({ kind, to }, `[DEV AUTH CODE]: ${secret}`);
+  logger.debug({ event: "dev_auth_code", kind, to }, `[DEV AUTH CODE]: ${secret}`);
 }
 
 async function sendResendEmail(input: {
@@ -123,9 +123,6 @@ export async function sendPasswordResetEmail(to: string, code: string): Promise<
 
 export async function sendVerificationEmail(to: string, code: string): Promise<boolean> {
   logDevAuthCode("verification", to, code);
-  if (env.NODE_ENV === "development") {
-    console.log("🔑 VERIFICATION CODE FOR", to, ":", code);
-  }
   const safeCode = escapeHtml(code);
   const html = `<!DOCTYPE html>
 <html lang="en">

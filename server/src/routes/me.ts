@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { exportAllConversationsQuerySchema } from "@Ken/shared";
 import {
   deleteMyCredential,
   listMyCredentials,
@@ -11,6 +12,7 @@ import { getInstructionsHandler, upsertInstructionsHandler } from "../controller
 import { myUsageHandler } from "../controllers/usageController.js";
 import { requireAuth } from "../middleware/requireAuth.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import { validateQuery } from "../validators/validate.js";
 
 export const meRouter = Router();
 
@@ -18,7 +20,7 @@ meRouter.use(requireAuth);
 meRouter.patch("/", asyncHandler(updateMeHandler));
 meRouter.delete("/", asyncHandler(deleteMeHandler));
 meRouter.get("/usage", asyncHandler(myUsageHandler));
-meRouter.get("/export", asyncHandler(exportAllConversationsHandler));
+meRouter.get("/export", validateQuery(exportAllConversationsQuerySchema), asyncHandler(exportAllConversationsHandler));
 meRouter.get("/provider-credentials", asyncHandler(listMyCredentials));
 meRouter.put("/provider-credentials/:providerId", asyncHandler(upsertMyCredential));
 meRouter.post("/provider-credentials/:providerId/test", asyncHandler(testMyCredential));

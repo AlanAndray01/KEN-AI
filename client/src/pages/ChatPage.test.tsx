@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { CLOUDFLARE_IMAGE_MODEL_ID } from "@Ken/shared";
 import { api } from "@/services/api";
 import { useModelStore } from "@/stores/modelStore";
 import { useToastStore } from "@/stores/toastStore";
@@ -56,6 +57,7 @@ vi.mock("@/services/api", () => ({
             providerId: "gemini",
             name: "Gemini 3.5 Flash Lite",
             capabilities: ["text", "streaming"],
+            capability: "Text-to-Text",
             enabled: true,
             available: true,
           },
@@ -64,6 +66,7 @@ vi.mock("@/services/api", () => ({
             providerId: "gemini",
             name: "Gemini 3.8 Flash",
             capabilities: ["text", "streaming"],
+            capability: "Text-to-Text",
             enabled: true,
             available: true,
           },
@@ -72,6 +75,16 @@ vi.mock("@/services/api", () => ({
             providerId: "gemini",
             name: "Gemini 3.1 Pro",
             capabilities: ["text", "streaming"],
+            capability: "Text-to-Text",
+            enabled: true,
+            available: true,
+          },
+          {
+            id: CLOUDFLARE_IMAGE_MODEL_ID,
+            providerId: "cloudflare",
+            name: "Flux 1 Schnell (Cloudflare)",
+            capabilities: ["imageGeneration"],
+            capability: "Image Generation",
             enabled: true,
             available: true,
           },
@@ -1056,5 +1069,37 @@ describe("ChatPage interrupted replies", () => {
     expect(await screen.findByText("This reply was cut off. Retry to finish it.")).toBeInTheDocument();
     // Not left on the raw plain-text stream node that live tokens use.
     expect(document.querySelector(".markdown-stream")).toBeNull();
+  });
+});
+
+describe("ChatPage history pagination", () => {
+  beforeEach(resetChatMocks);
+
+  it("loads an older page from the server instead of fetching the whole thread up front", async () => {
+    const older = {
+      id: "u0",
+      conversationId: "c1",
+      role: "user" as const,
+      content: "earliest question",
+      status: "complete" as const,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+    mocks.listMessages.mockImplementation(async (_id: string, options: { before?: string } = {}) => {
+      if (options.before === "u1") {
+        return { messages: [older], hasMore: false };
+      }
+      return { messages: thread, hasMore: true };
+    });
+
+    renderConversation();
+
+    expect(await screen.findByText("first answer")).toBeInTheDocument();
+    expect(screen.queryByText("earliest question")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Load earlier messages" }));
+
+    expect(await screen.findByText("earliest question")).toBeInTheDocument();
+    expect(mocks.listMessages).toHaveBeenCalledWith("c1", expect.objectContaining({ before: "u1" }));
   });
 });

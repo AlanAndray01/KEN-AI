@@ -1,29 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, NavLink, useLocation, useNavigate, useParams } from "react-router-dom";
-import {
-  CircleUser,
-  Download,
-  Keyboard,
-  Library,
-  Link2,
-  LogOut,
-  Monitor,
-  MoreHorizontal,
-  PanelLeft,
-  Pencil,
-  Pin,
-  Plus,
-  Search,
-  Settings,
-  Share2,
-  Shield,
-  Bot,
-  SlidersHorizontal,
-  Trash2,
-} from "lucide-react";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { Bot, Library, PanelLeft, Plus, Search } from "lucide-react";
 import { APP_NAME, CLIENT_ROUTES, type PublicConversation } from "@Ken/shared";
+import { ConversationList } from "@/components/ConversationList";
 import { KenMark } from "@/components/KenMark";
+import { SidebarAccountMenu } from "@/components/SidebarAccountMenu";
+import { SidebarNavLink } from "@/components/SidebarNavLink";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError, api } from "@/services/api";
 import { CONVERSATION_STALE_MS } from "@/query";
@@ -165,6 +148,7 @@ export function ConversationSidebar() {
   }
 
   const narrow = collapsed;
+  const listRef = menuRef as RefObject<HTMLDivElement | null>;
 
   return (
     <>
@@ -224,7 +208,7 @@ export function ConversationSidebar() {
         </div>
 
         <div className="space-y-1 px-2">
-          <SidebarLink
+          <SidebarNavLink
             to={CLIENT_ROUTES.chat}
             icon={Plus}
             label="New chat"
@@ -232,9 +216,9 @@ export function ConversationSidebar() {
             end
             prominent
           />
-          <SidebarLink to={CLIENT_ROUTES.search} icon={Search} label="History" collapsed={narrow} />
-          <SidebarLink to={CLIENT_ROUTES.library} icon={Library} label="Library" collapsed={narrow} />
-          <SidebarLink to={CLIENT_ROUTES.gpts} icon={Bot} label="GPTs" collapsed={narrow} />
+          <SidebarNavLink to={CLIENT_ROUTES.search} icon={Search} label="History" collapsed={narrow} />
+          <SidebarNavLink to={CLIENT_ROUTES.library} icon={Library} label="Library" collapsed={narrow} />
+          <SidebarNavLink to={CLIENT_ROUTES.gpts} icon={Bot} label="GPTs" collapsed={narrow} />
         </div>
 
         {/*
@@ -249,140 +233,39 @@ export function ConversationSidebar() {
           look exactly as it was.
         */}
         <>
-          <div className={cn("px-3 pt-3 pb-2", narrow && "md:hidden")}>
-            <input
-              type="search"
-              value={filter}
-              onChange={(event) => setFilter(event.target.value)}
-              placeholder="Filter chats"
-              aria-label="Filter chats"
-              className="w-full rounded-lg border border-border bg-canvas px-3 py-1.5 text-sm"
-            />
-          </div>
-          <nav
-            className={cn("flex-1 space-y-4 overflow-y-auto px-2 pb-4", narrow && "md:hidden")}
-            aria-label="Conversations"
-          >
-            {conversationsQuery.isLoading ? (
-                <p className="px-2 text-xs text-fg-muted">Loading chats…</p>
-              ) : null}
-              {conversationsQuery.isError ? (
-                <p className="px-2 text-xs text-danger">Unable to load chats.</p>
-              ) : null}
-              {groups.length === 0 && !conversationsQuery.isLoading ? (
-                <p className="px-2 text-xs text-fg-muted">No conversations yet.</p>
-              ) : null}
-              {groups.map((group) => (
-                <section key={group.id} className="space-y-1">
-                  <h2 className="px-2 text-[11px] font-medium tracking-wide text-fg-muted uppercase">
-                    {group.label}
-                  </h2>
-                  {group.items.map((conversation) => {
-                    const active = conversation.id === conversationId;
-                    const renaming = renamingId === conversation.id;
-                    return (
-                      <div key={conversation.id} className="relative" ref={menuId === conversation.id ? menuRef : undefined}>
-                        {renaming ? (
-                          <input
-                            autoFocus
-                            value={renameValue}
-                            aria-label="Conversation title"
-                            className="w-full rounded-lg border border-border bg-canvas px-3 py-2 text-sm"
-                            onChange={(event) => setRenameValue(event.target.value)}
-                            onBlur={() => commitRename(conversation.id)}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter") commitRename(conversation.id);
-                              if (event.key === "Escape") setRenamingId(null);
-                            }}
-                          />
-                        ) : (
-                          <div
-                            className={cn(
-                              "group flex items-center rounded-lg",
-                              active
-                                ? "bg-accent/10 shadow-[inset_2px_0_0_var(--color-accent)]"
-                                : "hover:bg-surface-muted",
-                            )}
-                          >
-                            <Link
-                              to={`/chat/${conversation.id}`}
-                              className={cn(
-                                "min-w-0 flex-1 truncate px-3 py-2 text-sm",
-                                active ? "font-medium text-fg" : "text-fg-muted group-hover:text-fg",
-                              )}
-                              title={conversation.title}
-                            >
-                              {conversation.title}
-                            </Link>
-                            <button
-                              type="button"
-                              className="mr-1 rounded-md p-1 text-fg-muted opacity-0 hover:bg-canvas group-hover:opacity-100 focus:opacity-100"
-                              aria-label="Conversation actions"
-                              aria-haspopup="menu"
-                              aria-expanded={menuId === conversation.id}
-                              onClick={() => {
-                                setAccountOpen(false);
-                                setMenuId((current) => (current === conversation.id ? null : conversation.id));
-                              }}
-                            >
-                              <MoreHorizontal className="size-4" />
-                            </button>
-                          </div>
-                        )}
-                        {menuId === conversation.id ? (
-                          <div className="absolute top-full right-1 z-10 mt-1 w-52 rounded-lg border border-border bg-surface py-1 shadow-lg">
-                            <MenuButton
-                              icon={Pencil}
-                              label="Rename"
-                              onClick={() => startRename(conversation)}
-                            />
-                            <MenuButton
-                              icon={Pin}
-                              label={conversation.pinned ? "Unpin" : "Pin"}
-                              onClick={() => {
-                                updateMutation.mutate({ id: conversation.id, pinned: !conversation.pinned });
-                                setMenuId(null);
-                              }}
-                            />
-                            <MenuButton
-                              icon={Link2}
-                              label="Copy share link"
-                              onClick={() => void copyShareLink(conversation.id)}
-                            />
-                            <MenuButton
-                              icon={Share2}
-                              label="Export Markdown"
-                              onClick={() => void exportChat(conversation.id, "md")}
-                            />
-                            <MenuButton
-                              icon={Download}
-                              label="Export JSON"
-                              onClick={() => void exportChat(conversation.id, "json")}
-                            />
-                            <MenuButton
-                              icon={Download}
-                              label="Export TXT"
-                              onClick={() => void exportChat(conversation.id, "txt")}
-                            />
-                            <MenuButton
-                              icon={Trash2}
-                              label="Delete"
-                              danger
-                              onClick={() => {
-                                setMenuId(null);
-                                if (window.confirm("Delete this conversation?")) {
-                                  deleteMutation.mutate(conversation.id);
-                                }
-                              }}
-                            />
-                          </div>
-                        ) : null}
-                      </div>
-                    );
-                  })}
-                </section>
-              ))}
-            </nav>
+          <ConversationList
+            groups={groups}
+            {...(conversationId ? { conversationId } : {})}
+            menuId={menuId}
+            menuRef={listRef}
+            renamingId={renamingId}
+            renameValue={renameValue}
+            loading={conversationsQuery.isLoading}
+            loadError={conversationsQuery.isError}
+            collapsed={narrow}
+            filter={filter}
+            onFilterChange={setFilter}
+            onRenameValue={setRenameValue}
+            onCommitRename={commitRename}
+            onCancelRename={() => setRenamingId(null)}
+            onToggleMenu={(id) => {
+              setAccountOpen(false);
+              setMenuId((current) => (current === id ? null : id));
+            }}
+            onStartRename={startRename}
+            onTogglePin={(conversation) => {
+              updateMutation.mutate({ id: conversation.id, pinned: !conversation.pinned });
+              setMenuId(null);
+            }}
+            onCopyShare={(id) => void copyShareLink(id)}
+            onExport={(id, format) => void exportChat(id, format)}
+            onDelete={(id) => {
+              setMenuId(null);
+              if (window.confirm("Delete this conversation?")) {
+                deleteMutation.mutate(id);
+              }
+            }}
+          />
           {/* The nav above carries the layout's only `flex-1`; when `narrow`
               hides it on desktop, this stands in so the account button below
               still gets pushed to the bottom of the rail. It never renders
@@ -390,175 +273,28 @@ export function ConversationSidebar() {
           {narrow ? <div className="hidden flex-1 md:block" /> : null}
         </>
 
-        <div className="relative border-t border-border p-2" ref={accountOpen ? menuRef : undefined}>
-          <button
-            type="button"
-            className={cn(
-              "flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm hover:bg-surface-muted",
-              narrow && "md:justify-center",
-            )}
-            aria-haspopup="menu"
-            aria-expanded={accountOpen}
-            {...(narrow ? { "aria-label": "Account menu" } : {})}
-            onClick={() => {
-              setMenuId(null);
-              setAccountOpen((value) => !value);
-            }}
-          >
-            <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-surface-muted text-xs font-medium">
-              {(user?.name ?? "A").slice(0, 1).toUpperCase()}
-            </span>
-            {!narrow ? (
-              <span className="min-w-0 flex-1">
-                <span className="block truncate">{user?.name}</span>
-                <span className="block truncate text-xs text-fg-muted">{user?.email}</span>
-              </span>
-            ) : null}
-          </button>
-          {accountOpen ? (
-            <div
-              role="menu"
-              className={cn(
-                "absolute bottom-full left-2 z-20 mb-2 w-56 rounded-xl border border-border bg-surface py-1 shadow-lg",
-                narrow && "md:left-full md:bottom-2 md:mb-0 md:ml-2",
-              )}
-            >
-              <Link
-                role="menuitem"
-                to={CLIENT_ROUTES.settingsAccount}
-                className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-surface-muted"
-                onClick={() => setAccountOpen(false)}
-              >
-                <CircleUser className="size-4" />
-                Profile
-              </Link>
-              <Link
-                role="menuitem"
-                to={CLIENT_ROUTES.settingsPersonalization}
-                className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-surface-muted"
-                onClick={() => setAccountOpen(false)}
-              >
-                <SlidersHorizontal className="size-4" />
-                Personalization
-              </Link>
-              <Link
-                role="menuitem"
-                to={CLIENT_ROUTES.settings}
-                className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-surface-muted"
-                onClick={() => setAccountOpen(false)}
-              >
-                <Settings className="size-4" />
-                Settings
-              </Link>
-              <Link
-                role="menuitem"
-                to={CLIENT_ROUTES.settingsAppearance}
-                className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-surface-muted"
-                onClick={() => setAccountOpen(false)}
-              >
-                <Monitor className="size-4" />
-                Appearance
-              </Link>
-              {user?.role === "admin" ? (
-                <Link
-                  role="menuitem"
-                  to={CLIENT_ROUTES.adminProviders}
-                  className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-surface-muted"
-                  onClick={() => setAccountOpen(false)}
-                >
-                  <Shield className="size-4" />
-                  Admin
-                </Link>
-              ) : null}
-              <button
-                type="button"
-                role="menuitem"
-                className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-surface-muted"
-                onClick={() => {
-                  setAccountOpen(false);
-                  setShortcutsOpen(true);
-                }}
-              >
-                <Keyboard className="size-4" />
-                Keyboard shortcuts
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-surface-muted"
-                onClick={() => {
-                  setAccountOpen(false);
-                  void logout();
-                }}
-              >
-                <LogOut className="size-4" />
-                Sign out
-              </button>
-            </div>
-          ) : null}
-        </div>
+        <SidebarAccountMenu
+          collapsed={narrow}
+          open={accountOpen}
+          menuRef={listRef}
+          {...(user?.name ? { name: user.name } : {})}
+          {...(user?.email ? { email: user.email } : {})}
+          isAdmin={user?.role === "admin"}
+          onToggle={() => {
+            setMenuId(null);
+            setAccountOpen((value) => !value);
+          }}
+          onClose={() => setAccountOpen(false)}
+          onShortcuts={() => {
+            setAccountOpen(false);
+            setShortcutsOpen(true);
+          }}
+          onLogout={() => {
+            setAccountOpen(false);
+            void logout();
+          }}
+        />
       </aside>
     </>
-  );
-}
-
-function SidebarLink({
-  to,
-  icon: Icon,
-  label,
-  collapsed,
-  end = false,
-  prominent = false,
-}: {
-  to: string;
-  icon: typeof Plus;
-  label: string;
-  collapsed: boolean;
-  end?: boolean;
-  prominent?: boolean;
-}) {
-  return (
-    <NavLink
-      to={to}
-      end={end}
-      title={label}
-      className={({ isActive }) =>
-        cn(
-          "flex items-center gap-2 rounded-full px-3 py-2 text-sm hover:bg-surface-muted",
-          collapsed && "md:justify-center md:px-2",
-          prominent && "bg-surface-muted",
-          isActive && !prominent && "bg-surface",
-        )
-      }
-    >
-      <Icon className="size-4 shrink-0" />
-      <span className={cn(collapsed && "md:hidden")}>{label}</span>
-    </NavLink>
-  );
-}
-
-function MenuButton({
-  icon: Icon,
-  label,
-  onClick,
-  danger = false,
-}: {
-  icon: typeof Pencil;
-  label: string;
-  onClick: () => void;
-  danger?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      className={cn(
-        "flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-surface-muted",
-        danger && "text-danger",
-      )}
-      onClick={onClick}
-    >
-      <Icon className="size-4" />
-      {label}
-    </button>
   );
 }

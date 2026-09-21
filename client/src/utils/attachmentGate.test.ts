@@ -17,12 +17,27 @@ describe("attachmentRejection", () => {
       attachmentRejection({ name: "huge.png", type: "image/png", size: 20 * 1024 * 1024 }, ["text"]),
     ).toMatch(/too large/i);
   });
+
+  it("explains unsupported types instead of failing silently", () => {
+    expect(attachmentRejection({ name: "payload.exe", type: "application/x-msdownload", size: 12 }, ["text"])).toMatch(
+      /isn't supported/i,
+    );
+  });
 });
 
 describe("composerAccept", () => {
-  it("always offers images and PDFs so a Groq selection can still attach", () => {
+  it("always offers images, PDFs, and Word documents so a Groq selection can still attach", () => {
     const accept = composerAccept(["text", "streaming"]);
     expect(accept).toContain("image/png");
     expect(accept).toContain("application/pdf");
+    expect(accept).toContain(".docx");
+  });
+
+  it("offers images on vision models and documents when files or extraction can run", () => {
+    const vision = composerAccept(["text", "vision"]);
+    expect(vision).toContain("image/png");
+    expect(vision).toContain("application/pdf");
+    const files = composerAccept(["text", "files"]);
+    expect(files).toContain(".docx");
   });
 });

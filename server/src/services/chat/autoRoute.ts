@@ -1,6 +1,11 @@
 import {
+  AUTO_MODEL_ID,
+  AUTO_PROVIDER_ID,
   AUTO_ROUTE_REASON,
+  CLOUDFLARE_IMAGE_MODEL_ID,
+  CLOUDFLARE_TINY_MODEL_ID,
   CLOUDFLARE_VISION_MODEL_ID,
+  DEFAULT_CLOUDFLARE_MODEL_ID,
   DEFAULT_CEREBRAS_MODEL_ID,
   DEFAULT_DEEPSEEK_MODEL_ID,
   DEFAULT_GEMINI_MODEL_ID,
@@ -17,26 +22,32 @@ import {
   type PublicAIModel,
 } from "@Ken/shared";
 import { attachmentNeed } from "../ai/attachmentRoute.js";
+import { pickAttachmentHop } from "../ai/fallbackController.js";
+import { isProviderBlocked } from "../ai/modelSkip.js";
 import { detectDeepCodeRequest } from "./codeGeneration.js";
+import { detectImageRequest } from "./imageIntent.js";
 import { detectTaskSignals } from "./responsePolicy.js";
 
 /**
  * Point past which a turn is routed for its size rather than its difficulty.
  *
- * Sits below Groq's 6,000-token input budget (PROVIDER_INPUT_TOKENS in
- * ContextManager) with room left for the system prompt and some history, so
- * the switch happens while the document would still have survived — not after
- * it has already been cut.
+ * Sits where document-sized input actually begins rather than where the
+ * narrowest provider gives out, which is only safe because the longContext
+ * tier no longer lists Groq: its input budget is 6,000 tokens
+ * (PROVIDER_INPUT_TOKENS in ContextManager), so anything routed there past
+ * this point would arrive already trimmed. Every remaining hop clears it —
+ * Gemini meters 32,000, and Cloudflare 12,000 via the unlisted-provider
+ * default.
  */
-const LONG_CONTEXT_TOKENS = 4_000;
+const LONG_CONTEXT_TOKENS = 8_000;
 
 /**
  * Auto mode: choose a model per turn from what the request actually needs.
  *
- * This is a heuristic router, not a model call. It reuses the classifiers the
- * reply policy already runs (task signals, deep-code detection, attachment
- * needs), so routing adds no latency and no second opinion that could disagree
- * with how the reply is shaped.
+ * This is a heuristic router, not a model call — no tokens, no neurons. It
+ * reuses the classifiers the reply policy already runs (task signals, deep-code
+ * detection, attachment needs), so routing adds no latency and no second
+ * opinion that could disagree with how the reply is shaped.
  */
 
 export interface AutoTaskInput {
@@ -54,6 +65,10 @@ export function classifyAutoTask(input: AutoTaskInput): AutoTask {
   const need = attachmentNeed([...(input.files ?? [])]);
   if (need === "files") return "files";
   if (need === "vision") return "vision";
+  // A picture request is a hard requirement like an attachment: Flux runs
+  // regardless of the selected chat model. Settled before tools so "draw a cat"
+  // with web search also on is still an image turn.
+  if (detectImageRequest(input.content)) return "image";
   if ((input.enabledTools?.length ?? 0) > 0) return "tools";
   if (detectDeepCodeRequest(input.content)) return "code";
   const signals = detectTaskSignals(input.content);
@@ -95,6 +110,9 @@ export const AUTO_PREFERENCES: Readonly<Record<AutoTask, readonly ModelRef[]>> =
     ref("groq", GROQ_OSS_20B_MODEL_ID),
     ref("gemini", DEFAULT_GEMINI_MODEL_ID),
     ref("openai", DEFAULT_OPENAI_MODEL_ID),
+    // Last hosted hops when Groq/Gemini/OpenAI are missing: 3B then 1B, never 70B.
+    ref("cloudflare", DEFAULT_CLOUDFLARE_MODEL_ID),
+    ref("cloudflare", CLOUDFLARE_TINY_MODEL_ID),
   ],
   chat: [
     ref("groq", DEFAULT_GROQ_MODEL_ID),
@@ -102,6 +120,8 @@ export const AUTO_PREFERENCES: Readonly<Record<AutoTask, readonly ModelRef[]>> =
     ref("gemini", DEFAULT_GEMINI_MODEL_ID),
     ref("gemini", GEMINI_FLASH_MODEL_ID),
     ref("openai", DEFAULT_OPENAI_MODEL_ID),
+    ref("cloudflare", DEFAULT_CLOUDFLARE_MODEL_ID),
+    ref("cloudflare", CLOUDFLARE_TINY_MODEL_ID),
   ],
   code: [
     ref("openai", "gpt-4.1"),
@@ -119,14 +139,16 @@ export const AUTO_PREFERENCES: Readonly<Record<AutoTask, readonly ModelRef[]>> =
   // Ordered by context window, not by how clever the model is: the whole point
   // is holding the document. Gemini's million-token window leads, and Lite goes
   // first rather than Pro because they share that window while Lite has the
-  // healthier quota. Groq trails deliberately — its 131k model still only gets
-  // a 6,000-token input budget, so it is a last resort for this tier.
+  // healthier quota. Groq is deliberately absent: its 131k model still only
+  // gets a 6,000-token input budget, which is below the threshold that routes
+  // here, so listing it would hand the tier a model guaranteed to truncate.
+  // Cloudflare's Scout holds 131k and is the fallback once Gemini is spent.
   longContext: [
     ref("gemini", DEFAULT_GEMINI_MODEL_ID),
     ref("gemini", GEMINI_FLASH_MODEL_ID),
     ref("gemini", GEMINI_PRO_MODEL_ID),
     ref("openai", "gpt-4.1"),
-    ref("groq", GROQ_QUALITY_MODEL_ID),
+    ref("cloudflare", CLOUDFLARE_VISION_MODEL_ID),
   ],
   vision: [
     ref("gemini", DEFAULT_GEMINI_MODEL_ID),
@@ -134,9 +156,15 @@ export const AUTO_PREFERENCES: Readonly<Record<AutoTask, readonly ModelRef[]>> =
     ref("openai", DEFAULT_OPENAI_MODEL_ID),
     ref("cloudflare", CLOUDFLARE_VISION_MODEL_ID),
   ],
+  // A picture request is Flux, not a caption hop. The image-only path in
+  // chatService never streams a chat model for this task.
+  image: [ref("cloudflare", CLOUDFLARE_IMAGE_MODEL_ID)],
   files: [
     ref("openai", DEFAULT_OPENAI_MODEL_ID),
     ref("openai", "gpt-4.1"),
+    ref("gemini", DEFAULT_GEMINI_MODEL_ID),
+    ref("gemini", GEMINI_FLASH_MODEL_ID),
+    ref("gemini", GEMINI_PRO_MODEL_ID),
   ],
   tools: [
     ref("gemini", DEFAULT_GEMINI_MODEL_ID),
@@ -153,6 +181,7 @@ const TASK_REQUIREMENT: Readonly<Record<AutoTask, ModelCapability>> = {
   reasoning: "text",
   longContext: "text",
   vision: "vision",
+  image: "imageGeneration",
   files: "files",
   tools: "tools",
 };
@@ -176,11 +205,37 @@ export interface AutoRoute {
 }
 
 export function pickAutoRoute(models: readonly RoutableModel[], task: AutoTask): AutoRoute | undefined {
+  const blocked = models.map((model) => model.providerId).filter((id) => isProviderBlocked(id));
+  const reason = `${AUTO_ROUTE_REASON}|${task}`;
+
+  if (task === "vision" || task === "files") {
+    const picked = pickAttachmentHop(
+      models,
+      { providerId: AUTO_PROVIDER_ID, modelId: AUTO_MODEL_ID },
+      task,
+      { blockedProviders: blocked, preferred: AUTO_PREFERENCES[task] },
+    );
+    if (!picked) return undefined;
+    const preferred = AUTO_PREFERENCES[task].some(
+      (candidate) => candidate.providerId === picked.providerId && candidate.modelId === picked.modelId,
+    );
+    return {
+      providerId: picked.providerId,
+      modelId: picked.modelId,
+      task,
+      reason,
+      preferred,
+    };
+  }
+
   const required = TASK_REQUIREMENT[task];
   const eligible = models.filter(
-    (model) => model.enabled !== false && model.available && model.capabilities.includes(required),
+    (model) =>
+      model.enabled !== false &&
+      model.available &&
+      model.capabilities.includes(required) &&
+      !isProviderBlocked(model.providerId),
   );
-  const reason = `${AUTO_ROUTE_REASON}|${task}`;
 
   for (const candidate of AUTO_PREFERENCES[task]) {
     const match = eligible.find(
@@ -202,12 +257,17 @@ export interface AutoPlan {
 /**
  * Classify, then pick. A tools turn with no tool-capable model degrades to plain
  * chat rather than failing: the tool is an enhancement, not the request itself.
- * An attachment turn never degrades, because answering without the file is the
- * silent data drop the attachment gate exists to prevent.
+ * A PDF turn with no native-document model degrades to chat so server-side text
+ * extraction can still serve the file. An image attachment or image-generation
+ * turn never degrades — answering without the picture is the silent drop this
+ * exists to prevent.
  */
 export function planAutoRoute(models: readonly RoutableModel[], input: AutoTaskInput): AutoPlan {
   const task = classifyAutoTask(input);
   const route = pickAutoRoute(models, task);
-  if (route || task !== "tools") return { task, route };
-  return { task: "chat", route: pickAutoRoute(models, "chat") };
+  if (route) return { task, route };
+  if (task === "tools" || task === "files") {
+    return { task: "chat", route: pickAutoRoute(models, "chat") };
+  }
+  return { task, route };
 }

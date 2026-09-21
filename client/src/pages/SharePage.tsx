@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { APP_NAME, CLIENT_ROUTES } from "@Ken/shared";
 import { MarkdownContent } from "@/components/MarkdownContent";
 import { ApiError, api } from "@/services/api";
+import "@/app.css";
 
 export function SharePage() {
   const { token } = useParams();

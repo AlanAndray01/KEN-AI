@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { sanitizeTitle, titleFromContent } from "./chatTitle.js";
+import { CLOUDFLARE_TINY_MODEL_ID, DEFAULT_GROQ_MODEL_ID } from "@Ken/shared";
+import { resolveTitleRoute, sanitizeTitle, titleFromContent } from "./chatTitle.js";
 
 describe("titleFromContent", () => {
   it("summarizes a long first prompt into at most five words", () => {
@@ -55,5 +56,27 @@ describe("sanitizeTitle", () => {
 
   it("does not mangle a non-English title", () => {
     expect(sanitizeTitle("کیمیائی تعامل کی اقسام")).toBe("کیمیائی تعامل کی اقسام");
+  });
+});
+
+describe("resolveTitleRoute", () => {
+  const conversation = { providerId: "gemini", modelId: "gemini-3.1-pro-preview" };
+
+  it("prefers Groq so naming does not spend Workers AI neurons", () => {
+    expect(resolveTitleRoute(conversation, { groq: true, cloudflare: true })).toEqual({
+      providerId: "groq",
+      modelId: DEFAULT_GROQ_MODEL_ID,
+    });
+  });
+
+  it("uses Llama 3.2 1B when Groq is missing and Cloudflare is configured", () => {
+    expect(resolveTitleRoute(conversation, { groq: false, cloudflare: true })).toEqual({
+      providerId: "cloudflare",
+      modelId: CLOUDFLARE_TINY_MODEL_ID,
+    });
+  });
+
+  it("falls back to the conversation model only when no cheap platform key exists", () => {
+    expect(resolveTitleRoute(conversation, { groq: false, cloudflare: false })).toEqual(conversation);
   });
 });

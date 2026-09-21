@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/services/api";
-import { categorizeApiError, describeApiError, logApiError } from "./apiErrors";
+import { categorizeApiError, describeApiError, describeGenerationError, logApiError } from "./apiErrors";
 
 function apiError(status: number, message: string, code = "SOME_CODE"): ApiError {
   return new ApiError(message, { status, code, requestId: "req-1" });
@@ -26,6 +26,24 @@ describe("describeApiError", () => {
     expect(describeApiError(apiError(401, "Authentication required"), "fallback")).toContain("session expired");
   });
 
+  it("does not treat a vendor 401 as a Ken session expiry", () => {
+    expect(
+      categorizeApiError(apiError(502, "That model could not authenticate the request.", "PROVIDER_INVALID_CREDENTIALS")),
+    ).toBe("server");
+    expect(
+      describeApiError(
+        apiError(502, "That model could not authenticate the request.", "PROVIDER_INVALID_CREDENTIALS"),
+        "fallback",
+      ),
+    ).toContain("could not be reached");
+    expect(
+      describeApiError(
+        apiError(502, "That model could not authenticate the request.", "PROVIDER_INVALID_CREDENTIALS"),
+        "fallback",
+      ),
+    ).not.toMatch(/session expired|Invalid credentials/i);
+  });
+
   it("keeps the specific server message for validation errors", () => {
     expect(describeApiError(apiError(400, "Invalid request"), "fallback")).toBe("Invalid request");
   });
@@ -48,6 +66,27 @@ describe("describeApiError", () => {
 
   it("falls back for unknown failures", () => {
     expect(describeApiError(new Error("weird"), "Unable to save feedback")).toBe("Unable to save feedback");
+  });
+});
+
+describe("describeGenerationError", () => {
+  it("does not toast vendor auth failures as Invalid credentials", () => {
+    expect(describeGenerationError("PROVIDER_INVALID_CREDENTIALS", "Invalid credentials")).toContain(
+      "could not be reached",
+    );
+    expect(describeGenerationError("PROVIDER_INVALID_CREDENTIALS", "Invalid credentials")).not.toMatch(
+      /invalid credentials/i,
+    );
+  });
+
+  it("keeps a specific generation message when it is not login language", () => {
+    expect(describeGenerationError("PROVIDER_RATE_LIMITED", "Provider rate limit reached.")).toBe(
+      "Provider rate limit reached.",
+    );
+  });
+
+  it("explains a high-demand outage when the server sent no copy", () => {
+    expect(describeGenerationError("PROVIDER_UNAVAILABLE")).toMatch(/high demand/i);
   });
 });
 

@@ -1,0 +1,36 @@
+---
+description: Ken design constraints from the architecture review — routing, names, splits
+alwaysApply: true
+---
+
+# Design constraints
+
+## One routing policy
+
+Attachment hops, Auto vision/files, and retry after a provider failure all go through `fallbackController.ts`. `chatService` / `prepareTurn` and `AIProviderManager` must call that module, not invent a second hop. After a vendor 401/403, do not bounce the same turn back onto that provider — move to the next distinct provider that can serve the payload.
+
+## Honest names
+
+A file named for Groq must not own Gemini/Cloudflare/OpenAI body builders. OpenAI-compatible request bodies live in `compatibleChatBody.ts`.
+
+## Layer direction
+
+AI normalizers must not import storage. Extract PDF/DOCX in `fileService` / chat materialize, then pass text or native parts in. `AIProviderManager` may trim context; it should not own identity or document unzipping.
+
+## Split along existing seams
+
+When touching chat: extract shared `prepareTurn` rather than copying Auto/tools/Flux/attachments into send, edit, and regenerate.
+When touching ChatPage: extract `useChatStream`, `useChatAttachments`, or `useChatVoice` instead of more `useState` on the page.
+When touching `api.ts`: add a domain module (`api/chat.ts`) rather than growing the 600+ line client.
+
+## Multi-Agents
+
+`Multi-Agents/` is a separate workspace runner, not the Express chat path. Do not route Ken user turns through it.
+
+```ts
+// ❌ BAD — second attachment router inside the manager
+if (need === "files") hopToGemini();
+
+// ✅ GOOD — one policy, extract if no native files model
+const route = pickMultimodalRoute(models, requested, need) ?? requested;
+```

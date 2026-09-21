@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { createEvent, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ChatComposer } from "./ChatComposer";
 
@@ -131,6 +131,26 @@ describe("ChatComposer", () => {
     expect(pasted?.type).toBe("image/png");
     // A screenshot has no name of its own; every paste would otherwise be "image.png".
     expect(pasted?.name).toMatch(/^pasted-.+\.png$/);
+  });
+
+  it("prevents the default paste as soon as clipboard files are present", () => {
+    const onAddFiles = vi.fn();
+    const shot = new File(["binary"], "image.png", { type: "image/png" });
+    render(
+      <ChatComposer
+        value=""
+        onChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onStop={vi.fn()}
+        streaming={false}
+        onAddFiles={onAddFiles}
+      />,
+    );
+    const form = screen.getByRole("form", { name: "Send message" });
+    const event = createEvent.paste(form, clipboard([shot]));
+    fireEvent(form, event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(onAddFiles).toHaveBeenCalledTimes(1);
   });
 
   it("accepts a paste that only fills items, as Safari and iOS do", () => {

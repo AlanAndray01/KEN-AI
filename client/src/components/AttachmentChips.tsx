@@ -1,7 +1,6 @@
-import { useEffect, useState } from "react";
 import { FileText, X } from "lucide-react";
 import type { PublicAttachment, PublicFile } from "@Ken/shared";
-import { api } from "@/services/api";
+import { ChatImage } from "@/components/ChatImage";
 
 type AttachmentLike = Pick<PublicFile, "id" | "originalName" | "mimeType" | "kind"> & { fileId?: string };
 
@@ -16,7 +15,7 @@ export function AttachmentChips({
     <ul className="flex flex-wrap gap-2 px-3 pt-3" aria-label="Attachments">
       {items.map((item) => (
         <li key={item.id} className="relative">
-          <AttachmentPreview item={item} />
+          <AttachmentPreview item={item} layout="thumb" />
           {onRemove ? (
             <button
               type="button"
@@ -33,12 +32,23 @@ export function AttachmentChips({
   );
 }
 
-export function MessageAttachments({ attachments }: { attachments: PublicAttachment[] }) {
+export function MessageAttachments({
+  attachments,
+  layout = "thumb",
+  remixPrompt,
+  onRemix,
+}: {
+  attachments: PublicAttachment[];
+  /** Generated images on an assistant turn are the reply, not a chip. */
+  layout?: "thumb" | "generated";
+  remixPrompt?: string | undefined;
+  onRemix?: ((prompt: string) => void) | undefined;
+}) {
   return (
     // No margin here: the bubble places this list and owns the spacing around it.
     <ul className="flex flex-wrap gap-2" aria-label="Message attachments">
       {attachments.map((item) => (
-        <li key={item.id}>
+        <li key={item.id} className={layout === "generated" ? "w-full" : undefined}>
           <AttachmentPreview
             item={{
               id: item.fileId,
@@ -46,6 +56,9 @@ export function MessageAttachments({ attachments }: { attachments: PublicAttachm
               mimeType: item.mimeType,
               kind: item.kind,
             }}
+            layout={layout}
+            remixPrompt={remixPrompt}
+            onRemix={onRemix}
           />
         </li>
       ))}
@@ -53,36 +66,19 @@ export function MessageAttachments({ attachments }: { attachments: PublicAttachm
   );
 }
 
-function AttachmentPreview({ item }: { item: AttachmentLike }) {
-  const fileId = item.fileId ?? item.id;
-  const [url, setUrl] = useState<string>();
-
-  useEffect(() => {
-    if (item.kind !== "image") return;
-    let objectUrl: string | undefined;
-    let cancelled = false;
-    void api.files
-      .content(fileId)
-      .then((blob) => {
-        if (cancelled) return;
-        objectUrl = URL.createObjectURL(blob);
-        setUrl(objectUrl);
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [fileId, item.kind]);
-
+function AttachmentPreview({
+  item,
+  layout = "thumb",
+  remixPrompt,
+  onRemix,
+}: {
+  item: AttachmentLike;
+  layout?: "thumb" | "generated";
+  remixPrompt?: string | undefined;
+  onRemix?: ((prompt: string) => void) | undefined;
+}) {
   if (item.kind === "image") {
-    return url ? (
-      <img src={url} alt={item.originalName} className="h-20 w-20 rounded-xl object-cover" />
-    ) : (
-      <div className="flex h-20 w-20 items-center justify-center rounded-xl bg-surface-muted text-xs text-fg-muted">
-        Image
-      </div>
-    );
+    return <ChatImage item={item} layout={layout} remixPrompt={remixPrompt} onRemix={onRemix} />;
   }
 
   return (

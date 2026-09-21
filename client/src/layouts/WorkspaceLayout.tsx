@@ -6,6 +6,7 @@ import { ConversationSidebar } from "@/components/ConversationSidebar";
 import { PageFallback } from "@/components/PageFallback";
 import { useAuth } from "@/hooks/useAuth";
 import { useUiStore } from "@/stores/uiStore";
+import "@/app.css";
 
 const ShortcutsModal = lazy(() =>
   import("@/components/ShortcutsModal").then((mod) => ({ default: mod.ShortcutsModal })),

@@ -1,5 +1,10 @@
 import type { Request, Response } from "express";
-import { createMemorySchema, patchMemorySchema, upsertInstructionSchema } from "@Ken/shared";
+import {
+  createMemorySchema,
+  listMemoriesQuerySchema,
+  patchMemorySchema,
+  upsertInstructionSchema,
+} from "@Ken/shared";
 import {
   createMemory,
   deleteMemory,
@@ -17,8 +22,8 @@ function requireUserId(req: Request): string {
 }
 
 export async function listMemoriesHandler(req: Request, res: Response): Promise<void> {
-  const limit = Number(req.query.limit);
-  const memories = await listMemories(requireUserId(req), Number.isFinite(limit) ? limit : 40);
+  const query = listMemoriesQuerySchema.parse(req.query);
+  const memories = await listMemories(requireUserId(req), query.limit ?? 40);
   res.status(200).json({ memories });
 }
 

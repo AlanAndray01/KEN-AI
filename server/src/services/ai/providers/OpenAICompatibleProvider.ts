@@ -17,7 +17,8 @@ import type {
 import { getBuiltInProvider } from "../catalog.js";
 import { normalizeAIResponse, compactUsage } from "../normalizers/normalize.js";
 import { createReasoningFilter, stripReasoning } from "@Ken/shared";
-import { buildCompatibleChatBody } from "./groqChatBody.js";
+import { buildCompatibleChatBody } from "./compatibleChatBody.js";
+import { geminiEmptyReplyError } from "./geminiReply.js";
 
 /** Fail over before a hung Gemini connect burns the whole turn. */
 export const GEMINI_FIRST_BYTE_TIMEOUT_MS = 2_500;
@@ -61,6 +62,16 @@ export class OpenAICompatibleProvider implements AIProvider {
     return getBuiltInProvider(this.id)?.models ?? [];
   }
 
+  /**
+   * Endpoint the credential probe hits. Overridable because "GET {base}/models"
+   * is an OpenAI convention, not a guarantee — a provider can serve
+   * /chat/completions from an OpenAI-compatible base URL while answering 405
+   * for the listing, which would otherwise read as an outage.
+   */
+  protected modelsProbeUrl(baseUrl: string): string {
+    return `${baseUrl}/models`;
+  }
+
   async validateCredentials(credentials?: ProviderCredentials): Promise<CredentialValidation> {
     const apiKey = credentials?.apiKey ?? this.credentials.apiKey;
     const baseUrl = (credentials?.baseUrl ?? this.credentials.baseUrl ?? "").replace(/\/$/, "");
@@ -72,7 +83,7 @@ export class OpenAICompatibleProvider implements AIProvider {
     }
 
     try {
-      const response = await fetch(`${baseUrl}/models`, {
+      const response = await fetch(this.modelsProbeUrl(baseUrl), {
         headers: this.authHeaders(apiKey),
       });
       if (response.status === 200) return { status: "connected", message: "Connected" };
@@ -114,6 +125,14 @@ export class OpenAICompatibleProvider implements AIProvider {
 
       // Non-streaming replies carry the same inline `<think>` blocks.
       const stripped = stripReasoning(body.choices?.[0]?.message?.content ?? "");
+      if (this.type === "gemini") {
+        const empty = geminiEmptyReplyError({
+          text: stripped.visible,
+          ...(body.choices?.[0]?.finish_reason ? { finishReason: body.choices[0].finish_reason } : {}),
+          candidateCount: body.choices?.length ?? 0,
+        });
+        if (empty) throw empty;
+      }
 
       return normalizeAIResponse({
         content: stripped.visible,
@@ -217,6 +236,11 @@ export class OpenAICompatibleProvider implements AIProvider {
       yield { type: "chunk", text: tail.visible };
     }
 
+    if (this.type === "gemini" && !request.abortSignal?.aborted) {
+      const empty = geminiEmptyReplyError({ text: content, finishReason });
+      if (empty) throw empty;
+    }
+
     yield {
       type: "complete",
       response: normalizeAIResponse({
@@ -253,16 +277,31 @@ function extractProviderError(bodyText: string): { message?: string; code?: stri
   try {
     const parsed = JSON.parse(bodyText) as unknown;
     const obj = Array.isArray(parsed) ? parsed[0] : parsed;
-    if (!obj || typeof obj !== "object" || !("error" in obj)) {
+    if (!obj || typeof obj !== "object") {
       return {};
     }
-    const error = (obj as { error?: { message?: string; code?: string; type?: string; status?: string } }).error;
-    return {
-      ...(error?.message ? { message: error.message } : {}),
-      ...(error?.code || error?.type || error?.status
-        ? { code: error.code ?? error.type ?? error.status }
-        : {}),
+    const record = obj as {
+      error?: { message?: string; code?: string; type?: string; status?: string } | string;
+      errors?: Array<{ message?: string; code?: string | number }>;
     };
+    if (typeof record.error === "string" && record.error.trim()) {
+      return { message: record.error };
+    }
+    if (record.error && typeof record.error === "object") {
+      const error = record.error;
+      return {
+        ...(error.message ? { message: error.message } : {}),
+        ...(error.code || error.type || error.status ? { code: error.code ?? error.type ?? error.status } : {}),
+      };
+    }
+    const first = record.errors?.find((entry) => entry && (entry.message || entry.code !== undefined));
+    if (first) {
+      return {
+        ...(first.message ? { message: first.message } : {}),
+        ...(first.code !== undefined ? { code: String(first.code) } : {}),
+      };
+    }
+    return {};
   } catch {
     return bodyText.trim() ? { message: bodyText.slice(0, 500) } : {};
   }
@@ -303,8 +342,10 @@ export function parseProviderHttpError(
   );
 
   if (status === 401 || status === 403) {
-    return new AppError("Invalid credentials", {
-      statusCode: 401,
+    // 502, not 401: Ken's own 401 is a session problem. A vendor/gateway
+    // rejection must not log the user out or toast "Invalid credentials".
+    return new AppError("That model could not authenticate the request.", {
+      statusCode: 502,
       code: "PROVIDER_INVALID_CREDENTIALS",
       extra,
     });

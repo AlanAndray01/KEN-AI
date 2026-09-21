@@ -120,6 +120,14 @@ describe("memory, instruction, and GPT APIs", () => {
     expect(createMemory).toHaveBeenCalled();
   });
 
+  it("rejects a non-numeric memories limit", async () => {
+    const { app } = await import("../app.js");
+    const response = await request(app).get("/api/memories?limit=nope");
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe("VALIDATION_ERROR");
+    expect(listMemories).not.toHaveBeenCalled();
+  });
+
   it("saves custom instructions", async () => {
     const { app } = await import("../app.js");
     const saved = await request(app).put("/api/me/instructions").send({

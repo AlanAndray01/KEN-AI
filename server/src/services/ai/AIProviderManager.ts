@@ -2,13 +2,11 @@ import type { ChatToolId, ModelCapability, PublicAnalysisJob, PublicTool } from 
 import {
   CLOUDFLARE_VISION_MODEL_ID,
   DEFAULT_GEMINI_MODEL_ID,
-  resolveDeepSeekModelId,
-  resolveGeminiModelId,
-  resolveGroqModelId,
 } from "@Ken/shared";
 import { env } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
 import { AppError } from "../../utils/AppError.js";
+import { telemetry } from "../../utils/telemetry.js";
 import {
   toolManager,
   type ChatToolOutcome,
@@ -23,21 +21,22 @@ import { requireConfigured, resolveCredentials, envKeyCount } from "./credential
 import { GATEWAY_URL_PREFIX } from "./aiGateway.js";
 import { consumePlatformChatQuota } from "./platformChatQuota.js";
 import { assertUnderSpendCeiling } from "./spendCeiling.js";
-import { isProviderQuotaError, isRetryableProviderError } from "./fallback.js";
+import { isProviderLeaveError, isProviderQuotaError, isRetryableProviderError } from "./fallback.js";
 import {
   formatFallbackReason,
-  nextOpenGeminiModelId,
+  isProviderBlocked,
   peekModelSkip,
   rememberModelSkip,
   type ModelSkip,
 } from "./modelSkip.js";
 import { modelRegistry } from "./ModelRegistry.js";
 import {
-  attachmentNeedFromMessages,
-  modelSatisfiesAttachmentNeed,
-  pickMultimodalRoute,
-} from "./attachmentRoute.js";
-import { FREE_FALLBACK_CHAIN, pickConfiguredModel, preferredIdsForProvider } from "./primaryModel.js";
+  applyRetryAttachmentRoute,
+  listRetryHops,
+  providersBlockedAfterError,
+  resolveRetiredModelId,
+  type HopTarget,
+} from "./fallbackController.js";
 import { GEMINI_FIRST_BYTE_TIMEOUT_MS } from "./providers/OpenAICompatibleProvider.js";
 
 export interface AIProviderManagerOptions {
@@ -66,7 +65,7 @@ export class AIProviderManager {
   runTool(
     name: ChatToolId,
     args: { query?: string; prompt?: string; code?: string; fileIds?: string[]; language?: "python" },
-    ctx: { userId: string },
+    ctx: { userId: string; skipImageRateLimit?: boolean },
   ): Promise<ToolExecuteResult> {
     return this.tools.execute(name, args, ctx);
   }
@@ -87,15 +86,7 @@ export class AIProviderManager {
   async generate(request: GenerateRequest): Promise<AIResponse> {
     const skip = this.honouredSkip(request);
     if (skip) {
-      logger.warn(
-        {
-          requestId: request.requestId,
-          providerId: request.providerId,
-          modelId: request.modelId,
-          fallbackReason: skip.reason,
-        },
-        "Skipping cooled-down model",
-      );
+      this.logHonouredSkip(request, skip);
       return this.generateFromError(
         request,
         new AppError("Provider rate limit reached.", {
@@ -117,15 +108,7 @@ export class AIProviderManager {
   async *stream(request: GenerateRequest): AsyncIterable<StreamEvent> {
     const skip = this.honouredSkip(request);
     if (skip) {
-      logger.warn(
-        {
-          requestId: request.requestId,
-          providerId: request.providerId,
-          modelId: request.modelId,
-          fallbackReason: skip.reason,
-        },
-        "Skipping cooled-down model",
-      );
+      this.logHonouredSkip(request, skip);
       yield* this.streamFromError(
         request,
         new AppError("Provider rate limit reached.", {
@@ -174,25 +157,19 @@ export class AIProviderManager {
       }
     }
     if (!this.mayFallBack(request, last)) throw last;
-    for (const hop of this.geminiCatalogHops(request)) {
-      this.logFallback(request, hop, last);
+    const models = await modelRegistry.listRoutableModels(request.userId);
+    let blocked = providersBlockedAfterError(request, last);
+    for (const hop of this.retryHops(request, last, models)) {
+      if (blocked.includes(hop.providerId) || isProviderBlocked(hop.providerId)) continue;
+      const next = this.hopRequest(request, hop, blocked);
+      this.logFallback(request, next, last);
       try {
-        return await this.generateOnce(hop);
-      } catch (next) {
-        last = next;
-        rememberModelSkip(hop.providerId, hop.modelId, next);
-        if (!isRetryableProviderError(next)) throw next;
-      }
-    }
-    for (const hop of await this.remainingHops(request)) {
-      if (peekModelSkip(hop.providerId, hop.modelId)) continue;
-      this.logFallback(request, hop, last);
-      try {
-        return await this.generateOnce(hop);
-      } catch (next) {
-        last = next;
-        rememberModelSkip(hop.providerId, hop.modelId, next);
-        if (!isRetryableProviderError(next)) throw next;
+        return await this.generateOnce(next);
+      } catch (caught) {
+        last = caught;
+        rememberModelSkip(hop.providerId, hop.modelId, caught);
+        if (!isRetryableProviderError(caught)) throw caught;
+        if (isProviderLeaveError(caught)) blocked = [...blocked, hop.providerId];
       }
     }
     throw last;
@@ -215,6 +192,8 @@ export class AIProviderManager {
       }
     }
     if (!this.mayFallBack(request, last)) throw last;
+    const models = await modelRegistry.listRoutableModels(request.userId);
+    let blocked = providersBlockedAfterError(request, last);
     const tryHop = async function* (this: AIProviderManager, hop: GenerateRequest): AsyncIterable<StreamEvent> {
       const fallbackReason = reasonOverride ?? formatFallbackReason(last);
       this.logFallback(request, hop, last);
@@ -228,25 +207,16 @@ export class AIProviderManager {
       yield* this.streamOnce(hop);
     };
 
-    for (const hop of this.geminiCatalogHops(request)) {
+    for (const hop of this.retryHops(request, last, models)) {
+      if (blocked.includes(hop.providerId) || isProviderBlocked(hop.providerId)) continue;
       try {
-        yield* tryHop.call(this, hop);
+        yield* tryHop.call(this, this.hopRequest(request, hop, blocked));
         return;
-      } catch (next) {
-        last = next;
-        rememberModelSkip(hop.providerId, hop.modelId, next);
-        if (!isRetryableProviderError(next)) throw next;
-      }
-    }
-    for (const hop of await this.remainingHops(request)) {
-      if (peekModelSkip(hop.providerId, hop.modelId)) continue;
-      try {
-        yield* tryHop.call(this, hop);
-        return;
-      } catch (next) {
-        last = next;
-        rememberModelSkip(hop.providerId, hop.modelId, next);
-        if (!isRetryableProviderError(next)) throw next;
+      } catch (caught) {
+        last = caught;
+        rememberModelSkip(hop.providerId, hop.modelId, caught);
+        if (!isRetryableProviderError(caught)) throw caught;
+        if (isProviderLeaveError(caught)) blocked = [...blocked, hop.providerId];
       }
     }
     throw last;
@@ -260,6 +230,7 @@ export class AIProviderManager {
    * rather than being quietly replaced for the whole skip window.
    */
   private honouredSkip(request: GenerateRequest): ModelSkip | undefined {
+    if (request.fallbackPolicy === "none") return undefined;
     const skip = peekModelSkip(request.providerId, request.modelId);
     if (!skip) return undefined;
     if (request.fallbackPolicy === "quota-only" && skip.code !== "PROVIDER_RATE_LIMITED") return undefined;
@@ -269,10 +240,10 @@ export class AIProviderManager {
   /**
    * Whether a failure may move the request onto a different model.
    *
-   * A pinned turn moves only for a provider quota error. Anything else surfaces
-   * as an error on the model the user chose, instead of being answered by a
-   * model they did not pick while the picker still shows theirs. Once a quota
-   * error has authorised the move, later hops follow the normal retry rules.
+   * A pinned turn (`fallbackPolicy: "none"`) never leaves the model the user
+   * chose — quota, high demand, and cooldown all surface as an error so the
+   * picker still matches the reply. Auto keeps retryable hops. `quota-only`
+   * remains for callers that still opt into a quota hop.
    */
   private mayFallBack(request: GenerateRequest, error: unknown): boolean {
     if (request.fallbackPolicy === "none") return false;
@@ -280,66 +251,83 @@ export class AIProviderManager {
     return isRetryableProviderError(error);
   }
 
+  private logHonouredSkip(request: GenerateRequest, skip: ModelSkip): void {
+    logger.warn(
+      telemetry({
+        event: "model_skip_honoured",
+        requestId: request.requestId,
+        providerId: request.providerId,
+        modelId: request.modelId,
+        skipReason: skip.reason,
+        skipCode: skip.code,
+        fallbackReason: skip.reason,
+      }),
+      "Skipping cooled-down model",
+    );
+  }
+
   private logFallback(request: GenerateRequest, hop: GenerateRequest, error: unknown): void {
     logger.warn(
-      {
+      telemetry({
+        event: "provider_failover",
         requestId: request.requestId,
         primary: request.providerId,
         primaryModel: request.modelId,
         fallback: hop.providerId,
         fallbackModel: hop.modelId,
         fallbackReason: formatFallbackReason(error),
-      },
+        hop: true,
+      }),
       "Primary provider failed; failing over immediately",
     );
   }
 
-  /**
-   * Gemini hops come from the catalog (no registry fan-out) so a known 3.8
-   * skip can start Lite on the same tick. Other providers load only if Gemini
-   * is actually exhausted.
-   */
-  private async hopsFor(request: GenerateRequest): Promise<GenerateRequest[]> {
-    const catalog = this.geminiCatalogHops(request);
-    if (request.providerId === "gemini") {
-      const rest = (await this.fallbackHops(request)).filter((hop) => hop.providerId !== "gemini");
-      return [...catalog, ...rest];
-    }
-    return this.orderHops(request, await this.fallbackHops(request));
-  }
-
-  private geminiCatalogHops(request: GenerateRequest): GenerateRequest[] {
-    if (request.providerId !== "gemini") return [];
-    const hops: GenerateRequest[] = [];
-    let next = nextOpenGeminiModelId(request.modelId);
-    const seen = new Set<string>();
-    while (next && !seen.has(next)) {
-      seen.add(next);
-      const { firstByteTimeoutMs: _timeout, ...rest } = request;
-      hops.push({ ...rest, providerId: "gemini", modelId: next });
-      next = nextOpenGeminiModelId(next);
+  private retryHops(
+    request: GenerateRequest,
+    error: unknown,
+    models: Awaited<ReturnType<typeof modelRegistry.listRoutableModels>>,
+  ): HopTarget[] {
+    const hops = listRetryHops({
+      request,
+      error,
+      models,
+      ...(this.options.fallbackProviderId !== undefined
+        ? {
+            explicitFallback: {
+              providerId: this.options.fallbackProviderId,
+              modelId: this.options.fallbackModelId,
+            },
+          }
+        : {
+            envFallback: {
+              providerId: env.AI_FALLBACK_PROVIDER_ID,
+              modelId: this.fallbackModelId(),
+            },
+          }),
+    });
+    if (hops.length === 0) {
+      logger.warn(
+        telemetry({
+          event: "provider_failover_exhausted",
+          requestId: request.requestId,
+          providerId: request.providerId,
+          modelId: request.modelId,
+          hop: false,
+        }),
+        "No configured fallback provider is available; a primary failure will surface to the user",
+      );
     }
     return hops;
   }
 
-  private async remainingHops(request: GenerateRequest): Promise<GenerateRequest[]> {
-    const hops = await this.fallbackHops(request);
-    if (request.providerId === "gemini") {
-      return hops.filter((hop) => hop.providerId !== "gemini");
-    }
-    return this.orderHops(request, hops);
-  }
-
-  /**
-   * A Gemini-selected chat stays on Gemini hops first. Groq (and the rest of
-   * the free chain) only run after every configured Gemini model has failed.
-   */
-  private orderHops(request: GenerateRequest, hops: GenerateRequest[]): GenerateRequest[] {
-    if (request.providerId !== "gemini") return hops;
-    return [
-      ...hops.filter((hop) => hop.providerId === "gemini"),
-      ...hops.filter((hop) => hop.providerId !== "gemini"),
-    ];
+  private hopRequest(request: GenerateRequest, hop: HopTarget, blocked: readonly string[]): GenerateRequest {
+    const { firstByteTimeoutMs: _primaryTimeout, ...rest } = request;
+    return {
+      ...rest,
+      providerId: hop.providerId,
+      modelId: hop.modelId,
+      blockedProviders: [...blocked],
+    };
   }
 
   /**
@@ -348,9 +336,9 @@ export class AIProviderManager {
    */
   private withPrimaryFirstByteTimeout(request: GenerateRequest): GenerateRequest {
     if (request.providerId !== "gemini" || request.firstByteTimeoutMs !== undefined) return request;
-    // The short budget exists only to fail over. A pinned turn may not fail over
-    // on a timeout, so the abort would just kill a slow-thinking model like Pro.
-    if (request.fallbackPolicy === "quota-only") return request;
+    // The short budget exists only to fail over. A pinned turn must not abort a
+    // slow Pro/70B think just to hop; it has nowhere to hop to.
+    if (request.fallbackPolicy === "quota-only" || request.fallbackPolicy === "none") return request;
     if (request.modelId === DEFAULT_GEMINI_MODEL_ID) return request;
     return { ...request, firstByteTimeoutMs: GEMINI_FIRST_BYTE_TIMEOUT_MS };
   }
@@ -450,84 +438,10 @@ export class AIProviderManager {
   }
 
   private async withAttachmentRoute(request: GenerateRequest): Promise<GenerateRequest> {
-    const need = attachmentNeedFromMessages(request.messages);
-    if (need === "none") return request;
     const models = await modelRegistry.listRoutableModels(request.userId);
-    const picked = pickMultimodalRoute(models, request, need);
-    if (!picked) {
-      throw new AppError(
-        need === "files"
-          ? "No configured model can read this PDF. Add an OpenAI key, then send again."
-          : "No configured model can read this image. Add a Gemini or OpenAI key, then send again.",
-        { statusCode: 409, code: "ATTACHMENT_ROUTE_UNAVAILABLE", expose: true },
-      );
-    }
-    if (!picked.rerouted) return request;
-    return { ...request, providerId: picked.providerId, modelId: picked.modelId };
-  }
-
-  private async fallbackHops(request: GenerateRequest): Promise<GenerateRequest[]> {
-    const models = await modelRegistry.listRoutableModels(request.userId);
-    const hops: GenerateRequest[] = [];
-    const seen = new Set([`${request.providerId}:${request.modelId}`]);
-
-    const need = attachmentNeedFromMessages(request.messages);
-    const add = (providerId: string | undefined, modelId?: string): void => {
-      const match = this.matchFallback(request, models, providerId, modelId);
-      if (!match) return;
-      const catalog = models.find((model) => model.providerId === match.providerId && model.id === match.id);
-      if (!modelSatisfiesAttachmentNeed(catalog?.capabilities, need)) return;
-      const key = `${match.providerId}:${match.id}`;
-      if (seen.has(key)) return;
-      seen.add(key);
-      const { firstByteTimeoutMs: _primaryTimeout, ...rest } = request;
-      hops.push({
-        ...rest,
-        providerId: match.providerId,
-        modelId: match.id,
-      });
-    };
-
-    if (this.options.fallbackProviderId !== undefined) {
-      add(this.options.fallbackProviderId, this.options.fallbackModelId);
-      return hops;
-    }
-
-    for (const step of FREE_FALLBACK_CHAIN) {
-      add(step.providerId, step.modelId);
-    }
-    add(env.AI_FALLBACK_PROVIDER_ID, this.fallbackModelId());
-    if (hops.length === 0) {
-      logger.warn(
-        { providerId: request.providerId, modelId: request.modelId },
-        "No configured fallback provider is available; a primary failure will surface to the user",
-      );
-    }
-    return hops;
-  }
-
-  private matchFallback(
-    request: GenerateRequest,
-    models: Array<{ id: string; providerId: string }>,
-    providerId: string | undefined,
-    modelId?: string,
-  ): { id: string; providerId: string } | undefined {
-    const targetProvider = providerId?.trim();
-    if (!targetProvider) return undefined;
-    // A configured fallback may still name a retired id (Groq decommissioned
-    // llama-3.3-70b-versatile). Those ids are filtered out of the registry, so
-    // without aliasing the hop silently collapses onto the primary and the
-    // fallback never runs.
-    const desiredModelId = modelId ? resolveRetiredModelId(targetProvider, modelId) : undefined;
-    const match = pickConfiguredModel(
-      models,
-      targetProvider,
-      preferredIdsForProvider(targetProvider),
-      desiredModelId,
-    );
-    if (!match) return undefined;
-    if (match.providerId === request.providerId && match.id === request.modelId) return undefined;
-    return match;
+    const routed = applyRetryAttachmentRoute(request, models);
+    if (!routed.rerouted) return request;
+    return { ...request, providerId: routed.providerId, modelId: routed.modelId };
   }
 
   async getAdapter(providerId: string, userId?: string, skipQuota?: boolean): Promise<AIProvider> {
@@ -558,14 +472,6 @@ export class AIProviderManager {
     const models = await modelRegistry.listPublicModels(userId);
     return [...new Set(models.map((model) => model.providerId))];
   }
-}
-
-/** Map a provider's retired model ids onto their supported replacements. */
-function resolveRetiredModelId(providerId: string, modelId: string): string {
-  if (providerId === "groq") return resolveGroqModelId(modelId);
-  if (providerId === "gemini") return resolveGeminiModelId(modelId);
-  if (providerId === "deepseek") return resolveDeepSeekModelId(modelId);
-  return modelId;
 }
 
 export const aiProviderManager = new AIProviderManager();

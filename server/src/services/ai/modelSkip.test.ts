@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import { AppError } from "../../utils/AppError.js";
 import {
   clearModelSkips,
+  classifyProviderMessage,
   formatFallbackReason,
+  isProviderBlocked,
   nextOpenGeminiModelId,
   parseRetryAfterMs,
   peekModelSkip,
@@ -61,6 +63,73 @@ describe("rememberModelSkip", () => {
       new AppError("Provider request failed", { statusCode: 502, code: "PROVIDER_ERROR" }),
     );
     expect(peekModelSkip("gemini", "gemini-3.8-flash")).toBeUndefined();
+  });
+
+  it("cools a vendor 401 so attachment fallback can leave Gemini", () => {
+    rememberModelSkip(
+      "gemini",
+      "gemini-3.5-flash-lite",
+      new AppError("That model could not authenticate the request.", {
+        statusCode: 502,
+        code: "PROVIDER_INVALID_CREDENTIALS",
+        extra: { httpStatus: 401 },
+      }),
+    );
+    expect(peekModelSkip("gemini", "gemini-3.5-flash-lite")).toBeDefined();
+    expect(isProviderBlocked("gemini")).toBe(true);
+  });
+
+  it("cools every Cloudflare model after a neuron-bucket 429, not just the one that failed", () => {
+    rememberModelSkip(
+      "cloudflare",
+      "@cf/meta/llama-3.2-3b-instruct",
+      new AppError("Provider rate limit reached.", {
+        statusCode: 429,
+        code: "PROVIDER_RATE_LIMITED",
+        extra: { httpStatus: 429, errorClass: "quota_exceeded" },
+      }),
+    );
+    expect(peekModelSkip("cloudflare", "@cf/meta/llama-3.2-3b-instruct")).toBeDefined();
+    expect(isProviderBlocked("cloudflare")).toBe(true);
+  });
+
+  it("cools Cloudflare after a Flux neuron 4006 so the next image turn does not hit /ai/run again", () => {
+    rememberModelSkip(
+      "cloudflare",
+      "@cf/black-forest-labs/flux-1-schnell",
+      new AppError("Cloudflare Flux is out of its daily Workers AI quota.", {
+        statusCode: 429,
+        code: "IMAGE_GENERATION_PROVIDER_ERROR",
+        extra: { httpStatus: 429, errorClass: "quota_exceeded", providerCode: "4006" },
+      }),
+    );
+    expect(isProviderBlocked("cloudflare")).toBe(true);
+    expect(peekModelSkip("cloudflare", "@cf/black-forest-labs/flux-1-schnell")?.until).toBeGreaterThan(
+      Date.now() + 9 * 60_000,
+    );
+  });
+
+  it("does not cool Groq's other models after one id hits quota", () => {
+    rememberModelSkip(
+      "groq",
+      "qwen/qwen3.8-27b",
+      new AppError("Provider rate limit reached.", {
+        statusCode: 429,
+        code: "PROVIDER_RATE_LIMITED",
+        extra: { httpStatus: 429, errorClass: "quota_exceeded" },
+      }),
+    );
+    expect(isProviderBlocked("groq")).toBe(false);
+  });
+});
+
+describe("classifyProviderMessage", () => {
+  it("treats Workers AI neuron exhaustion as quota, not a generic 429", () => {
+    expect(
+      classifyProviderMessage(
+        "AiError: AiError: you have used up your daily free allocation of 10,000 neurons, please upgrade to Cloudflare's Workers Paid plan if you would like to continue",
+      ),
+    ).toBe("quota_exceeded");
   });
 });
 

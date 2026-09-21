@@ -39,6 +39,11 @@ const flash = model({
 describe("attachmentNeed", () => {
   it("treats text-only attachments as no special capability", () => {
     expect(attachmentNeed([{ mimeType: "text/plain" }])).toBe("none");
+    expect(
+      attachmentNeed([
+        { mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" },
+      ]),
+    ).toBe("none");
   });
 
   it("requires vision for images and files for PDFs", () => {

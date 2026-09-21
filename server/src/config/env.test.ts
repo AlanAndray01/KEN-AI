@@ -49,6 +49,33 @@ describe("environment validation", () => {
     expect(aliased.MONGODB_URI).toBe(productionBase.MONGODB_URI);
   });
 
+  it("accepts Cloudflare's documented account and token names as CF_* aliases", () => {
+    const aliased = applyEnvAliases({
+      CLOUDFLARE_ACCOUNT_ID: "acct-from-docs",
+      CLOUDFLARE_API_TOKEN: "token-from-docs",
+    });
+
+    expect(aliased.CF_ACCOUNT_ID).toBe("acct-from-docs");
+    expect(aliased.CF_TOKEN).toBe("token-from-docs");
+  });
+
+  it("accepts CLOUDFLARE_API_KEY as the token alias used in Workers AI SDK examples", () => {
+    const aliased = applyEnvAliases({ CLOUDFLARE_API_KEY: "key-from-sdk" });
+    expect(aliased.CF_TOKEN).toBe("key-from-sdk");
+  });
+
+  it("keeps CF_ACCOUNT_ID and CF_TOKEN when both Cloudflare names are set", () => {
+    const aliased = applyEnvAliases({
+      CF_ACCOUNT_ID: "canonical-account",
+      CF_TOKEN: "canonical-token",
+      CLOUDFLARE_ACCOUNT_ID: "ignored-account",
+      CLOUDFLARE_API_TOKEN: "ignored-token",
+    });
+
+    expect(aliased.CF_ACCOUNT_ID).toBe("canonical-account");
+    expect(aliased.CF_TOKEN).toBe("canonical-token");
+  });
+
   it("reads PORT from the process string Render injects", () => {
     const result = envSchema.safeParse({ ...productionBase, PORT: "10000" });
 

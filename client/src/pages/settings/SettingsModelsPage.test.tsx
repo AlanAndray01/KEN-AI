@@ -15,6 +15,7 @@ vi.mock("@/services/api", () => ({
             providerId: "gemini",
             name: "Gemini 2.5 Flash",
             capabilities: ["text", "streaming"],
+            capability: "Text-to-Text",
             enabled: true,
             available: true,
           },

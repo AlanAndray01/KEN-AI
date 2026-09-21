@@ -3,7 +3,7 @@ import type { PublicAIModel } from "@Ken/shared";
 import { availableCapabilities, modelFooterCaption } from "./autoMode";
 
 function model(partial: Partial<PublicAIModel> & Pick<PublicAIModel, "id" | "providerId">): PublicAIModel {
-  return { name: partial.id, capabilities: ["text"], enabled: true, available: true, ...partial };
+  return { name: partial.id, capabilities: ["text"], capability: "Text-to-Text", enabled: true, available: true, ...partial };
 }
 
 describe("availableCapabilities", () => {

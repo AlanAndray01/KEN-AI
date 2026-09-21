@@ -29,7 +29,8 @@ export function pickDefaultModel(models: PublicAIModel[]): PublicAIModel | undef
     pick("groq", GROQ_OSS_20B_MODEL_ID) ??
     pick("groq", GROQ_QUALITY_MODEL_ID) ??
     pick("openai", DEFAULT_OPENAI_MODEL_ID) ??
-    available.find((model) => !isLlamaModelId(model.id)) ??
+    available.find((model) => !isLlamaModelId(model.id) && model.capabilities.includes("text")) ??
+    available.find((model) => model.capabilities.includes("text")) ??
     available[0] ??
     models[0]
   );

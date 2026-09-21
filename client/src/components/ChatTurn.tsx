@@ -28,6 +28,9 @@ interface ChatTurnProps {
   onFeedback: (message: PublicMessage, rating: "up" | "down") => void;
   /** Catalog display name for `message.model`; falls back to the raw id. */
   modelCaption?: string;
+  /** User prompt that produced a generated image on this assistant turn. */
+  remixPrompt?: string | undefined;
+  onRemixImage?: ((prompt: string) => void) | undefined;
 }
 
 /**
@@ -49,6 +52,8 @@ export const ChatTurn = memo(function ChatTurn({
   onSpeak,
   onFeedback,
   modelCaption,
+  remixPrompt,
+  onRemixImage,
 }: ChatTurnProps) {
   if (message.role === "user") {
     return (
@@ -61,7 +66,9 @@ export const ChatTurn = memo(function ChatTurn({
             ? {}
             : { onEdit: (next: string) => onEdit(message.id, next) })}
         >
-          {message.attachments?.length ? <MessageAttachments attachments={message.attachments} /> : null}
+          {message.attachments?.length ? (
+            <MessageAttachments attachments={message.attachments} />
+          ) : null}
         </UserMessageBubble>
         <MessageAvatar role="user" />
       </article>
@@ -80,6 +87,16 @@ export const ChatTurn = memo(function ChatTurn({
       <MessageAvatar role="assistant" />
       <div className="min-w-0 flex-1">
         <div className="assistant-turn rounded-xl border border-border bg-surface/60 px-4 py-3 text-fg">
+          {message.attachments?.length ? (
+            <div className={message.content || live || interrupted || message.status === "error" ? "mb-3" : undefined}>
+              <MessageAttachments
+                attachments={message.attachments}
+                layout="generated"
+                remixPrompt={remixPrompt}
+                onRemix={onRemixImage}
+              />
+            </div>
+          ) : null}
           {message.content ? (
             <>
               {live ? (
@@ -134,8 +151,21 @@ export const ChatTurn = memo(function ChatTurn({
             </div>
           ) : message.status === "aborted" ? (
             <p className="text-sm text-fg-muted">Generation stopped.</p>
-          ) : (
-            <p className="text-sm text-fg-muted">No reply was generated. Try sending again.</p>
+          ) : message.attachments?.length ? null : (
+            <div role="alert">
+              <p className="font-medium">No reply was generated</p>
+              <p className="mt-1 text-sm text-fg-muted">
+                The model returned an empty reply. You can retry this turn.
+              </p>
+              <button
+                type="button"
+                className="mt-3 rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-surface-muted disabled:opacity-50"
+                disabled={streaming}
+                onClick={() => onRegenerate(message.id)}
+              >
+                Retry
+              </button>
+            </div>
           )}
         </div>
         {message.model ? (
@@ -216,6 +246,7 @@ function chatTurnPropsAreEqual(prev: ChatTurnProps, next: ChatTurnProps): boolea
     prev.ttsConfigured === next.ttsConfigured &&
     prev.ttsUnavailableReason === next.ttsUnavailableReason &&
     prev.feedbackPending === next.feedbackPending &&
-    prev.modelCaption === next.modelCaption
+    prev.modelCaption === next.modelCaption &&
+    prev.remixPrompt === next.remixPrompt
   );
 }

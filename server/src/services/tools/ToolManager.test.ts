@@ -140,4 +140,47 @@ describe("ToolManager", () => {
     expect(formatSearchHits([])).toMatch(/no results/i);
     expect(formatSearchHits([])).toMatch(/Do not invent/);
   });
+
+  it("uploads Flux JPEGs as .jpg so the stored name matches the bytes", async () => {
+    const { uploadUserFile } = await import("../storage/fileService.js");
+    const images = {
+      id: "cloudflare",
+      isConfigured: () => true,
+      unavailableReason: () => "ok",
+      generate: vi.fn(async () => ({
+        mimeType: "image/jpeg",
+        buffer: Buffer.from([0xff, 0xd8, 0xff]),
+        prompt: "a cat",
+      })),
+    };
+    const manager = new ToolManager(
+      new UnconfiguredSearchProvider(),
+      images,
+      new UnconfiguredAnalysisRunner(),
+    );
+    await manager.execute("image_generation", { prompt: "a cat" }, { userId: "u1" });
+    expect(uploadUserFile).toHaveBeenCalledWith(
+      expect.objectContaining({ originalName: "Ken-image.jpg", mimeType: "image/jpeg" }),
+    );
+  });
+
+  it("still generates when POST /tools/images already consumed the image bucket", async () => {
+    const images = {
+      id: "cloudflare",
+      isConfigured: () => true,
+      unavailableReason: () => "ok",
+      generate: vi.fn(async () => ({
+        mimeType: "image/png",
+        buffer: Buffer.from([1, 2, 3]),
+        prompt: "a cat",
+      })),
+    };
+    const manager = new ToolManager(
+      new UnconfiguredSearchProvider(),
+      images,
+      new UnconfiguredAnalysisRunner(),
+    );
+    await manager.execute("image_generation", { prompt: "a cat" }, { userId: "u1", skipImageRateLimit: true });
+    expect(images.generate).toHaveBeenCalledOnce();
+  });
 });

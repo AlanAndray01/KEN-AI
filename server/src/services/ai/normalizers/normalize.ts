@@ -1,4 +1,13 @@
-import type { AIResponse, ChatMessage, StreamEvent } from "../AIProvider.js";
+import { DOCX_MIME_TYPE } from "@Ken/shared";
+import type { AIResponse, ChatContentPart, ChatMessage, StreamEvent } from "../AIProvider.js";
+
+function isPdfMime(mimeType: string): boolean {
+  return mimeType === "application/pdf";
+}
+
+function isDocxMime(mimeType: string): boolean {
+  return mimeType === DOCX_MIME_TYPE;
+}
 
 export function compactUsage(usage?: {
   inputTokens?: number | undefined;
@@ -72,7 +81,12 @@ export function toProviderContents(messages: ChatMessage[]): {
       parts.push({ text: message.content });
     }
     for (const part of message.parts ?? []) {
-      parts.push({ inlineData: { mimeType: part.mimeType, data: part.data } });
+      if (part.mimeType.startsWith("image/") || isPdfMime(part.mimeType)) {
+        parts.push({ inlineData: { mimeType: part.mimeType, data: part.data } });
+        continue;
+      }
+      const note = leftoverDocumentNote(part, message.content);
+      if (note) parts.push({ text: note });
     }
     if (parts.length === 0) {
       parts.push({ text: "" });
@@ -96,9 +110,9 @@ export function toProviderContents(messages: ChatMessage[]): {
 export interface OpenAIMessageOptions {
   /**
    * Emit PDF parts as `type: "file"` blocks. Only OpenAI's own chat/completions
-   * accepts those; the other OpenAI-compatible surfaces Ken talks to (Groq,
-   * Cerebras, DeepSeek, Cloudflare, Gemini's compat endpoint) reject an unknown
-   * content block with a 400, so this stays off unless the adapter opts in.
+   * accepts those; Groq, Cerebras, DeepSeek, Cloudflare, and Gemini's compat
+   * endpoint 400 on an unknown content type. Document bytes are unzipped in
+   * chat `foldInlineDocuments`, not here.
    */
   documents?: boolean;
 }
@@ -111,13 +125,22 @@ export function toOpenAIMessages(
     const role = message.role === "tool" ? "assistant" : message.role;
     const parts = message.parts ?? [];
     const images = parts.filter((part) => part.mimeType.startsWith("image/"));
-    const documents = options.documents === true ? parts.filter((part) => isDocumentPart(part.mimeType)) : [];
-    if (images.length === 0 && documents.length === 0) {
-      return { role, content: message.content };
+    const nativeDocs = options.documents === true ? parts.filter((part) => isPdfMime(part.mimeType)) : [];
+    const leftoverNotes = parts
+      .filter(
+        (part) =>
+          (isPdfMime(part.mimeType) && options.documents !== true) || isDocxMime(part.mimeType),
+      )
+      .map((part) => leftoverDocumentNote(part, message.content))
+      .filter(Boolean)
+      .join("\n\n");
+    const text = [message.content, leftoverNotes].filter(Boolean).join("\n\n");
+    if (images.length === 0 && nativeDocs.length === 0) {
+      return { role, content: text };
     }
     const content: unknown[] = [];
-    if (message.content) {
-      content.push({ type: "text", text: message.content });
+    if (text) {
+      content.push({ type: "text", text });
     }
     for (const part of images) {
       content.push({
@@ -125,7 +148,7 @@ export function toOpenAIMessages(
         image_url: { url: `data:${part.mimeType};base64,${part.data}` },
       });
     }
-    for (const part of documents) {
+    for (const part of nativeDocs) {
       content.push({
         type: "file",
         file: {
@@ -142,9 +165,12 @@ export function toOpenAIMessages(
   return mapped;
 }
 
-/** PDF is the only non-image attachment Ken forwards as binary; text is inlined upstream. */
-function isDocumentPart(mimeType: string): boolean {
-  return mimeType === "application/pdf";
+/** Filename-only fallback. Unzipping lives in `foldInlineDocuments`. */
+function leftoverDocumentNote(part: ChatContentPart, existingContent: string): string {
+  if (!isPdfMime(part.mimeType) && !isDocxMime(part.mimeType)) return "";
+  if (!part.filename) return "";
+  if (existingContent.includes(part.filename)) return "";
+  return `[Attached file: ${part.filename}]`;
 }
 
 export function chunkEvent(text: string): StreamEvent {

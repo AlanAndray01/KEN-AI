@@ -7,10 +7,16 @@ import { imageGenerationProvider } from "../image/index.js";
 import type { ImageGenerationProvider } from "../image/ImageGenerationProvider.js";
 import { searchProvider } from "../search/index.js";
 import type { SearchProvider } from "../search/SearchProvider.js";
+import { consumeImageGenerationLimit } from "../../middleware/rateLimit.js";
 import { uploadUserFile } from "../storage/fileService.js";
 
 export interface ToolExecuteContext {
   userId: string;
+  /**
+   * POST /tools/images already consumed the image bucket in middleware.
+   * Chat draws do not, so they consume here. Default is to consume.
+   */
+  skipImageRateLimit?: boolean;
 }
 
 export type ToolExecuteResult =
@@ -104,10 +110,13 @@ export class ToolManager {
       if (!prompt) {
         throw new AppError("Image prompt is required", { statusCode: 400, code: "VALIDATION_ERROR" });
       }
+      if (!ctx.skipImageRateLimit) {
+        await consumeImageGenerationLimit(ctx.userId);
+      }
       const generated = await this.images.generate({ prompt, userId: ctx.userId });
       const file = await uploadUserFile({
         userId: ctx.userId,
-        originalName: "Ken-image.png",
+        originalName: generated.mimeType === "image/jpeg" ? "Ken-image.jpg" : "Ken-image.png",
         mimeType: generated.mimeType,
         buffer: generated.buffer,
       });

@@ -1,4 +1,10 @@
-import { GEMINI_MODEL_ALIASES, GROQ_MODEL_ALIASES, isLlamaModelId, type PublicAIModel } from "@Ken/shared";
+import {
+  GEMINI_MODEL_ALIASES,
+  GROQ_MODEL_ALIASES,
+  isLlamaModelId,
+  modelCapabilityLabel,
+  type PublicAIModel,
+} from "@Ken/shared";
 import { AppError } from "../../utils/AppError.js";
 import { AIModel } from "../../models/AIModel.js";
 import { BUILT_IN_PROVIDERS, getBuiltInProvider } from "./catalog.js";
@@ -190,6 +196,7 @@ function toPublicModel(
     name: model.name,
     ...(model.description ? { description: model.description } : {}),
     capabilities: model.capabilities,
+    capability: modelCapabilityLabel({ id: model.modelId, capabilities: model.capabilities }),
     ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
     enabled: model.enabled,
     available: model.enabled && availability.enabled && availability.configured,

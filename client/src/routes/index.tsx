@@ -1,13 +1,21 @@
 import { createBrowserRouter, Navigate } from "react-router-dom";
 import { CLIENT_ROUTES } from "@Ken/shared";
 import { AppShell } from "@/layouts/AppShell";
-import { AuthLayout } from "@/layouts/AuthLayout";
-import { WorkspaceLayout } from "@/layouts/WorkspaceLayout";
 import { AdminRoute } from "@/routes/AdminRoute";
 import { GuestRoute } from "@/routes/GuestRoute";
 import { LandingRoute } from "@/routes/LandingRoute";
 import { ProtectedRoute } from "@/routes/ProtectedRoute";
 import { showLandingPage } from "@/utils/featureFlags";
+
+async function authLayout() {
+  const { AuthLayout } = await import("@/layouts/AuthLayout");
+  return { Component: AuthLayout };
+}
+
+async function workspaceLayout() {
+  const { WorkspaceLayout } = await import("@/layouts/WorkspaceLayout");
+  return { Component: WorkspaceLayout };
+}
 
 export const router = createBrowserRouter([
   {
@@ -53,7 +61,7 @@ export const router = createBrowserRouter([
         element: <GuestRoute />,
         children: [
           {
-            element: <AuthLayout />,
+            lazy: authLayout,
             children: [
               {
                 path: CLIENT_ROUTES.login,
@@ -98,7 +106,7 @@ export const router = createBrowserRouter([
         element: <ProtectedRoute />,
         children: [
           {
-            element: <WorkspaceLayout />,
+            lazy: workspaceLayout,
             children: [
               {
                 path: "/chat/:conversationId?",
@@ -221,7 +229,7 @@ export const router = createBrowserRouter([
         element: <AdminRoute />,
         children: [
           {
-            element: <WorkspaceLayout />,
+            lazy: workspaceLayout,
             children: [
               {
                 path: CLIENT_ROUTES.adminProviders,

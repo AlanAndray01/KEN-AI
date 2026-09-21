@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  ALLOWED_UPLOAD_MIME_TYPES,
   APP_NAME,
+  DOCX_MIME_TYPE,
   API_ROUTES,
   AUTH_PROVIDERS,
   CLIENT_ROUTES,
@@ -10,8 +12,12 @@ import {
   GEMINI_FLASH_LITE_MODEL_ID,
   GEMINI_IMAGE_MODEL_ID,
   GROQ_QUALITY_MODEL_ID,
+  MAX_IMAGE_PROMPT_CHARS,
   estimatePromptTokens,
+  isCloudflareImageModel,
   isLlamaModelId,
+  CLOUDFLARE_IMAGE_MODEL_ID,
+  modelCapabilityLabel,
   resolveGeminiModelId,
   resolveGroqModelId,
   USER_ROLES,
@@ -20,6 +26,14 @@ import {
 describe("shared constants", () => {
   it("uses the Ken product name", () => {
     expect(APP_NAME).toBe("Ken AI");
+  });
+
+  it("accepts Word documents alongside PDFs and text uploads", () => {
+    expect(ALLOWED_UPLOAD_MIME_TYPES).toContain("application/pdf");
+    expect(ALLOWED_UPLOAD_MIME_TYPES).toContain(DOCX_MIME_TYPE);
+    expect(ALLOWED_UPLOAD_MIME_TYPES).toContain("text/plain");
+    expect(ALLOWED_UPLOAD_MIME_TYPES).toContain("text/markdown");
+    expect(ALLOWED_UPLOAD_MIME_TYPES).toContain("text/csv");
   });
 
   it("defaults chat inference to Gemini 3.5 Flash Lite, with Groq Qwen as the documented hop", () => {
@@ -47,6 +61,35 @@ describe("shared constants", () => {
     expect(resolveGroqModelId("openai/gpt-oss-20b")).toBe("openai/gpt-oss-20b");
     // Retired when Groq moved to 3.8; stored conversations must still resolve.
     expect(resolveGroqModelId("qwen/qwen3.6-27b")).toBe("qwen/qwen3.8-27b");
+  });
+
+  it("labels each model by what it can actually do", () => {
+    expect(modelCapabilityLabel({ id: "gemini-3.1-pro-preview", capabilities: ["text", "vision", "files", "tools"] })).toBe(
+      "Vision & PDF Reader",
+    );
+    expect(
+      modelCapabilityLabel({ id: "@cf/meta/llama-4-scout-17b-16e-instruct", capabilities: ["text", "vision"] }),
+    ).toBe("Vision & PDF Reader");
+    // The point of this model is the code, not that 32B is a large tier.
+    expect(modelCapabilityLabel({ id: "@cf/qwen/qwen2.5-coder-32b-instruct", capabilities: ["text"] })).toBe(
+      "Code & Deep Logic",
+    );
+    expect(modelCapabilityLabel({ id: "@cf/meta/llama-3.2-1b-instruct", capabilities: ["text"] })).toBe("Text & Chat");
+    expect(modelCapabilityLabel({ id: "@cf/nvidia/nemotron-3-120b-a12b", capabilities: ["text", "tools"] })).toBe(
+      "Code & Deep Logic",
+    );
+    expect(modelCapabilityLabel({ id: "@cf/aisingapore/gemma-sea-lion-v4-27b-it", capabilities: ["text"] })).toBe(
+      "Text & Chat",
+    );
+    expect(
+      modelCapabilityLabel({ id: "gemini-3.1-flash-image", capabilities: ["text", "imageGeneration"] }),
+    ).toBe("Image Generation");
+    expect(
+      modelCapabilityLabel({ id: CLOUDFLARE_IMAGE_MODEL_ID, capabilities: ["imageGeneration"] }),
+    ).toBe("Image Generation");
+    expect(isCloudflareImageModel(CLOUDFLARE_IMAGE_MODEL_ID)).toBe(true);
+    expect(isCloudflareImageModel("@cf/meta/llama-3.2-3b-instruct")).toBe(false);
+    expect(MAX_IMAGE_PROMPT_CHARS).toBe(2048);
   });
 
   it("estimates prompt tokens at about four characters each", () => {

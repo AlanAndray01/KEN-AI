@@ -66,6 +66,27 @@ describe("AI response normalizers", () => {
       { inlineData: { mimeType: "application/pdf", data: "JVBER" } },
     ]);
   });
+
+  it("extracts Word parts to text instead of sending unsupported inlineData", () => {
+    const result = toProviderContents([
+      {
+        role: "user",
+        content: "Summarise this",
+        parts: [
+          {
+            type: "inline",
+            mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            data: "AAAA",
+            filename: "notes.docx",
+          },
+        ],
+      },
+    ]);
+    expect(result.contents[0]?.parts).toEqual([
+      { text: "Summarise this" },
+      { text: "[Attached file: notes.docx]" },
+    ]);
+  });
 });
 
 describe("PDF attachment passthrough", () => {
@@ -79,11 +100,35 @@ describe("PDF attachment passthrough", () => {
     },
   ];
 
-  it("drops PDFs for compatible surfaces that reject file blocks", () => {
-    // Groq, Cerebras, DeepSeek, Cloudflare and Gemini's compat endpoint 400 on
-    // an unknown content block, so the part must not be sent to them.
-    const [message] = toOpenAIMessages(pdfTurn);
-    expect(message?.content).toBe("Summarise this");
+  it("inlines a filename note for leftover PDFs instead of unzipping bytes", () => {
+    const pdf = Buffer.from(
+      `%PDF-1.1
+1 0 obj<< /Length 40 >>stream
+BT (Hello Ken PDF) Tj ET
+endstream
+endobj
+%%EOF`,
+      "latin1",
+    );
+    const [message] = toOpenAIMessages([
+      {
+        role: "user",
+        content: "Summarise this",
+        parts: [
+          {
+            type: "inline",
+            mimeType: "application/pdf",
+            data: pdf.toString("base64"),
+            filename: "report.pdf",
+          },
+        ],
+      },
+    ]);
+    expect(typeof message?.content).toBe("string");
+    expect(String(message?.content)).toContain("Summarise this");
+    expect(String(message?.content)).toContain("report.pdf");
+    expect(String(message?.content)).not.toContain("Hello Ken PDF");
+    expect(JSON.stringify(message)).not.toContain('"type":"file"');
   });
 
   it("sends a PDF as a file block when the adapter opts in", () => {
@@ -97,6 +142,20 @@ describe("PDF attachment passthrough", () => {
     ]);
   });
 
+
+  it("still carries images as image_url without a documents opt-in", () => {
+    const [message] = toOpenAIMessages([
+      {
+        role: "user",
+        content: "What is this?",
+        parts: [{ type: "inline", mimeType: "image/png", data: "AAAA" }],
+      },
+    ]);
+    expect(message?.content).toEqual([
+      { type: "text", text: "What is this?" },
+      { type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } },
+    ]);
+  });
 
   it("still carries images alongside a document", () => {
     const mixed = [

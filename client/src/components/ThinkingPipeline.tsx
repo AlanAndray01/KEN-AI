@@ -15,7 +15,7 @@
  * instead of re-announcing every time the word changes.
  *
  * Under prefers-reduced-motion the indicator keeps animating, in opacity and
- * colour only - see the note beside the reduced-motion rules in index.css for
+ * colour only - see the note beside the reduced-motion rules in app.css for
  * why a frozen progress indicator is the worse outcome.
  */
 

@@ -5,10 +5,13 @@ import {
   appendChunk,
   applyAssistantModel,
   applyFeedback,
+  finishAssistantTurn,
   markLastAssistant,
+  mergeHistoryPage,
   optimisticTurn,
   startTurn,
   truncateFromMessage,
+  priorUserContent,
   upsertMessage,
 } from "./chatMessages";
 
@@ -37,6 +40,30 @@ function streamingTurn(id: string): PublicMessage {
 describe("CHAT_MESSAGE_WINDOW", () => {
   it("keeps the mounted history short enough for the main thread", () => {
     expect(CHAT_MESSAGE_WINDOW).toBeLessThanOrEqual(32);
+  });
+});
+
+describe("mergeHistoryPage", () => {
+  it("keeps older loaded pages when the newest page is refetched", () => {
+    const older = [turn("q0", "user", "old"), turn("a0", "assistant", "old")];
+    const latest = [turn("q1", "user", "new"), turn("a1", "assistant", "new")];
+    const cached = {
+      messages: [...older, ...latest],
+      hasMore: true,
+    };
+
+    const merged = mergeHistoryPage(cached, { messages: latest, hasMore: false });
+
+    expect(merged.messages.map((item) => item.id)).toEqual(["q0", "a0", "q1", "a1"]);
+    expect(merged.hasMore).toBe(true);
+  });
+
+  it("uses the server hasMore flag on the first page", () => {
+    const latest = [turn("q1", "user", "new")];
+    expect(mergeHistoryPage(undefined, { messages: latest, hasMore: true })).toEqual({
+      messages: latest,
+      hasMore: true,
+    });
   });
 });
 
@@ -87,6 +114,20 @@ describe("appendChunk", () => {
 
     expect(result[1]?.content).toBe("Hello");
     expect(result[1]?.status).toBe("streaming");
+  });
+});
+
+describe("finishAssistantTurn", () => {
+  it("keeps streamed text when the complete payload is empty", () => {
+    const result = finishAssistantTurn(
+      [
+        message("u"),
+        { ...message("a"), role: "assistant", content: "Hello there", status: "streaming" },
+      ],
+      { ...message("a"), role: "assistant", content: "", status: "complete" },
+    );
+    expect(result[1]?.content).toBe("Hello there");
+    expect(result[1]?.status).toBe("complete");
   });
 });
 
@@ -282,5 +323,13 @@ describe("regenerate and resubmit sequence", () => {
 
     expect(started.map((item) => item.id)).toEqual(["u1", "a1", "u2", "a9"]);
     expect(started.map((item) => item.content)).not.toContain("second answer");
+  });
+});
+
+describe("priorUserContent", () => {
+  it("finds the user prompt that produced an assistant image turn", () => {
+    const user = turn("u1", "user", "draw a cat");
+    const assistant = { ...turn("a1", "assistant", "A tabby."), parentMessageId: "u1" };
+    expect(priorUserContent([user, assistant], assistant)).toBe("draw a cat");
   });
 });

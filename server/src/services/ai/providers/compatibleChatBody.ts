@@ -1,6 +1,7 @@
-import { estimatePromptTokens } from "@Ken/shared";
 import type { GenerateRequest } from "../AIProvider.js";
+import { getBuiltInProvider } from "../catalog.js";
 import { toOpenAIMessages } from "../normalizers/normalize.js";
+import { estimateContextTokens } from "../../chat/ContextManager.js";
 
 /**
  * Decode cap for a streamed Groq chat turn when the caller did not set one.
@@ -97,12 +98,15 @@ export function geminiMaxOutputTokens(
  * can still ask for up to 16,384 output tokens regardless of how much of the
  * ceiling the prompt already used — this is the second half of that guard,
  * shrinking the *output* ask to whatever room is actually left.
+ *
+ * Read from the catalog rather than a second hand-maintained table: the
+ * catalog already carries the verified per-model figure, and a duplicate map
+ * silently reverted every model it had not heard of to the 24,000 floor —
+ * which, once the full Workers AI catalogue was exposed, was most of them.
  */
-const CLOUDFLARE_MAX_TOTAL_TOKENS: Readonly<Record<string, number>> = {
-  "@cf/meta/llama-3.3-70b-instruct-fp8-fast": 24_000,
-  "@cf/meta/llama-4-scout-17b-16e-instruct": 131_000,
-  "@cf/meta/llama-3.2-3b-instruct": 80_000,
-};
+function cloudflareTotalTokens(modelId: string): number | undefined {
+  return getBuiltInProvider("cloudflare")?.models.find((model) => model.id === modelId)?.contextWindow;
+}
 
 /** Matches the tightest known Cloudflare ceiling, since an unlisted model's real limit is unverified. */
 const CLOUDFLARE_UNKNOWN_MODEL_TOTAL = 24_000;
@@ -114,7 +118,7 @@ const CLOUDFLARE_SAFETY_MARGIN = 512;
 const CLOUDFLARE_MIN_OUTPUT_TOKENS = 256;
 
 function estimateMessagesTokens(messages: GenerateRequest["messages"]): number {
-  return messages.reduce((sum, message) => sum + estimatePromptTokens(message.content) + 4, 0);
+  return estimateContextTokens(messages);
 }
 
 export function cloudflareMaxTokens(
@@ -122,7 +126,7 @@ export function cloudflareMaxTokens(
   messages: GenerateRequest["messages"],
   requested?: number,
 ): number {
-  const total = CLOUDFLARE_MAX_TOTAL_TOKENS[modelId] ?? CLOUDFLARE_UNKNOWN_MODEL_TOTAL;
+  const total = cloudflareTotalTokens(modelId) ?? CLOUDFLARE_UNKNOWN_MODEL_TOTAL;
   const room = Math.max(CLOUDFLARE_MIN_OUTPUT_TOKENS, total - estimateMessagesTokens(messages) - CLOUDFLARE_SAFETY_MARGIN);
   return Math.min(requested ?? room, room);
 }
@@ -138,11 +142,19 @@ export function buildCompatibleChatBody(
 ): Record<string, unknown> {
   const body: Record<string, unknown> = {
     model: request.modelId,
-    // Only OpenAI's own endpoint accepts `type: "file"` blocks; every other
-    // compatible surface 400s on them, so PDFs are gated to that adapter.
+    // Native PDF `type: "file"` is OpenAI-only. Groq, Gemini compat, and
+    // Cloudflare receive document text from chat materialize, not unzipped here.
     messages: toOpenAIMessages(request.messages, { documents: options.providerId === "openai" }),
   };
-  if (options.stream) body.stream = true;
+  if (options.stream) {
+    body.stream = true;
+    // Final SSE frame carries prompt_tokens / completion_tokens. Without this,
+    // streamed Groq and Cloudflare turns persist UsageRecord rows with no
+    // counts, so the neuron leak is invisible.
+    if (options.providerId === "groq" || options.providerId === "cloudflare" || options.providerId === "openai") {
+      body.stream_options = { include_usage: true };
+    }
+  }
 
   if (options.providerId === "groq") {
     Object.assign(body, groqReasoningParams(request.modelId, request.reasoningEffort));

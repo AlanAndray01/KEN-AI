@@ -60,4 +60,35 @@ describe("GeminiProvider", () => {
     expect(result.content).toBe("A one-page report.");
     expect(fetchMock).toHaveBeenCalledOnce();
   });
+
+  it("throws when native generateContent returns no candidate text", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(JSON.stringify({ candidates: [], promptFeedback: { blockReason: "SAFETY" } }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
+    const provider = new GeminiProvider({
+      id: "gemini",
+      name: "Google Gemini",
+      type: "gemini",
+      credentials: { apiKey: "test-key" },
+    });
+    await expect(
+      provider.generate({
+        providerId: "gemini",
+        modelId: "gemini-3.5-flash-lite",
+        messages: [
+          {
+            role: "user",
+            content: "look",
+            parts: [{ type: "inline", mimeType: "image/png", data: "AAAA" }],
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({ code: "PROVIDER_ERROR", extra: { errorClass: "safety" } });
+  });
 });

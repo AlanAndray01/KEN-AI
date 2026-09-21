@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { listMemoriesQuerySchema } from "@Ken/shared";
 import {
   createMemoryHandler,
   deleteMemoryHandler,
@@ -7,11 +8,12 @@ import {
 } from "../controllers/memoryController.js";
 import { requireAuth } from "../middleware/requireAuth.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import { validateQuery } from "../validators/validate.js";
 
 export const memoriesRouter = Router();
 
 memoriesRouter.use(requireAuth);
-memoriesRouter.get("/", asyncHandler(listMemoriesHandler));
+memoriesRouter.get("/", validateQuery(listMemoriesQuerySchema), asyncHandler(listMemoriesHandler));
 memoriesRouter.post("/", asyncHandler(createMemoryHandler));
 memoriesRouter.patch("/:id", asyncHandler(updateMemoryHandler));
 memoriesRouter.delete("/:id", asyncHandler(deleteMemoryHandler));
