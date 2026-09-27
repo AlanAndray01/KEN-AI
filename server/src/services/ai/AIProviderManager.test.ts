@@ -7,6 +7,16 @@ const fakeGenerate = vi.fn<(request: { modelId: string; providerId?: string }) =
 const assertModelAvailable = vi.fn();
 const resolveCredentials = vi.fn();
 const listPublicModels = vi.fn();
+const consumePlatformChatQuota = vi.fn<(userId: string, source: string) => Promise<void>>();
+const assertUnderSpendCeiling = vi.fn<(userId: string, source: string) => Promise<void>>();
+
+vi.mock("./platformChatQuota.js", () => ({
+  consumePlatformChatQuota: (userId: string, source: string) => consumePlatformChatQuota(userId, source),
+}));
+
+vi.mock("./spendCeiling.js", () => ({
+  assertUnderSpendCeiling: (userId: string, source: string) => assertUnderSpendCeiling(userId, source),
+}));
 
 const fakeAdapter: AIProvider = {
   id: "groq",
@@ -810,6 +820,8 @@ describe("AIProviderManager with a pinned model (fallbackPolicy: quota-only)", (
 
   it("does not hop off the chosen model for a quota error when the policy is none", async () => {
     const attempted: string[] = [];
+    // A stream that fails before its first event, like a provider 429.
+    // eslint-disable-next-line require-yield
     fakeAdapter.stream = async function* (request: { modelId: string }) {
       attempted.push(request.modelId);
       throw quotaError();
@@ -1110,5 +1122,146 @@ describe("AIProviderManager Cloudflare context fit", () => {
     expect(attempted.filter((id) => id.startsWith("gemini:")).length).toBe(1);
     expect(attempted.some((id) => id.startsWith("cloudflare:"))).toBe(true);
     expect(events.find((event) => event.type === "complete")).toBeTruthy();
+  });
+});
+
+describe("AIProviderManager per-turn platform quota", () => {
+  beforeEach(() => {
+    clearModelSkips();
+    fakeGenerate.mockReset();
+    consumePlatformChatQuota.mockReset();
+    assertUnderSpendCeiling.mockReset();
+    assertModelAvailable.mockResolvedValue({});
+    listPublicModels.mockResolvedValue([
+      { id: "gpt-4o-mini", providerId: "openai", name: "GPT-4o mini", capabilities: ["text"], enabled: true, available: true },
+    ]);
+    resolveCredentials.mockImplementation(async (providerId: string) => ({
+      providerId,
+      name: providerId,
+      type: providerId,
+      apiKey: "test-platform-key-zzzz",
+      enabled: true,
+      configured: true,
+      source: "environment",
+      capabilities: ["text"],
+    }));
+  });
+
+  it("charges one message once, however many providers it has to try", async () => {
+    fakeGenerate
+      .mockRejectedValueOnce(new AppError("Groq request failed", { statusCode: 502, code: "PROVIDER_ERROR" }))
+      .mockResolvedValueOnce({ content: "fallback-ok", model: "gpt-4o-mini", provider: "openai", finishReason: "stop" });
+
+    const { AIProviderManager } = await import("./AIProviderManager.js");
+    const manager = new AIProviderManager({ fallbackProviderId: "openai" });
+    const result = await manager.generate({
+      userId: "user-1",
+      providerId: "groq",
+      modelId: "openai/gpt-oss-20b",
+      messages: [{ role: "user", content: "Hi" }],
+    });
+
+    expect(result.content).toBe("fallback-ok");
+    expect(fakeGenerate).toHaveBeenCalledTimes(2);
+    expect(consumePlatformChatQuota).toHaveBeenCalledTimes(1);
+    expect(assertUnderSpendCeiling).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not charge the platform allowance for a turn on the user's own key", async () => {
+    resolveCredentials.mockImplementation(async (providerId: string) => ({
+      providerId,
+      name: providerId,
+      type: providerId,
+      apiKey: "test-own-key-zzzz",
+      enabled: true,
+      configured: true,
+      source: "user",
+      capabilities: ["text"],
+    }));
+    const { AIProviderManager } = await import("./AIProviderManager.js");
+    const manager = new AIProviderManager();
+    await manager.generate({
+      userId: "user-1",
+      providerId: "groq",
+      modelId: "openai/gpt-oss-20b",
+      messages: [{ role: "user", content: "Hi" }],
+    });
+
+    // getAdapter still asks, and the real limiter returns at once for "user".
+    expect(consumePlatformChatQuota.mock.calls.every(([, source]) => source === "user")).toBe(true);
+  });
+
+  it("refuses an over-limit user without cooling the model down for everyone else", async () => {
+    consumePlatformChatQuota.mockRejectedValueOnce(
+      new AppError("Shared platform keys are rate-limited.", { statusCode: 429, code: "RATE_LIMITED" }),
+    );
+    const { AIProviderManager } = await import("./AIProviderManager.js");
+    const { peekModelSkip } = await import("./modelSkip.js");
+    const manager = new AIProviderManager({ fallbackProviderId: "openai" });
+
+    await expect(
+      manager.generate({
+        userId: "user-1",
+        providerId: "groq",
+        modelId: "openai/gpt-oss-20b",
+        messages: [{ role: "user", content: "Hi" }],
+      }),
+    ).rejects.toMatchObject({ code: "RATE_LIMITED" });
+    expect(fakeGenerate).not.toHaveBeenCalled();
+    expect(peekModelSkip("groq", "openai/gpt-oss-20b")).toBeUndefined();
+  });
+});
+
+describe("AIProviderManager PDF delivery", () => {
+  const pdf = Buffer.from(
+    "%PDF-1.4\n1 0 obj\n<< /Type /Page >>\nstream\nBT (Refunds take 14 days) Tj ET\nendstream\nendobj\n%%EOF",
+    "latin1",
+  ).toString("base64");
+  const withPdf = [
+    {
+      role: "user" as const,
+      content: "What is the refund window?\n\nAttached file: policy.pdf (the PDF itself is attached)",
+      parts: [{ type: "inline" as const, mimeType: "application/pdf", data: pdf, filename: "policy.pdf" }],
+    },
+  ];
+
+  beforeEach(() => {
+    clearModelSkips();
+    fakeGenerate.mockReset();
+    fakeGenerate.mockResolvedValue({ content: "ok", model: "m", provider: "p", finishReason: "stop" });
+    assertModelAvailable.mockResolvedValue({});
+    resolveCredentials.mockImplementation(async (providerId: string) => ({
+      providerId,
+      name: providerId,
+      type: providerId,
+      apiKey: "test-key-zzzz",
+      enabled: true,
+      configured: true,
+      source: "environment",
+      capabilities: ["text"],
+    }));
+  });
+
+  const sentUserTurn = () => {
+    const request = fakeGenerate.mock.calls[0]?.[0] as unknown as {
+      messages: { role: string; content: string; parts?: unknown[] }[];
+    };
+    return request.messages.find((message) => message.role === "user");
+  };
+
+  it("gives a PDF-reading model the file alone, not its text as well", async () => {
+    const { AIProviderManager } = await import("./AIProviderManager.js");
+    await new AIProviderManager().generate({ providerId: "gemini", modelId: "gemini-3.5-flash-lite", messages: withPdf });
+
+    expect(sentUserTurn()?.parts).toHaveLength(1);
+    expect(sentUserTurn()?.content).not.toContain("Refunds take 14 days");
+  });
+
+  it("extracts the text when the turn reaches a model that cannot read the file", async () => {
+    const { AIProviderManager } = await import("./AIProviderManager.js");
+    await new AIProviderManager().generate({ providerId: "groq", modelId: "openai/gpt-oss-20b", messages: withPdf });
+
+    expect(sentUserTurn()?.parts).toBeUndefined();
+    expect(sentUserTurn()?.content).toContain("Refunds take 14 days");
   });
 });

@@ -120,7 +120,12 @@ export class OpenAICompatibleProvider implements AIProvider {
 
       const body = (await response.json()) as {
         choices?: Array<{ message?: { content?: string }; finish_reason?: string }>;
-        usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+        usage?: {
+          prompt_tokens?: number;
+          completion_tokens?: number;
+          total_tokens?: number;
+          prompt_tokens_details?: { cached_tokens?: number };
+        };
       };
 
       // Non-streaming replies carry the same inline `<think>` blocks.
@@ -143,6 +148,7 @@ export class OpenAICompatibleProvider implements AIProvider {
           inputTokens: body.usage?.prompt_tokens,
           outputTokens: body.usage?.completion_tokens,
           totalTokens: body.usage?.total_tokens,
+          cachedInputTokens: body.usage?.prompt_tokens_details?.cached_tokens,
         },
       });
     } catch (error) {
@@ -189,7 +195,12 @@ export class OpenAICompatibleProvider implements AIProvider {
               delta?: { content?: string; reasoning_content?: string; reasoning?: string };
               finish_reason?: string | null;
             }>;
-            usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+            usage?: {
+          prompt_tokens?: number;
+          completion_tokens?: number;
+          total_tokens?: number;
+          prompt_tokens_details?: { cached_tokens?: number };
+        };
           };
           const delta = body.choices?.[0]?.delta;
           // Reasoning models expose the chain of thought on a side channel. It is
@@ -214,6 +225,7 @@ export class OpenAICompatibleProvider implements AIProvider {
               inputTokens: body.usage.prompt_tokens,
               outputTokens: body.usage.completion_tokens,
               totalTokens: body.usage.total_tokens,
+              cachedInputTokens: body.usage.prompt_tokens_details?.cached_tokens,
             });
           }
         } catch {

@@ -26,6 +26,13 @@ describe("parseRetryAfterMs", () => {
 });
 
 describe("rememberModelSkip", () => {
+  it("never cools a model down for Ken's own per-user limits", () => {
+    for (const code of ["RATE_LIMITED", "SPEND_CEILING_REACHED"]) {
+      rememberModelSkip("groq", "openai/gpt-oss-20b", new AppError("limit", { statusCode: 429, code }));
+    }
+    expect(peekModelSkip("groq", "openai/gpt-oss-20b")).toBeUndefined();
+  });
+
   it("skips a 429 model until the hinted retry window", () => {
     rememberModelSkip(
       "gemini",

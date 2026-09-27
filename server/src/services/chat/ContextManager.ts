@@ -1,6 +1,7 @@
 import { estimatePromptTokens } from "@Ken/shared";
 import type { ChatMessage } from "../ai/AIProvider.js";
 import { getBuiltInProvider } from "../ai/catalog.js";
+import { compactCodeHistory } from "./contextCompression.js";
 
 const DEFAULT_CONTEXT_WINDOW = 128_000;
 const OUTPUT_RESERVE = 2_048;
@@ -45,7 +46,24 @@ export function providerInputTokens(providerId: string): number {
   return PROVIDER_INPUT_TOKENS[providerId] ?? MAX_INPUT_TOKENS;
 }
 
+/**
+ * Characters of attached-document text one turn may carry: half the
+ * provider's input budget, leaving the rest for the prompt and conversation.
+ * Roughly 12k characters on Groq and 64k on Gemini, so a short document is
+ * still sent whole and only a long one is narrowed to its relevant sections.
+ */
+export function documentCharBudget(providerId: string): number {
+  return Math.floor(providerInputTokens(providerId) / 2) * 4;
+}
+
 const MAX_SYSTEM_TOKENS = 2_400;
+
+/**
+ * The rolling summary's own allowance, on top of the fixed system prompt. Capped
+ * at a quarter of the turn's budget so on a small window (Workers AI) the
+ * summary can never squeeze out the recent messages it exists to complement.
+ */
+const MAX_SUMMARY_TOKENS = 1_500;
 
 export const estimateTokens = estimatePromptTokens;
 
@@ -74,8 +92,13 @@ export class ContextManager {
       input.maxInputTokens ?? Number.POSITIVE_INFINITY,
       Math.max(32, window - reserve),
     );
-    const prepared = stripStaleInlineMedia(input.messages);
-    const system = clampSystem(prepared.filter((message) => message.role === "system"), MAX_SYSTEM_TOKENS);
+    // Old code blocks are shrunk before the budget is applied, so the space they
+    // free is spent keeping more of the conversation rather than dropping it.
+    const prepared = compactCodeHistory(stripStaleInlineMedia(input.messages));
+    const system = clampSystem(prepared.filter((message) => message.role === "system"), {
+      system: MAX_SYSTEM_TOKENS,
+      summary: Math.min(MAX_SUMMARY_TOKENS, Math.floor(budget / 4)),
+    });
     const rest = prepared
       .filter((message) => message.role !== "system")
       .slice(-(input.maxHistoryMessages ?? MAX_HISTORY_MESSAGES));
@@ -154,19 +177,25 @@ function lookupContextWindow(providerId: string, modelId: string): number {
   return model?.contextWindow ?? DEFAULT_CONTEXT_WINDOW;
 }
 
-function clampSystem(messages: ChatMessage[], maxTokens: number): ChatMessage[] {
-  let remaining = maxTokens;
+/**
+ * Fits the system messages into their budgets without reordering them. The
+ * summary draws on its own pool, so a long fixed prompt cannot crowd it out and
+ * a long summary cannot crowd out the fixed prompt.
+ */
+function clampSystem(messages: ChatMessage[], budgets: { system: number; summary: number }): ChatMessage[] {
+  const remaining = { ...budgets };
   const result: ChatMessage[] = [];
   for (const message of messages) {
-    if (remaining <= 0) break;
+    const pool = message.kind === "summary" ? "summary" : "system";
+    if (remaining[pool] <= 0) continue;
     const cost = messageCost(message);
-    if (cost <= remaining) {
+    if (cost <= remaining[pool]) {
       result.push(message);
-      remaining -= cost;
+      remaining[pool] -= cost;
       continue;
     }
-    result.push(clampMessage(message, remaining));
-    break;
+    result.push(clampMessage(message, remaining[pool]));
+    remaining[pool] = 0;
   }
   return result;
 }

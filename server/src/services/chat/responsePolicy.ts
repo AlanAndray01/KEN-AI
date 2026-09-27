@@ -1,7 +1,7 @@
 import type { ChatMessage } from "../ai/AIProvider.js";
-import { buildKenIdentity } from "./identity.js";
+import { buildModelLine, KEN_IDENTITY_CORE } from "./identity.js";
 import { LANGUAGE_RULE } from "./languageRule.js";
-import { ANSWER_PROTOCOL } from "./answerProtocol.js";
+import { ANSWER_PROTOCOL, INTERACTIVE_BLOCKS, MATH_LAYOUT_RULES } from "./answerProtocol.js";
 
 export type ReplyBudget = "minimal" | "short" | "medium" | "long";
 
@@ -137,13 +137,20 @@ export function replyMaxTokens(budget: ReplyBudget): number {
  */
 export function buildResponsePolicyMessages(
   content: string,
-  options?: { skipProtocol?: boolean; modelName?: string },
+  options?: { skipProtocol?: boolean; modelName?: string; mathContext?: boolean },
 ): ChatMessage[] {
-  const signals = detectTaskSignals(content);
-  const stable = [buildKenIdentity(options?.modelName ?? "the selected model"), LANGUAGE_RULE];
+  const detected = detectTaskSignals(content);
+  // A follow-up like "and the next step?" has no math of its own, but the
+  // thread it continues does, so the full math rules follow the thread.
+  const signals =
+    options?.mathContext && detected.budget !== "minimal" ? { ...detected, needsMath: true } : detected;
+  const stable = [KEN_IDENTITY_CORE, LANGUAGE_RULE];
   // Greetings skip the long protocol so prefill stays tiny and the first token
   // can land in under a second.
   if (!options?.skipProtocol && signals.budget !== "minimal") stable.push(ANSWER_PROTOCOL);
+  // Last, so a model switch changes only the tail of this block and the
+  // provider can keep reusing everything above it from its prompt cache.
+  stable.push(buildModelLine(options?.modelName ?? "the selected model"));
   return [
     { role: "system", content: stable.join("\n\n") },
     { role: "system", content: renderPolicy(signals) },
@@ -220,6 +227,10 @@ export function renderPolicy(signals: TaskSignals): string {
     "Ken reply policy (one streamed pass; do not wait for extra agents).",
     `Style: ${length}`,
     `Format: ${formatBits.join(" ")}`,
+    // Sent only on the turns that use them. Together they were ~370 tokens on
+    // every message, most of which had no equation and asked for no quiz.
+    ...(signals.needsMath ? [MATH_LAYOUT_RULES] : []),
+    ...(signals.needsInteractive ? [INTERACTIVE_BLOCKS] : []),
     "Check before you stop: if an equation, heading, quote, or list is missing and the question needed it, add only that. Do not add unused headings, bullets, or bold.",
   ].join("\n");
 }

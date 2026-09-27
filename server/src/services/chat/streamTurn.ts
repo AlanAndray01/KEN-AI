@@ -14,6 +14,7 @@ import type { SseTiming } from "../../utils/sse.js";
 import { Message } from "../../models/Message.js";
 import { describeSelectedModel } from "./identity.js";
 import { currentUserTurn, loadHistory, withCurrentUser } from "./loadHistory.js";
+import { safeEarlierDocumentContext } from "./documentContext.js";
 import { buildPersonaMessages } from "../memory/persona.js";
 import { publicAttachmentsForMessages } from "../storage/fileService.js";
 import type { ChatStreamEvent, PreparedGeneration } from "./generationTypes.js";
@@ -43,6 +44,45 @@ export interface StreamClockState {
   fallbackReason?: string;
   googleConnectMs?: number;
   firstVisibleChunkMs?: number;
+}
+
+/**
+ * Orders a turn's prompt so it opens with the parts that stay the same from
+ * one send to the next.
+ *
+ * Providers that cache prompts (Gemini, Groq, OpenAI) reuse a request's
+ * unchanged opening, which is cheaper and faster. The reply policy is
+ * rebuilt for every question, so while it sat second — ahead of persona and
+ * summary — the reusable part ended after the identity block. Now the order
+ * is identity and protocol, persona, the rolling summary, then everything
+ * that varies per turn, then the conversation itself.
+ */
+/** Whether the recent turns contain LaTeX, so a terse follow-up still gets the full math rules. */
+export function threadUsesMath(history: ChatMessage[]): boolean {
+  return history
+    .slice(-4)
+    .some((message) => message.role !== "system" && /\$\$|\\frac|\\begin\{|\\\(/.test(message.content));
+}
+
+export function orderForPromptCache(input: {
+  /** [stable identity/protocol, per-turn reply policy], as buildResponsePolicyMessages returns them. */
+  policy: ChatMessage[];
+  persona: ChatMessage[];
+  perTurn: ChatMessage[];
+  history: ChatMessage[];
+  currentUser: ChatMessage;
+}): ChatMessage[] {
+  const [stable, ...turnPolicy] = input.policy;
+  const summary = input.history.filter((message) => message.kind === "summary");
+  const turns = input.history.filter((message) => message.kind !== "summary");
+  return [
+    ...(stable ? [stable] : []),
+    ...input.persona,
+    ...summary,
+    ...turnPolicy,
+    ...input.perTurn,
+    ...withCurrentUser(turns, input.currentUser),
+  ];
 }
 
 export async function streamAssistantReply(input: {
@@ -81,6 +121,16 @@ export async function streamAssistantReply(input: {
     const casual = signals.budget === "minimal" && !hasAttachments;
     const lowThinking = isLowThinkingTurn(signals);
     const deepCode = detectDeepCodeRequest(prepared.userMessage.content);
+    // Started before history is awaited so the two lookups overlap.
+    const earlierDocumentsP = casual
+      ? Promise.resolve(undefined)
+      : safeEarlierDocumentContext({
+          userId: prepared.userId,
+          conversationId: prepared.conversationId,
+          currentMessageId: prepared.userMessage.id,
+          question: prepared.userMessage.content,
+          providerId: prepared.providerId,
+        });
     const [history, persona] = casual
       ? [[], []]
       : input.preloaded
@@ -89,6 +139,11 @@ export async function streamAssistantReply(input: {
             loadHistory(prepared.userId, prepared.conversationId),
             buildPersonaMessages(prepared.userId, prepared.customGptId),
           ]);
+    // Sections of files attached on earlier turns that this question is about.
+    const earlierDocuments = await earlierDocumentsP;
+    const questionTurn = earlierDocuments
+      ? { ...currentUser, content: [currentUser.content, earlierDocuments].filter(Boolean).join("\n\n") }
+      : currentUser;
     const messages = pruneTurnContext({
       messages: casual
         ? [
@@ -97,18 +152,19 @@ export async function streamAssistantReply(input: {
             }),
             currentUser,
           ]
-        : [
-            ...buildResponsePolicyMessages(prepared.userMessage.content, {
+        : orderForPromptCache({
+            policy: buildResponsePolicyMessages(prepared.userMessage.content, {
               skipProtocol: Boolean(prepared.customGptId),
               modelName: prepared.modelName,
+              mathContext: threadUsesMath(history),
             }),
-            // Appended after the cacheable prefix so a code turn does not
-            // invalidate the shared identity/protocol prefix for other turns.
-            ...(deepCode ? [buildDeepCodeMessage()] : []),
-            ...persona,
-            ...(prepared.toolSystemMessages ?? []),
-            ...withCurrentUser(history, currentUser),
-          ],
+            persona,
+            // A code turn's extra rules and this turn's tool results change
+            // from send to send, so they sit with the per-turn policy.
+            perTurn: [...(deepCode ? [buildDeepCodeMessage()] : []), ...(prepared.toolSystemMessages ?? [])],
+            history,
+            currentUser: questionTurn,
+          }),
       modelId: prepared.modelId,
       providerId: prepared.providerId,
       tier: prepared.neuronTier,
@@ -220,6 +276,20 @@ export async function streamAssistantReply(input: {
         partial = event.response.content || partial;
         inputTokens = event.response.usage?.inputTokens;
         outputTokens = event.response.usage?.outputTokens;
+        logger.info(
+          telemetry({
+            event: "chat_prompt_cache",
+            requestId,
+            providerId: event.response.provider,
+            modelId: event.response.model,
+            inputTokens,
+            // Absent when the provider does not report caching; 0 when it
+            // reports it and nothing was reused.
+            cachedInputTokens: event.response.usage?.cachedInputTokens,
+            estimatedInputTokens,
+          }),
+          "chat prompt cache usage",
+        );
         if (event.response.provider) clockState.executedProviderId = event.response.provider;
         if (event.response.model) clockState.executedModelId = event.response.model;
         if (event.response.metadata && event.response.metadata["aborted"] === true) {

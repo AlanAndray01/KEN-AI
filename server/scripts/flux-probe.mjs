@@ -2,6 +2,7 @@
  * One-shot Flux URL probe. Prints status and JSON keys only — never tokens or image bytes.
  * Delete after use.
  */
+/* global console, process, fetch */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 

@@ -17,8 +17,10 @@ import { contextManager } from "../chat/ContextManager.js";
 import { describeSelectedModel, withKenIdentity } from "../chat/identity.js";
 import type { AIProvider, AIResponse, GenerateRequest, StreamEvent } from "./AIProvider.js";
 import { createProviderAdapter } from "./createProviderAdapter.js";
-import { requireConfigured, resolveCredentials, envKeyCount } from "./credentials.js";
+import { requireConfigured, resolveCredentials, envKeyCount, type CredentialSource } from "./credentials.js";
 import { GATEWAY_URL_PREFIX } from "./aiGateway.js";
+import { providerReadsPdfNatively } from "./nativeDocuments.js";
+import { foldInlineDocuments } from "../chat/documentParts.js";
 import { consumePlatformChatQuota } from "./platformChatQuota.js";
 import { assertUnderSpendCeiling } from "./spendCeiling.js";
 import { isProviderLeaveError, isProviderQuotaError, isRetryableProviderError } from "./fallback.js";
@@ -83,7 +85,8 @@ export class AIProviderManager {
     return this.tools.getAnalysisJob(userId, jobId);
   }
 
-  async generate(request: GenerateRequest): Promise<AIResponse> {
+  async generate(input: GenerateRequest): Promise<AIResponse> {
+    const request = await this.chargeTurnQuota(input);
     const skip = this.honouredSkip(request);
     if (skip) {
       this.logHonouredSkip(request, skip);
@@ -105,7 +108,8 @@ export class AIProviderManager {
     }
   }
 
-  async *stream(request: GenerateRequest): AsyncIterable<StreamEvent> {
+  async *stream(input: GenerateRequest): AsyncIterable<StreamEvent> {
+    const request = await this.chargeTurnQuota(input);
     const skip = this.honouredSkip(request);
     if (skip) {
       this.logHonouredSkip(request, skip);
@@ -393,7 +397,7 @@ export class AIProviderManager {
    */
   private prepareRequest(request: GenerateRequest): GenerateRequest {
     const aliased = this.withAliasedModel(request);
-    const resolved = this.withVisionModel(aliased);
+    const resolved = this.withReadablePdfs(this.withVisionModel(aliased));
     const fitted = this.withProviderContextFit(resolved);
     const messages = withKenIdentity(fitted.messages, describeSelectedModel(fitted.modelId));
     return messages === fitted.messages ? fitted : { ...fitted, messages };
@@ -415,6 +419,21 @@ export class AIProviderManager {
    * It is a no-op whenever the incoming messages already fit — which is the
    * common case for every provider except this one.
    */
+  /**
+   * A PDF goes out once, as the file itself, to providers that read PDFs.
+   * When a turn lands anywhere else (a fallback from Gemini to Groq, say),
+   * the file would reach the model as a bare filename, so its text is
+   * extracted here, for exactly the hop that needs it.
+   */
+  private withReadablePdfs(request: GenerateRequest): GenerateRequest {
+    if (providerReadsPdfNatively(request.providerId)) return request;
+    const hasPdf = request.messages.some((message) =>
+      message.parts?.some((part) => part.mimeType === "application/pdf"),
+    );
+    if (!hasPdf) return request;
+    return { ...request, messages: foldInlineDocuments(request.messages, { nativeDocuments: false }) };
+  }
+
   private withProviderContextFit(request: GenerateRequest): GenerateRequest {
     const messages = contextManager.build({
       messages: request.messages,
@@ -442,6 +461,34 @@ export class AIProviderManager {
     const routed = applyRetryAttachmentRoute(request, models);
     if (!routed.rerouted) return request;
     return { ...request, providerId: routed.providerId, modelId: routed.modelId };
+  }
+
+  /**
+   * Charges the per-user platform limits once for the whole turn.
+   *
+   * Every attempt used to charge on its own — the key rotation and each
+   * fallback hop went through getAdapter — so one message on a busy provider
+   * could spend four or five units of the per-minute allowance. The limit ran
+   * out fastest exactly when providers were struggling. Charging here and
+   * marking the turn skipQuota makes one message cost one unit however many
+   * providers it has to try.
+   *
+   * A primary on the user's own key is neither charged nor marked, so a hop
+   * onto a shared platform key is still charged by getAdapter.
+   */
+  private async chargeTurnQuota(request: GenerateRequest): Promise<GenerateRequest> {
+    if (!request.userId || request.skipQuota) return request;
+    let source: CredentialSource;
+    try {
+      source = requireConfigured(await resolveCredentials(request.providerId, request.userId)).source;
+    } catch {
+      // An unconfigured primary is reported by the attempt itself, which may hop.
+      return request;
+    }
+    if (source === "user") return request;
+    await consumePlatformChatQuota(request.userId, source);
+    await assertUnderSpendCeiling(request.userId, source);
+    return { ...request, skipQuota: true };
   }
 
   async getAdapter(providerId: string, userId?: string, skipQuota?: boolean): Promise<AIProvider> {

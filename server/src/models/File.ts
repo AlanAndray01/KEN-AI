@@ -22,6 +22,15 @@ const storedFileSchema = new mongoose.Schema(
       default: "uploaded",
     },
     metadata: { type: mongoose.Schema.Types.Mixed },
+    /**
+     * The document's extracted text, split into sections for section search.
+     * Built the first time the file is sent to a model and reused after that,
+     * so a follow-up question never re-downloads and re-parses the file.
+     * Empty for a document with no extractable text (a scanned PDF).
+     */
+    textSections: { type: [String], default: undefined },
+    /** Which splitter built textSections, so a change to it rebuilds them. */
+    textSectionsVersion: { type: Number },
   },
   { timestamps: true, collection: "files" },
 );
