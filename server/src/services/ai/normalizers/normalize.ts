@@ -13,12 +13,14 @@ export function compactUsage(usage?: {
   inputTokens?: number | undefined;
   outputTokens?: number | undefined;
   totalTokens?: number | undefined;
+  cachedInputTokens?: number | undefined;
 }): AIResponse["usage"] | undefined {
   if (!usage) return undefined;
   const next: NonNullable<AIResponse["usage"]> = {
     ...(usage.inputTokens !== undefined ? { inputTokens: usage.inputTokens } : {}),
     ...(usage.outputTokens !== undefined ? { outputTokens: usage.outputTokens } : {}),
     ...(usage.totalTokens !== undefined ? { totalTokens: usage.totalTokens } : {}),
+    ...(usage.cachedInputTokens !== undefined ? { cachedInputTokens: usage.cachedInputTokens } : {}),
   };
   return Object.keys(next).length > 0 ? next : undefined;
 }
@@ -32,6 +34,7 @@ export function normalizeAIResponse(input: {
     inputTokens?: number | undefined;
     outputTokens?: number | undefined;
     totalTokens?: number | undefined;
+    cachedInputTokens?: number | undefined;
   };
   citations?: unknown[];
   toolCalls?: unknown[];

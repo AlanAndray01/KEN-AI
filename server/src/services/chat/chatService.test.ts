@@ -710,6 +710,8 @@ describe("chatService Auto mode", () => {
   });
 
   it("finishes an image turn as complete when the caption model fails", async () => {
+    // A stream that fails before its first event.
+    // eslint-disable-next-line require-yield
     stream.mockImplementation(async function* () {
       throw new AppError("That model could not authenticate the request.", {
         statusCode: 502,

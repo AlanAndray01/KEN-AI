@@ -49,3 +49,13 @@ client/dist/
 # Misc
 .tmp/
 .cache/
+
+# Local API request/response captures (curl bodies can hold real credentials)
+client/login*.json
+client/register*.json
+client/forgot*.json
+client/me-body.json
+*.local.json
+**/credentials*.json
+**/secrets*.json
+**/service-account*.json

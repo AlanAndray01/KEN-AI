@@ -59,7 +59,7 @@ export function buildNativeGeminiBody(request: GenerateRequest): Record<string, 
 export function extractGeminiCandidateText(payload: unknown): {
   text: string;
   finishReason?: string;
-  usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
+  usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number; cachedInputTokens?: number };
 } {
   const root = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : {};
   const candidates = Array.isArray(root.candidates) ? root.candidates : [];
@@ -84,6 +84,9 @@ export function extractGeminiCandidateText(payload: unknown): {
         ...(typeof usageMeta.promptTokenCount === "number" ? { inputTokens: usageMeta.promptTokenCount } : {}),
         ...(typeof usageMeta.candidatesTokenCount === "number" ? { outputTokens: usageMeta.candidatesTokenCount } : {}),
         ...(typeof usageMeta.totalTokenCount === "number" ? { totalTokens: usageMeta.totalTokenCount } : {}),
+        ...(typeof usageMeta.cachedContentTokenCount === "number"
+          ? { cachedInputTokens: usageMeta.cachedContentTokenCount }
+          : {}),
       }
     : undefined;
   return {

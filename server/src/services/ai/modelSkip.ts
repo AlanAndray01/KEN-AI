@@ -168,8 +168,13 @@ function persistSkips(): void {
   }
 }
 
+/** Ken's own per-user limits. They describe one account, never the model's health. */
+const APP_LIMIT_CODES: ReadonlySet<string> = new Set(["RATE_LIMITED", "SPEND_CEILING_REACHED"]);
+
 export function skipDurationMs(error: unknown): number | undefined {
   if (!(error instanceof AppError)) return undefined;
+  // Caching these would cool the model down for every other user as well.
+  if (APP_LIMIT_CODES.has(error.code)) return undefined;
   const extra = error.extra;
   const hinted = extra && typeof extra.retryAfterMs === "number" ? extra.retryAfterMs : undefined;
   const errorClass = extra && typeof extra.errorClass === "string" ? extra.errorClass : undefined;

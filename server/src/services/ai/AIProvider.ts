@@ -11,6 +11,18 @@ export interface ChatMessage {
   role: MessageRole;
   content: string;
   parts?: ChatContentPart[];
+  /**
+   * "summary" marks the rolling summary of older turns. It is a system message
+   * with its own token budget, so the fixed system prompt cannot crowd it out.
+   * Never sent to a provider: the normalizers build their payloads field by field.
+   */
+  kind?: "summary";
+  /**
+   * Id of the stored message this was built from. Lets the chat path swap the
+   * history copy of the current question for the fully prepared one by
+   * identity rather than by comparing text. Never sent to a provider.
+   */
+  sourceId?: string;
 }
 
 export interface ProviderCredentials {
@@ -41,6 +53,8 @@ export interface AIUsage {
   inputTokens?: number;
   outputTokens?: number;
   totalTokens?: number;
+  /** Part of inputTokens the provider served from its prompt cache, when it reports one. */
+  cachedInputTokens?: number;
 }
 
 export interface AIResponse {

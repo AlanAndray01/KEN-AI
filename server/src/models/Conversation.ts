@@ -25,6 +25,27 @@ const conversationSchema = new mongoose.Schema(
     lastMessagePreview: { type: String, maxlength: 280 },
     messageCount: { type: Number, default: 0, min: 0 },
     expiresAt: { type: Date },
+    /**
+     * Rolling summary of the turns older than the recent window, sent to the
+     * model in their place. Server-side only: toPublicConversation never
+     * copies it, and the messages themselves are never altered.
+     *
+     * `throughMessageId` / `throughCreatedAt` mark the last message it covers.
+     * If that message is later superseded by an edit or regenerate, the summary
+     * describes a branch that no longer exists and is ignored until rebuilt.
+     */
+    contextSummary: {
+      type: new mongoose.Schema(
+        {
+          text: { type: String, required: true, maxlength: 8_000 },
+          throughMessageId: { type: mongoose.Schema.Types.ObjectId, ref: "Message", required: true },
+          throughCreatedAt: { type: Date, required: true },
+          updatedAt: { type: Date, required: true },
+        },
+        { _id: false },
+      ),
+      required: false,
+    },
   },
   { timestamps: true },
 );

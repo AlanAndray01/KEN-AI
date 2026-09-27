@@ -226,3 +226,55 @@ describe("ContextManager", () => {
     expect(result.some((message) => message.parts?.some((part) => part.data === "OLD"))).toBe(false);
   });
 });
+
+describe("ContextManager context compression", () => {
+  it("gives the rolling summary its own budget, so a long system prompt cannot drop it", () => {
+    const manager = new ContextManager();
+    const result = manager.build({
+      messages: [
+        { role: "system", content: "rule ".repeat(3_000) },
+        { role: "system", kind: "summary", content: "Summary: the user is building a login page." },
+        { role: "user", content: "continue" },
+      ],
+      modelId: "mock",
+      providerId: "gemini",
+    });
+
+    expect(result.some((message) => message.content.includes("building a login page"))).toBe(true);
+  });
+
+  it("caps the summary so it cannot crowd out the recent turns", () => {
+    const manager = new ContextManager();
+    const result = manager.build({
+      messages: [
+        { role: "system", kind: "summary", content: "s".repeat(40_000) },
+        { role: "user", content: "latest question" },
+      ],
+      modelId: "mock",
+      providerId: "gemini",
+    });
+
+    const summary = result.find((message) => message.role === "system");
+    expect(estimateTokens(summary?.content ?? "")).toBeLessThanOrEqual(1_600);
+    expect(result.at(-1)?.content).toBe("latest question");
+  });
+
+  it("keeps more of a code-heavy thread by shrinking old code instead of dropping turns", () => {
+    const manager = new ContextManager();
+    const bigFile = `\`\`\`ts\n${Array.from({ length: 400 }, (_, index) => `const v${index} = ${index};`).join("\n")}\n\`\`\``;
+    const messages = [
+      { role: "user" as const, content: "first question" },
+      { role: "assistant" as const, content: bigFile },
+      { role: "user" as const, content: "second" },
+      { role: "assistant" as const, content: "ok" },
+      { role: "user" as const, content: "third" },
+      { role: "assistant" as const, content: "ok" },
+      { role: "user" as const, content: "latest" },
+    ];
+
+    const result = manager.build({ messages, modelId: "mock", providerId: "groq" });
+
+    expect(result[0]?.content).toBe("first question");
+    expect(result[1]?.content).toMatch(/^\[Earlier ts block, 400 lines/);
+  });
+});

@@ -9,6 +9,9 @@ import { AppError } from "../../utils/AppError.js";
 import type { ChatContentPart } from "../ai/AIProvider.js";
 import { storageService } from "./index.js";
 import { S3CompatibleStorage } from "./S3CompatibleStorage.js";
+import { providerReadsPdfNatively } from "../ai/nativeDocuments.js";
+import { formatDocumentSections, selectSections, splitIntoSections } from "../chat/documentSections.js";
+import { documentSectionsFor } from "./documentIndex.js";
 import {
   extractTextDocument,
   isDocxMime,
@@ -121,7 +124,7 @@ export async function loadOwnedFiles(userId: string, fileIds: string[]) {
 
 /** Gemini generateContent and OpenAI chat `type: "file"` can take a raw PDF. Word is always extracted. */
 export function providerSupportsNativeDocuments(providerId: string): boolean {
-  return providerId === "gemini" || providerId === "openai";
+  return providerReadsPdfNatively(providerId);
 }
 
 export function assertAttachmentsAllowed(capabilities: ModelCapability[], files: Array<{ mimeType: string; originalName: string }>): void {
@@ -149,23 +152,51 @@ export async function materializeFilesForModel(
     originalName: string;
     mimeType: string;
     storageKey: string;
+    _id?: { toString(): string };
+    textSections?: string[] | null;
+    textSectionsVersion?: number | null;
   }>,
-  options?: { nativeDocuments?: boolean },
+  options?: {
+    nativeDocuments?: boolean;
+    /** The question being asked, used to pick sections when a document does not fit. */
+    question?: string;
+    /** Characters of document text this turn can carry, shared by its text documents. Unbounded when omitted. */
+    charBudget?: number;
+  },
 ): Promise<{ contentSuffix: string; parts: ChatContentPart[] }> {
   const notes: string[] = [];
   const parts: ChatContentPart[] = [];
   const nativeDocuments = options?.nativeDocuments === true;
+  const readsAsText = (mimeType: string) =>
+    isTextMime(mimeType) || isDocxMime(mimeType) || (isPdfMime(mimeType) && !nativeDocuments);
+  const textDocuments = files.filter((file) => readsAsText(file.mimeType)).length;
+  const perDocumentBudget =
+    options?.charBudget !== undefined && textDocuments > 0
+      ? Math.floor(options.charBudget / textDocuments)
+      : Number.POSITIVE_INFINITY;
 
   for (const file of files) {
-    const buffer = await storageService.get(file.storageKey);
-    if (isTextMime(file.mimeType) || isDocxMime(file.mimeType) || (isPdfMime(file.mimeType) && !nativeDocuments)) {
-      const extracted = extractTextDocument(buffer, file.mimeType);
-      notes.push(attachmentNote(file.originalName, extracted));
+    if (readsAsText(file.mimeType)) {
+      const sections = file._id
+        ? await documentSectionsFor({ ...file, _id: file._id })
+        : splitIntoSections(extractTextDocument(await storageService.get(file.storageKey), file.mimeType));
+      if (sections.length === 0) {
+        notes.push(attachmentNote(file.originalName, ""));
+        continue;
+      }
+      // Whole when it fits, so a short document is never cut; otherwise the
+      // sections that answer this question.
+      const selection = selectSections(sections, options?.question ?? "", perDocumentBudget);
+      notes.push(formatDocumentSections(file.originalName, sections, selection));
       continue;
     }
+    const buffer = await storageService.get(file.storageKey);
     if (isPdfMime(file.mimeType) && nativeDocuments) {
-      const extracted = extractTextDocument(buffer, file.mimeType);
-      notes.push(attachmentNote(file.originalName, extracted));
+      // The model reads the PDF itself, so its extracted text is not sent as
+      // well — that paid for every PDF twice. If the turn falls back to a
+      // provider that cannot read PDFs, AIProviderManager extracts the text
+      // from this part at that moment instead.
+      notes.push(`Attached file: ${file.originalName} (the PDF itself is attached)`);
       parts.push({
         type: "inline",
         mimeType: file.mimeType,

@@ -4,6 +4,7 @@ import { Message } from "../../models/Message.js";
 import { telemetry } from "../../utils/telemetry.js";
 import { findOwnedConversation } from "./conversationService.js";
 import { generateChatTitle } from "./chatTitle.js";
+import { refreshConversationSummary, SUMMARY_KEEP_RECENT, SUMMARY_REFRESH_AFTER } from "./conversationSummary.js";
 import { detectDeepCodeRequest } from "./codeGeneration.js";
 import { estimateGenerationMs } from "./generationEstimate.js";
 import { generationRegistry } from "./generationRegistry.js";
@@ -283,6 +284,18 @@ export async function runGeneration(
     partial,
     finishStatus,
   );
+
+  // Folds turns leaving the recent window into the rolling summary. After the
+  // reply, never before it, so the user never waits on it; and only once the
+  // thread is long enough that a turn could have left the window at all.
+  if ((conversation.messageCount ?? 0) >= SUMMARY_KEEP_RECENT + SUMMARY_REFRESH_AFTER) {
+    void refreshConversationSummary({
+      userId: prepared.userId,
+      conversationId: prepared.conversationId,
+      providerId: clockState.executedProviderId,
+      modelId: clockState.executedModelId,
+    });
+  }
 }
 
 /**

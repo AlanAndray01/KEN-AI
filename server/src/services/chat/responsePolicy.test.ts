@@ -108,3 +108,43 @@ describe("detectTaskSignals", () => {
     expect(detectTaskSignals("Write a comprehensive guide to JWT cookies").budget).toBe("long");
   });
 });
+
+describe("buildResponsePolicyMessages token trimming", () => {
+  const fixed = (question: string, modelName = "Gemini 3.5 Flash") =>
+    buildResponsePolicyMessages(question, { modelName })[0]!.content;
+  const perTurn = (question: string, options: { mathContext?: boolean } = {}) =>
+    buildResponsePolicyMessages(question, options)[1]!.content;
+
+  it("leaves the full math layout and quiz templates out of a plain question", () => {
+    const all = `${fixed("What causes the seasons?")}\n${perTurn("What causes the seasons?")}`;
+    expect(all).not.toContain("Math layout");
+    // The template bodies, not the one-line "never emit [QUIZ] unless asked".
+    expect(all).not.toContain("Correct: B");
+    expect(all).not.toContain("[MINDMAP:Title]");
+    // The one-line math rule still rides along, so a stray equation is still LaTeX.
+    expect(all).toContain("$inline$ and $$display$$");
+  });
+
+  it("sends the full math layout on a math question", () => {
+    expect(perTurn("Solve 3x^2 - 12x + 9 = 0")).toContain("Math layout");
+    expect(perTurn("Solve 3x^2 - 12x + 9 = 0")).toContain("\\begin{aligned}");
+  });
+
+  it("keeps the math layout on a terse follow-up in a math thread", () => {
+    expect(perTurn("and the next step?")).not.toContain("Math layout");
+    expect(perTurn("and the next step?", { mathContext: true })).toContain("Math layout");
+  });
+
+  it("sends the quiz and flashcard formats only when one is asked for", () => {
+    expect(perTurn("Make me a quiz on the solar system")).toContain("[QUIZ]");
+    expect(perTurn("Make me a quiz on the solar system")).toContain("[FLASHCARDS]");
+  });
+
+  it("ends the fixed block with the model line, so switching models keeps the rest reusable", () => {
+    const gemini = fixed("What is DNA?", "Gemini 3.5 Flash");
+    const llama = fixed("What is DNA?", "Llama 4 Scout");
+    expect(gemini.endsWith("I am Ken AI powered by Gemini 3.5 Flash.")).toBe(true);
+    const shared = gemini.indexOf("This turn is running on");
+    expect(gemini.slice(0, shared)).toBe(llama.slice(0, shared));
+  });
+});
