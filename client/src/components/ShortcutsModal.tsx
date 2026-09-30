@@ -1,6 +1,5 @@
 import { useEffect, useRef } from "react";
 import { Keyboard, X } from "lucide-react";
-import { submitModifierLabel } from "@/utils/keyboard";
 
 const ROWS = [
   { keys: ["Ctrl", "Shift", "O"], action: "New chat" },
@@ -18,11 +17,9 @@ const FOCUSABLE =
 export function ShortcutsModal({
   open,
   onClose,
-  sendOnEnter,
 }: {
   open: boolean;
   onClose: () => void;
-  sendOnEnter: boolean;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -64,8 +61,8 @@ export function ShortcutsModal({
 
   if (!open) return null;
 
-  const sendKeys = sendOnEnter ? ["Enter"] : [submitModifierLabel(), "Enter"];
-  const newlineKeys = sendOnEnter ? ["Shift", "Enter"] : ["Enter"];
+  const sendKeys = ["Enter"];
+  const newlineKeys = ["Shift", "Enter"];
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-24">

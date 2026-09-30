@@ -182,6 +182,29 @@ describe("ChatPage", () => {
     expect(screen.getByRole("form", { name: "Send message" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Messages" })).toHaveAttribute("aria-live", "polite");
     expect(await screen.findByRole("button", { name: "Select model: Auto" })).toBeInTheDocument();
+    // Search and image generation are off in this mock, so their chips must not tempt a click.
+    expect(screen.getByRole("button", { name: "Write or edit" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Create an image" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Search the web" })).not.toBeInTheDocument();
+  });
+
+  it("sends a dead chat link to a new chat instead of an empty thread", async () => {
+    const { ApiError } = await import("@/services/api/errors");
+    mocks.listMessages.mockRejectedValue(new ApiError("Conversation not found", { status: 404, code: "CONVERSATION_NOT_FOUND" }));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={["/chat/deleted-id"]}>
+          <Routes>
+            <Route path="/chat" element={<p>fresh chat</p>} />
+            <Route path="/chat/:conversationId" element={<ChatPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText("fresh chat")).toBeInTheDocument();
+    expect(useToastStore.getState().toasts.some((t) => t.message.includes("no longer exists"))).toBe(true);
   });
 
   it("starts a new chat on Auto even if the last stored pick was 3.8", async () => {

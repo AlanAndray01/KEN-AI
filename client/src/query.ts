@@ -1,5 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { api } from "@/services/api";
+import { ApiError } from "@/services/api/errors";
 import { HISTORY_PAGE_SIZE } from "@/utils/chatMessages";
 
 /** Default React Query freshness for profile, models, credentials, and prefs. */
@@ -10,6 +11,25 @@ export const CONVERSATION_STALE_MS = 30_000;
 
 /** Message threads should refetch soon after streaming settles. */
 export const MESSAGE_STALE_MS = 15_000;
+
+const MAX_QUERY_RETRIES = 3;
+
+/**
+ * A 4xx answer will not change on a retry: a missing chat or GPT stays missing.
+ * Retrying it only kept "Loading…" on screen for several seconds before the
+ * real message. Timeouts and rate limits are the exceptions worth retrying.
+ */
+export function shouldRetryQuery(failureCount: number, error: unknown): boolean {
+  if (failureCount >= MAX_QUERY_RETRIES) return false;
+  if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
+    return error.status === 408 || error.status === 429;
+  }
+  return true;
+}
+
+export function isNotFoundError(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 404;
+}
 
 export function conversationIdFromPath(pathname: string): string | undefined {
   const match = pathname.match(/^\/chat\/([^/?#]+)$/);

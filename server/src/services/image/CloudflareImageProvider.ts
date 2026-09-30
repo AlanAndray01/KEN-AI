@@ -28,7 +28,7 @@ export class CloudflareImageProvider implements ImageGenerationProvider {
   }
 
   unavailableReason(): string {
-    return "Image generation is not configured. Set CF_ACCOUNT_ID and CF_TOKEN, or a Gemini/OpenAI key.";
+    return "Image generation isn't turned on for this site yet.";
   }
 
   async generate(request: ImageGenerationRequest): Promise<GeneratedImage> {
@@ -39,7 +39,7 @@ export class CloudflareImageProvider implements ImageGenerationProvider {
     // without the header is a configuration bug, not a Flux failure.
     if (url.startsWith(GATEWAY_URL_PREFIX) && !this.options.gatewayToken) {
       throw new AppError(
-        "Image generation is missing the AI Gateway token. Set CF_AI_GATEWAY_TOKEN.",
+        "Image generation is temporarily unavailable. Try again later.",
         { statusCode: 503, code: "IMAGE_GENERATION_NOT_CONFIGURED", expose: true },
       );
     }

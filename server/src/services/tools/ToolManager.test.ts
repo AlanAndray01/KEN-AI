@@ -31,8 +31,10 @@ describe("ToolManager", () => {
     );
     const tools = manager.listPublic(["text", "streaming", "tools"]);
     expect(tools.every((tool) => tool.configured === false && tool.available === false)).toBe(true);
-    expect(tools.find((tool) => tool.id === "web_search")?.unavailableReason).toMatch(/SEARCH_PROVIDER/);
-    expect(tools.find((tool) => tool.id === "image_generation")?.unavailableReason).toMatch(/IMAGE_GENERATION/);
+    // Users see plain words; server setup variable names stay out of the UI.
+    expect(tools.find((tool) => tool.id === "web_search")?.unavailableReason).toMatch(/Web search isn't turned on/);
+    expect(tools.find((tool) => tool.id === "image_generation")?.unavailableReason).toMatch(/Image generation isn't turned on/);
+    for (const tool of tools) expect(tool.unavailableReason ?? "").not.toMatch(/[A-Z]{2,}_[A-Z_]+/);
     expect(tools.find((tool) => tool.id === "data_analysis")?.unavailableReason).toMatch(/never executed/);
   });
 

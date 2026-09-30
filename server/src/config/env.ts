@@ -124,6 +124,7 @@ const baseEnvSchema = z.object({
   RATE_LIMIT_IMAGE: z.coerce.number().int().positive().default(10),
   RATE_LIMIT_VOICE: z.coerce.number().int().positive().default(20),
   RATE_LIMIT_PASSWORD_RESET: z.coerce.number().int().positive().default(5),
+  RATE_LIMIT_SESSION: z.coerce.number().int().positive().default(60),
   /**
    * Daily token ceiling per user on shared platform keys (env or admin-
    * stored), not bring-your-own keys. 250k is a starting point sized well
@@ -262,6 +263,7 @@ export const env = {
   RATE_LIMIT_IMAGE: parsed.data.RATE_LIMIT_IMAGE,
   RATE_LIMIT_VOICE: parsed.data.RATE_LIMIT_VOICE,
   RATE_LIMIT_PASSWORD_RESET: parsed.data.RATE_LIMIT_PASSWORD_RESET,
+  RATE_LIMIT_SESSION: parsed.data.RATE_LIMIT_SESSION,
   AUTO_MODE_DAILY_TOKEN_CEILING: parsed.data.AUTO_MODE_DAILY_TOKEN_CEILING,
 };
 

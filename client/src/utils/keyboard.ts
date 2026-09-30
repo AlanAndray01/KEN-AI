@@ -1,9 +1,10 @@
 /**
  * One source of truth for when a key press submits a message.
  *
- * Enter inserts a line break. Ctrl+Enter (Windows, Linux) or ⌘+Enter (macOS)
- * sends. Users can opt back into Enter-to-send in Settings, but a touch keyboard's
- * return key never sends: on a phone it is the only way to type a line break.
+ * On a laptop or desktop, Enter sends and Shift+Enter inserts a line break.
+ * Ctrl/⌘+Enter also sends, for people used to that. A touch keyboard's return
+ * key never sends: on a phone it is the only way to type a line break, and the
+ * on-screen Send button is the way to send.
  */
 
 export interface SubmitKeyEvent {
@@ -17,8 +18,6 @@ export interface SubmitKeyEvent {
 }
 
 export interface SubmitKeyOptions {
-  /** The user's Settings opt-in for plain Enter to send. */
-  sendOnEnter: boolean;
   /** Primary input is touch, where Enter must always stay a newline. */
   coarsePointer?: boolean;
 }
@@ -38,7 +37,7 @@ export function submitModifierLabel(): string {
   return isApplePlatform() ? "⌘" : "Ctrl";
 }
 
-export function shouldSubmitOnKey(event: SubmitKeyEvent, options: SubmitKeyOptions): boolean {
+export function shouldSubmitOnKey(event: SubmitKeyEvent, options: SubmitKeyOptions = {}): boolean {
   if (event.key !== "Enter" || event.isComposing) return false;
   // Alt+Enter is claimed by several OS input methods; never treat it as send.
   if (event.altKey) return false;
@@ -46,5 +45,5 @@ export function shouldSubmitOnKey(event: SubmitKeyEvent, options: SubmitKeyOptio
   // layout, or the reverse, should not have to learn which one this app wants.
   if (event.ctrlKey || event.metaKey) return true;
   if (event.shiftKey) return false;
-  return options.sendOnEnter && options.coarsePointer !== true;
+  return options.coarsePointer !== true;
 }

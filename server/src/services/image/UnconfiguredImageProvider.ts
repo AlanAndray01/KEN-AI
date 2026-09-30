@@ -9,7 +9,7 @@ export class UnconfiguredImageProvider implements ImageGenerationProvider {
   }
 
   unavailableReason(): string {
-    return "Image generation is not configured. Set IMAGE_GENERATION_PROVIDER and an API key.";
+    return "Image generation isn't turned on for this site yet.";
   }
 
   async generate(_request: ImageGenerationRequest): Promise<GeneratedImage> {

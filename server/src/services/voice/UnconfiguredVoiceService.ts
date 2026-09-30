@@ -13,7 +13,7 @@ export class UnconfiguredVoiceService implements VoiceService {
   }
 
   unavailableReason(): string {
-    return "Voice is not configured. Set VOICE_PROVIDER=openai and VOICE_API_KEY or OPENAI_API_KEY. Realtime voice is not enabled.";
+    return "Server voice isn't turned on for this site yet. Your browser's built-in voice is used where it is available.";
   }
 
   async transcribe(): Promise<TranscriptionResult> {

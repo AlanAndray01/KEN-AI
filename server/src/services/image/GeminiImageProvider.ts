@@ -16,7 +16,7 @@ export class GeminiImageProvider implements ImageGenerationProvider {
   }
 
   unavailableReason(): string {
-    return "Image generation is not configured. Set GEMINI_API_KEY or IMAGE_GENERATION_API_KEY.";
+    return "Image generation isn't turned on for this site yet.";
   }
 
   async generate(request: ImageGenerationRequest): Promise<GeneratedImage> {

@@ -27,7 +27,10 @@ function apiPath(url: string): string {
  * login, Mongo session, or running Express process.
  */
 export async function installMockSession(page: Page): Promise<void> {
-  await page.route(/\/api\//, async (route) => {
+  // Matched on the path prefix, not anywhere in the URL: Vite serves source
+  // modules such as /src/services/api/*.ts in dev, and answering those with
+  // JSON left the app stuck on the boot loader.
+  await page.route((url) => url.pathname.startsWith("/api/"), async (route) => {
     const request = route.request();
     const path = apiPath(request.url());
     const method = request.method();

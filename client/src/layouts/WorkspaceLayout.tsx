@@ -4,7 +4,6 @@ import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { CLIENT_ROUTES } from "@Ken/shared";
 import { ConversationSidebar } from "@/components/ConversationSidebar";
 import { PageFallback } from "@/components/PageFallback";
-import { useAuth } from "@/hooks/useAuth";
 import { useUiStore } from "@/stores/uiStore";
 import "@/app.css";
 
@@ -21,12 +20,10 @@ function isTypingTarget(target: EventTarget | null): boolean {
 export function WorkspaceLayout() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user } = useAuth();
   const setMobileOpen = useUiStore((state) => state.setMobileOpen);
   const shortcutsOpen = useUiStore((state) => state.shortcutsOpen);
   const setShortcutsOpen = useUiStore((state) => state.setShortcutsOpen);
   const isChat = location.pathname === "/chat" || location.pathname.startsWith("/chat/");
-  const sendOnEnter = user?.preferences?.sendOnEnter ?? false;
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent): void {
@@ -105,7 +102,7 @@ export function WorkspaceLayout() {
       </div>
       {shortcutsOpen ? (
         <Suspense fallback={null}>
-          <ShortcutsModal open onClose={() => setShortcutsOpen(false)} sendOnEnter={sendOnEnter} />
+          <ShortcutsModal open onClose={() => setShortcutsOpen(false)} />
         </Suspense>
       ) : null}
     </div>

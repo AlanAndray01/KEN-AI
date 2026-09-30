@@ -161,13 +161,16 @@ export function ChatPage() {
               </div>
             ) : (
               <div className="mt-4 flex flex-wrap justify-center gap-2">
-                <button
-                  type="button"
-                  className="rounded-full border border-border px-3 py-1.5 text-sm text-fg-muted hover:bg-surface-muted"
-                  onClick={() => thread.setDraft("Create an image of ")}
-                >
-                  Create an image
-                </button>
+                {/* Only suggest a tool the site can actually run right now. */}
+                {thread.imageDisabledReason ? null : (
+                  <button
+                    type="button"
+                    className="rounded-full border border-border px-3 py-1.5 text-sm text-fg-muted hover:bg-surface-muted"
+                    onClick={() => thread.setDraft("Create an image of ")}
+                  >
+                    Create an image
+                  </button>
+                )}
                 <button
                   type="button"
                   className="rounded-full border border-border px-3 py-1.5 text-sm text-fg-muted hover:bg-surface-muted"
@@ -178,13 +181,22 @@ export function ChatPage() {
                 <button
                   type="button"
                   className="rounded-full border border-border px-3 py-1.5 text-sm text-fg-muted hover:bg-surface-muted"
-                  onClick={() => {
-                    attachments.setWebSearch(true);
-                    document.getElementById("composer-input")?.focus();
-                  }}
+                  onClick={() => thread.setDraft("Explain simply: ")}
                 >
-                  Search the web
+                  Explain something
                 </button>
+                {thread.webSearchDisabledReason ? null : (
+                  <button
+                    type="button"
+                    className="rounded-full border border-border px-3 py-1.5 text-sm text-fg-muted hover:bg-surface-muted"
+                    onClick={() => {
+                      attachments.setWebSearch(true);
+                      document.getElementById("composer-input")?.focus();
+                    }}
+                  >
+                    Search the web
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -241,7 +253,6 @@ export function ChatPage() {
         onSubmit={() => void stream.onSubmit()}
         onStop={() => void stream.onStop()}
         streaming={stream.streaming}
-        sendOnEnter={thread.user?.preferences?.sendOnEnter ?? false}
         attachments={attachments.attachments}
         capabilities={thread.capabilities}
         uploading={attachments.uploading}

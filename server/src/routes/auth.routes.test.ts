@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { RequestHandler } from "express";
 import { authRouter } from "./auth.js";
-import { rateLimitAuth, rateLimitPasswordReset } from "../middleware/rateLimit.js";
+import { rateLimitAuth, rateLimitPasswordReset, rateLimitSession } from "../middleware/rateLimit.js";
 import { requireAuth } from "../middleware/requireAuth.js";
 
 /**
@@ -47,10 +47,10 @@ const EXPECTED_ROUTES: RouteExpectation[] = [
   { method: "post", path: "/login", requires: [rateLimitAuth] },
   { method: "post", path: "/verify-email", requires: [rateLimitPasswordReset] },
   { method: "post", path: "/resend-code", requires: [rateLimitPasswordReset] },
-  { method: "post", path: "/logout", requires: [rateLimitAuth] },
+  { method: "post", path: "/logout", requires: [rateLimitSession] },
   // Authenticated read of the current user: gated by requireAuth, no limiter.
   { method: "get", path: "/me", requires: [requireAuth] },
-  { method: "post", path: "/refresh", requires: [rateLimitAuth] },
+  { method: "post", path: "/refresh", requires: [rateLimitSession] },
   { method: "post", path: "/forgot-password", requires: [rateLimitPasswordReset] },
   { method: "post", path: "/reset-password", requires: [rateLimitPasswordReset] },
   {
@@ -92,7 +92,9 @@ describe("authRouter wiring", () => {
     const unlimited = EXPECTED_ROUTES.filter((route) => {
       const handlers = handlersFor(route.method, route.path);
       const hasLimiter =
-        handlers.includes(rateLimitAuth) || handlers.includes(rateLimitPasswordReset);
+        handlers.includes(rateLimitAuth) ||
+        handlers.includes(rateLimitPasswordReset) ||
+        handlers.includes(rateLimitSession);
       const isAuthenticated = handlers.includes(requireAuth);
       return !hasLimiter && !isAuthenticated;
     });

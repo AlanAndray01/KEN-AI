@@ -966,10 +966,15 @@ html.dark .hljs-type {
     border-radius: inherit;
   }
 
+  /* 16px, not 15: iOS Safari zooms the whole page into any smaller field on
+     focus. The height cap is lower than desktop's because the on-screen
+     keyboard already takes about half the screen; ~7 lines still show. */
   .chat-composer .composer-input {
-    min-height: 2.5rem;
-    padding: 0.625rem 0.75rem 0.375rem;
+    min-height: 2.75rem;
+    max-height: min(35vh, 11.5rem);
+    padding: 0.7rem 0.75rem 0.4rem;
     font-size: 1rem;
+    line-height: 1.5;
   }
 
   .chat-composer .composer-toolbar {
@@ -1056,7 +1061,7 @@ html.dark .hljs-type {
   }
 
   .markdown {
-    font-size: 0.9rem;
+    font-size: 0.9375rem;
   }
 
   .thinking-pipeline {

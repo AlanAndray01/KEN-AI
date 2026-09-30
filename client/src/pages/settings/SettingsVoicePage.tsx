@@ -36,7 +36,7 @@ export function SettingsVoicePage() {
           </div>
         </dl>
         <p className="mt-4 text-sm text-fg-muted">
-          {status?.message ?? "Voice is not configured. Set VOICE_PROVIDER on the server."}
+          {status?.message ?? "Server voice isn't turned on for this site yet. Your browser's built-in voice is used where it is available."}
         </p>
       </div>
       <Link to={CLIENT_ROUTES.settings} className="text-sm text-accent underline-offset-4 hover:underline">

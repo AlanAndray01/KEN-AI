@@ -86,7 +86,7 @@ export function RegisterPage() {
           onChange={(event) => setPassword(event.target.value)}
         />
         <p className="text-xs text-fg-muted">
-          Use at least 6 characters.
+          Use at least 8 characters.
         </p>
         <button
           type="submit"

@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
@@ -31,6 +32,17 @@ export default defineConfig(({ command, mode }) => {
           code: code.replaceAll("font-display:block", "font-display:swap"),
           map: null,
         };
+      },
+    },
+    {
+      // vercel.json only rewrites real app routes to index.html. Any other path
+      // falls through to Vercel's 404.html, served with a true 404 status; this
+      // copy boots the same app, which then renders the not-found page.
+      name: "spa-404-page",
+      apply: "build",
+      writeBundle(options) {
+        const dir = options.dir ?? path.resolve(__dirname, "dist");
+        fs.copyFileSync(path.join(dir, "index.html"), path.join(dir, "404.html"));
       },
     },
   ],
@@ -74,8 +86,25 @@ export default defineConfig(({ command, mode }) => {
           ) {
             return "react";
           }
+          // Code highlighting and math are imported on demand by MarkdownContent,
+          // only when a reply contains code or LaTeX. Folding them into the
+          // markdown chunk made every reply download them anyway.
           if (
             moduleId.includes("highlight.js") ||
+            moduleId.includes("/lowlight") ||
+            moduleId.includes("/rehype-highlight")
+          ) {
+            return "highlight";
+          }
+          if (
+            moduleId.includes("/katex") ||
+            moduleId.includes("/rehype-katex") ||
+            moduleId.includes("/remark-math") ||
+            moduleId.includes("-math")
+          ) {
+            return "math";
+          }
+          if (
             moduleId.includes("react-markdown") ||
             moduleId.includes("/rehype") ||
             moduleId.includes("/remark") ||

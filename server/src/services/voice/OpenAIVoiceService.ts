@@ -15,7 +15,7 @@ export class OpenAIVoiceService implements VoiceService {
   }
 
   unavailableReason(): string {
-    return "Voice is not configured. Set VOICE_API_KEY or OPENAI_API_KEY.";
+    return "Server voice isn't turned on for this site yet. Your browser's built-in voice is used where it is available.";
   }
 
   async transcribe(input: { buffer: Buffer; mimeType: string; filename: string }): Promise<TranscriptionResult> {

@@ -23,7 +23,6 @@ interface ChatComposerProps {
   onSubmit: () => void;
   onStop: () => void;
   streaming: boolean;
-  sendOnEnter?: boolean;
   disabled?: boolean;
   placeholder?: string;
   attachments?: PublicFile[];
@@ -47,8 +46,13 @@ interface ChatComposerProps {
   onMention?: (item: MentionCandidate | undefined) => void;
 }
 
-const COMPOSER_MIN_PX = 48;
-const COMPOSER_MAX_PX = COMPOSER_MIN_PX * 2;
+/**
+ * Growth ceiling when CSS gives none. The real cap is the textarea's CSS
+ * max-height (taller on desktop, shorter on phones where the keyboard takes
+ * half the screen), read at resize time so the two can never disagree. The
+ * old fixed 96px showed about four lines before scrolling.
+ */
+const COMPOSER_FALLBACK_MAX_PX = 320;
 
 export function ChatComposer({
   value,
@@ -56,7 +60,6 @@ export function ChatComposer({
   onSubmit,
   onStop,
   streaming,
-  sendOnEnter = false,
   disabled = false,
   placeholder = "Ask anything",
   attachments = [],
@@ -94,8 +97,10 @@ export function ChatComposer({
     const element = textareaRef.current;
     if (!element) return;
     const frame = window.requestAnimationFrame(() => {
+      const cssMax = Number.parseFloat(window.getComputedStyle(element).maxHeight);
+      const max = Number.isFinite(cssMax) && cssMax > 0 ? cssMax : COMPOSER_FALLBACK_MAX_PX;
       element.style.height = "auto";
-      element.style.height = `${Math.min(element.scrollHeight, COMPOSER_MAX_PX)}px`;
+      element.style.height = `${Math.min(element.scrollHeight, max)}px`;
     });
     return () => window.cancelAnimationFrame(frame);
   }, [value]);
@@ -154,7 +159,7 @@ export function ChatComposer({
       },
       // Read at key time rather than once on mount: a laptop with a touchscreen
       // can switch primary input mid-session.
-      { sendOnEnter, coarsePointer: isCoarsePointer() },
+      { coarsePointer: isCoarsePointer() },
     );
     if (!submits) return;
     event.preventDefault();
@@ -259,7 +264,7 @@ export function ChatComposer({
           aria-autocomplete="list"
           aria-haspopup={onMention ? "listbox" : undefined}
           aria-controls={mentionOpen ? "composer-mentions" : undefined}
-          className="composer-input max-h-[96px] min-h-[48px] w-full resize-none overflow-y-auto bg-transparent px-4 pt-3 pb-2 text-sm outline-none ring-0 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
+          className="composer-input max-h-[min(40vh,20rem)] min-h-[52px] w-full resize-none overflow-y-auto bg-transparent px-4 pt-3.5 pb-2 text-[15px] leading-relaxed outline-none ring-0 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
           id="composer-input"
           onChange={(event) => {
             onChange(event.target.value);
@@ -280,7 +285,6 @@ export function ChatComposer({
           uploading={uploading}
           generatingImage={generatingImage}
           canSend={canSend}
-          sendOnEnter={sendOnEnter}
           value={value}
           webSearchEnabled={webSearchEnabled}
           recording={recording}

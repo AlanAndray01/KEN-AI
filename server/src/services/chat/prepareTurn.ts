@@ -162,7 +162,7 @@ async function routeAuto(
         : plan.task === "vision"
           ? "No configured model can read this image. Add a Gemini or OpenAI key, or pick a model, then send again."
           : plan.task === "image"
-            ? "No image model is available for Auto. Set CF_ACCOUNT_ID and CF_TOKEN, or pick Flux, then send again."
+            ? "Image generation isn't turned on for this site yet, so Auto has no image model to use."
             : "No model is available for Auto. Add an API key, or pick a model, then send again.";
     throw new AppError(message, { statusCode: 503, code: "AUTO_ROUTE_UNAVAILABLE", expose: true });
   }

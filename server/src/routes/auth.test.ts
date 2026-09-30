@@ -424,7 +424,7 @@ describe("auth API", () => {
     expect(response.body.error.message.length).toBeGreaterThan(0);
   });
 
-  it("rejects passwords shorter than 6 characters with a clear JSON error", async () => {
+  it("rejects passwords shorter than 8 characters with a clear JSON error", async () => {
     const response = await request(app).post("/api/auth/register").send({
       name: "Ada Lovelace",
       email: "ada@example.com",
@@ -432,7 +432,7 @@ describe("auth API", () => {
     });
     expect(response.status).toBe(400);
     expect(response.body.error.code).toBe("VALIDATION_ERROR");
-    expect(response.body.error.message).toBe("Password must be at least 6 characters");
+    expect(response.body.error.message).toBe("Password must be at least 8 characters");
   });
 
   it("returns a clear Google configuration error instead of faking login", async () => {
