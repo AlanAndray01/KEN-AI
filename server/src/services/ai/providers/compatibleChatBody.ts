@@ -69,8 +69,16 @@ export const GEMINI_THINKING_TOKEN_RESERVE = 2_048;
 /** Headroom when thinking is already pinned to `low` — not a second essay budget. */
 export const GEMINI_LOW_THINKING_TOKEN_RESERVE = 256;
 
+/**
+ * `none` (a 400 on 3.5 Flash Lite) becomes `minimal`, the smallest budget the
+ * catalog accepts. Measured on 3.5 Flash Lite through this endpoint with the
+ * same explanatory question: `low` took 3.9-13.6s to the first visible token,
+ * `minimal` 0.56-0.92s, with answers of similar length. Turns that need the
+ * thinking (math, code, depth) do not send `none`; see thinkingEffortFor.
+ */
 export function geminiReasoningParams(effort?: "none" | "low" | "medium" | "default"): Record<string, unknown> {
   if (effort === "medium" || effort === "default") return { reasoning_effort: "medium" };
+  if (effort === "none") return { reasoning_effort: "minimal" };
   return { reasoning_effort: "low" };
 }
 

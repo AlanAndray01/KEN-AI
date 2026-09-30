@@ -73,7 +73,9 @@ describe("buildCompatibleChatBody", () => {
 
   it("keeps Gemini thinking on the lowest budget the catalog accepts", () => {
     expect(geminiReasoningParams()).toEqual({ reasoning_effort: "low" });
-    expect(geminiReasoningParams("none")).toEqual({ reasoning_effort: "low" });
+    // `none` is a 400 on 3.5 Flash Lite; `minimal` is accepted and cut the
+    // first visible token from 4-13s to under one second.
+    expect(geminiReasoningParams("none")).toEqual({ reasoning_effort: "minimal" });
     expect(geminiMaxOutputTokens(1024)).toBe(1024 + GEMINI_THINKING_TOKEN_RESERVE);
     expect(geminiMaxOutputTokens(1024, "none")).toBe(1024 + GEMINI_LOW_THINKING_TOKEN_RESERVE);
     expect(geminiMaxOutputTokens(1024, "low")).toBe(1024 + GEMINI_LOW_THINKING_TOKEN_RESERVE);
@@ -100,7 +102,7 @@ describe("buildCompatibleChatBody", () => {
         { stream: true, providerId: "gemini" },
       ),
     ).toMatchObject({
-      reasoning_effort: "low",
+      reasoning_effort: "minimal",
       max_tokens: 1024 + GEMINI_LOW_THINKING_TOKEN_RESERVE,
     });
   });

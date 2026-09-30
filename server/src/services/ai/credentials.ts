@@ -5,6 +5,7 @@ import { UserProviderCredential } from "../../models/UserProviderCredential.js";
 import { AppError } from "../../utils/AppError.js";
 import { gatewayBaseUrl } from "./aiGateway.js";
 import { getBuiltInProvider } from "./catalog.js";
+import { CREDENTIAL_CACHE_MS, createTtlCache, onCredentialsChanged } from "./credentialCache.js";
 import { decryptSecret, lastFour } from "./encryption.js";
 import { isMockAiAllowed } from "./providers/MockProvider.js";
 
@@ -89,15 +90,60 @@ function asCapabilities(value: unknown): ModelCapability[] {
   return Array.isArray(value) ? (value as ModelCapability[]) : [];
 }
 
+interface UserCredentialRead {
+  apiKey?: string;
+  baseUrl?: string;
+  keyLastFour?: string;
+}
+
+const providerCache = createTtlCache<ProviderRecord | null>(CREDENTIAL_CACHE_MS);
+const providerListCache = createTtlCache<ProviderRecord[]>(CREDENTIAL_CACHE_MS);
+const storedKeyCache = createTtlCache<string | undefined>(CREDENTIAL_CACHE_MS);
+const userCredentialCache = createTtlCache<UserCredentialRead | null>(CREDENTIAL_CACHE_MS);
+
+onCredentialsChanged(() => {
+  providerCache.clear();
+  providerListCache.clear();
+  storedKeyCache.clear();
+  userCredentialCache.clear();
+});
+
 export async function loadGlobalProvider(providerId: string): Promise<ProviderRecord | null> {
-  const doc = await AIProvider.findOne({ providerId });
-  if (!doc) return null;
-  return toProviderRecord(doc);
+  return providerCache.get(providerId, async () => {
+    const doc = await AIProvider.findOne({ providerId });
+    return doc ? toProviderRecord(doc) : null;
+  });
 }
 
 export async function loadGlobalProviders(): Promise<ProviderRecord[]> {
-  const docs = await AIProvider.find({});
-  return docs.map((doc) => toProviderRecord(doc));
+  return providerListCache.get("all", async () => {
+    const docs = await AIProvider.find({});
+    return docs.map((doc) => toProviderRecord(doc));
+  });
+}
+
+/** The platform key an admin stored for a provider, decrypted. */
+function loadStoredGlobalKey(providerId: string): Promise<string | undefined> {
+  return storedKeyCache.get(providerId, async () => {
+    const doc = await AIProvider.findOne({ providerId }).select("+encryptedApiKey");
+    return decryptDocKey(doc?.encryptedApiKey);
+  });
+}
+
+/** A user's own enabled key for a provider, decrypted; null when they have none. */
+function loadUserCredential(userId: string, providerId: string): Promise<UserCredentialRead | null> {
+  return userCredentialCache.get(`${userId}:${providerId}`, async () => {
+    const doc = await UserProviderCredential.findOne({ userId, providerId, enabled: true }).select(
+      "+encryptedApiKey",
+    );
+    if (!doc) return null;
+    const apiKey = await decryptDocKey(doc.encryptedApiKey);
+    return {
+      ...(apiKey ? { apiKey } : {}),
+      ...(doc.baseUrl ? { baseUrl: doc.baseUrl } : {}),
+      ...(doc.keyLastFour ? { keyLastFour: doc.keyLastFour } : {}),
+    };
+  });
 }
 
 function toProviderRecord(doc: {
@@ -185,12 +231,8 @@ export async function resolveCredentials(
   const capabilities = stored?.capabilities.length ? stored.capabilities : (builtIn?.capabilities ?? []);
 
   if (userId) {
-    const userCred = await UserProviderCredential.findOne({
-      userId,
-      providerId,
-      enabled: true,
-    }).select("+encryptedApiKey");
-    const userKey = await decryptDocKey(userCred?.encryptedApiKey);
+    const userCred = await loadUserCredential(userId, providerId);
+    const userKey = userCred?.apiKey;
     if (userKey || (type === "ollama" && userCred?.baseUrl)) {
       const resolvedBase = userCred?.baseUrl ?? baseUrl;
       return {
@@ -213,8 +255,7 @@ export async function resolveCredentials(
   }
 
   if (stored?.hasStoredKey) {
-    const doc = await AIProvider.findOne({ providerId }).select("+encryptedApiKey");
-    const apiKey = await decryptDocKey(doc?.encryptedApiKey);
+    const apiKey = await loadStoredGlobalKey(providerId);
     return {
       providerId,
       name,
@@ -275,7 +316,7 @@ export async function describeConfiguredSecret(
   hasUserKey: boolean;
 }> {
   if (userId) {
-    const userCred = await UserProviderCredential.findOne({ userId, providerId, enabled: true });
+    const userCred = await loadUserCredential(userId, providerId);
     if (userCred?.keyLastFour) {
       return {
         configured: true,

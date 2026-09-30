@@ -5,6 +5,7 @@ import {
 } from "@Ken/shared";
 import { env } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
+import { combineAbortSignals } from "../../utils/abort.js";
 import { AppError } from "../../utils/AppError.js";
 import { telemetry } from "../../utils/telemetry.js";
 import {
@@ -32,6 +33,7 @@ import {
   type ModelSkip,
 } from "./modelSkip.js";
 import { modelRegistry } from "./ModelRegistry.js";
+import { guardStreamStalls, stallLimitsFor } from "./streamStallGuard.js";
 import {
   applyRetryAttachmentRoute,
   listRetryHops,
@@ -186,11 +188,22 @@ export class AIProviderManager {
     reasonOverride?: string,
   ): AsyncIterable<StreamEvent> {
     let last: unknown = error;
+    // Once any text from an attempt has reached the user, a later failure ends
+    // the turn with that text. Trying the next key or hop at that point would
+    // stream a second, complete answer straight after the half-finished one.
+    let streamedText = false;
+    const tracked = async function* (events: AsyncIterable<StreamEvent>): AsyncIterable<StreamEvent> {
+      for await (const event of events) {
+        if (event.type === "chunk" || event.type === "complete") streamedText = true;
+        yield event;
+      }
+    };
     if (allowKeyRotate && isProviderQuotaError(error) && envKeyCount(request.providerId) > 1) {
       try {
-        yield* this.streamOnce(request);
+        yield* tracked(this.streamOnce(request));
         return;
       } catch (rotated) {
+        if (streamedText) throw rotated;
         last = rotated;
         rememberModelSkip(request.providerId, request.modelId, rotated);
       }
@@ -214,9 +227,10 @@ export class AIProviderManager {
     for (const hop of this.retryHops(request, last, models)) {
       if (blocked.includes(hop.providerId) || isProviderBlocked(hop.providerId)) continue;
       try {
-        yield* tryHop.call(this, this.hopRequest(request, hop, blocked));
+        yield* tracked(tryHop.call(this, this.hopRequest(request, hop, blocked)));
         return;
       } catch (caught) {
+        if (streamedText) throw caught;
         last = caught;
         rememberModelSkip(hop.providerId, hop.modelId, caught);
         if (!isRetryableProviderError(caught)) throw caught;
@@ -373,7 +387,27 @@ export class AIProviderManager {
       await modelRegistry.assertModelAvailable(resolved.providerId, resolved.modelId, resolved.userId);
     }
     if (adapter.stream) {
-      yield* adapter.stream(resolved);
+      // Aborting this tears down only the provider request. The user's own
+      // signal stays untouched, so a stall reads as a provider failure (which
+      // Auto may hop away from) rather than as the user pressing Stop.
+      const stall = new AbortController();
+      yield* guardStreamStalls(
+        adapter.stream({ ...resolved, abortSignal: combineAbortSignals(resolved.abortSignal, stall.signal) }),
+        stallLimitsFor(resolved.reasoningEffort),
+        (error) => {
+          logger.warn(
+            telemetry({
+              event: "provider_stream_stall",
+              requestId: resolved.requestId,
+              providerId: resolved.providerId,
+              modelId: resolved.modelId,
+              errorClass: "stream_stall",
+            }),
+            error.message,
+          );
+          stall.abort(error);
+        },
+      );
       return;
     }
 

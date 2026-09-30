@@ -1,4 +1,5 @@
 import { createHash, createHmac } from "node:crypto";
+import { logger } from "../../config/logger.js";
 import { AppError } from "../../utils/AppError.js";
 import type { PutObjectInput, StorageProviderId, StorageService, StoredObject } from "./StorageService.js";
 
@@ -27,6 +28,7 @@ export class S3CompatibleStorage implements StorageService {
   async put(input: PutObjectInput): Promise<StoredObject> {
     const response = await this.request("PUT", input.key, input.buffer, input.mimeType);
     if (!response.ok) {
+      await this.logFailure("PUT", response);
       throw new AppError("Object storage upload failed.", { statusCode: 502, code: "STORAGE_ERROR" });
     }
     return { key: input.key, size: input.buffer.length, mimeType: input.mimeType };
@@ -38,6 +40,7 @@ export class S3CompatibleStorage implements StorageService {
       throw new AppError("File not found", { statusCode: 404, code: "FILE_NOT_FOUND" });
     }
     if (!response.ok) {
+      await this.logFailure("GET", response);
       throw new AppError("Object storage read failed.", { statusCode: 502, code: "STORAGE_ERROR" });
     }
     return Buffer.from(await response.arrayBuffer());
@@ -50,6 +53,26 @@ export class S3CompatibleStorage implements StorageService {
   async exists(key: string): Promise<boolean> {
     const response = await this.request("HEAD", key);
     return response.ok;
+  }
+
+  /**
+   * Records why the store refused a request. The user only ever sees "upload
+   * failed"; the log carries the provider's own reason (SignatureDoesNotMatch,
+   * NoSuchBucket, AccessDenied, ...) so a misconfiguration is a one-line fix.
+   * The response carries no credentials, and none are logged.
+   */
+  private async logFailure(method: string, response: Response): Promise<void> {
+    const body = await response.text().catch(() => "");
+    logger.error(
+      {
+        storageProvider: this.provider,
+        method,
+        status: response.status,
+        storageErrorCode: /<Code>([^<]+)<\/Code>/.exec(body)?.[1],
+        storageErrorMessage: /<Message>([^<]+)<\/Message>/.exec(body)?.[1]?.slice(0, 300),
+      },
+      "object storage request failed",
+    );
   }
 
   private async request(method: string, key: string, body?: Buffer, mimeType?: string): Promise<Response> {

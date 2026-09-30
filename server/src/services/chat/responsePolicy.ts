@@ -107,6 +107,22 @@ export function isLowThinkingTurn(signals: TaskSignals): boolean {
 }
 
 /**
+ * How much the model should think before a turn's first visible token.
+ *
+ * "none" (sent to providers as their smallest budget) for everything except
+ * the turns that are genuinely better for thinking: math, code, a deep-code
+ * build, and an explicit request for depth. An ordinary explanation used to
+ * think at "low" too, and on Gemini Flash Lite that alone held the first word
+ * back 4-13s — the "every reply takes ten seconds" complaint. undefined keeps
+ * each provider's default for the turns that do need it.
+ */
+export function thinkingEffortFor(signals: TaskSignals, deepCode: boolean): "none" | undefined {
+  // Checked before length: "Build me a todo app" is short, but it is a build.
+  if (signals.needsMath || signals.needsCode || deepCode || signals.budget === "long") return undefined;
+  return "none";
+}
+
+/**
  * Decode ceilings. GPT-OSS counts reasoning tokens against this budget, so
  * even a greeting needs more than a handful of tokens after `reasoning_effort`
  * is set to `low`.

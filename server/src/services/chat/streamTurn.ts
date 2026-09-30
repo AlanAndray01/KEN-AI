@@ -9,7 +9,7 @@ import { aiProviderManager } from "../ai/AIProviderManager.js";
 import { estimateContextTokens } from "./ContextManager.js";
 import { buildDeepCodeMessage, detectDeepCodeRequest } from "./codeGeneration.js";
 import { neuronOutputTokens, pruneTurnContext } from "./neuronGuardrail.js";
-import { buildResponsePolicyMessages, detectTaskSignals, isLowThinkingTurn, replyMaxTokens } from "./responsePolicy.js";
+import { buildResponsePolicyMessages, detectTaskSignals, replyMaxTokens, thinkingEffortFor } from "./responsePolicy.js";
 import type { SseTiming } from "../../utils/sse.js";
 import { Message } from "../../models/Message.js";
 import { describeSelectedModel } from "./identity.js";
@@ -110,18 +110,13 @@ export async function streamAssistantReply(input: {
     const signals = detectTaskSignals(prepared.userMessage.content);
     const hasAttachments =
       (prepared.userMessage.attachments?.length ?? 0) > 0 || (prepared.generatedFileIds?.length ?? 0) > 0;
-    const currentUser = await currentUserTurn(
-      prepared.userId,
-      prepared.userMessage,
-      prepared.generatedFileIds,
-      prepared.providerId,
-    );
     // Preload races persist, so the new turn (and its files) is often missing
     // from history. Never drop attachments just because the text is small talk.
     const casual = signals.budget === "minimal" && !hasAttachments;
-    const lowThinking = isLowThinkingTurn(signals);
     const deepCode = detectDeepCodeRequest(prepared.userMessage.content);
-    // Started before history is awaited so the two lookups overlap.
+    const lowThinking = thinkingEffortFor(signals, deepCode) === "none";
+    // Started before this turn's own files and the history are awaited, so all
+    // three lookups overlap instead of queueing in front of the first token.
     const earlierDocumentsP = casual
       ? Promise.resolve(undefined)
       : safeEarlierDocumentContext({
@@ -131,6 +126,12 @@ export async function streamAssistantReply(input: {
           question: prepared.userMessage.content,
           providerId: prepared.providerId,
         });
+    const currentUser = await currentUserTurn(
+      prepared.userId,
+      prepared.userMessage,
+      prepared.generatedFileIds,
+      prepared.providerId,
+    );
     const [history, persona] = casual
       ? [[], []]
       : input.preloaded
@@ -255,7 +256,7 @@ export async function streamAssistantReply(input: {
         void Message.updateOne(
           { _id: prepared.assistantMessage.id },
           { $set: { model: event.model, provider: event.provider } },
-        );
+        ).catch((error: unknown) => logBackgroundWriteFailure(error, "assistant model", requestId));
       }
       if (event.type === "connected") {
         clockState.googleConnectMs = event.connectMs;
@@ -269,8 +270,12 @@ export async function streamAssistantReply(input: {
         emit({ type: "chunk", text });
       });
       chunks += 1;
+      // Checkpoint only: the final save in runGeneration is what persists the
+      // reply, so a failed checkpoint is logged and the stream carries on.
       if (chunks % 12 === 0 && partial) {
-        void Message.updateOne({ _id: prepared.assistantMessage.id }, { $set: { content: partial } });
+        void Message.updateOne({ _id: prepared.assistantMessage.id }, { $set: { content: partial } }).catch(
+          (error: unknown) => logBackgroundWriteFailure(error, "partial reply checkpoint", requestId),
+        );
       }
       if (event.type === "complete") {
         partial = event.response.content || partial;
@@ -378,6 +383,10 @@ export async function loadMessageAttachments(
   const stored = map.get(messageId) ?? [];
   if (stored.length > 0) return stored;
   return fallback ?? [];
+}
+
+function logBackgroundWriteFailure(error: unknown, what: string, requestId?: string): void {
+  logger.warn({ err: toSafeError(error), requestId }, `background ${what} write failed`);
 }
 
 function applyStreamEvent(event: StreamEvent, onChunk: (text: string) => void): void {

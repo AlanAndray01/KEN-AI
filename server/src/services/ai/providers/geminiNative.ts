@@ -52,6 +52,9 @@ export function buildNativeGeminiBody(request: GenerateRequest): Record<string, 
   }
   body.generationConfig = {
     maxOutputTokens: geminiMaxOutputTokens(request.maxTokens, request.reasoningEffort),
+    // Same fast path as the compat endpoint's `minimal`. Anything else keeps
+    // the model's default thinking, which on this surface was already quick.
+    ...(request.reasoningEffort === "none" ? { thinkingConfig: { thinkingLevel: "minimal" } } : {}),
   };
   return body;
 }

@@ -41,6 +41,13 @@ describe("gemini native multimodal", () => {
     expect(body.generationConfig).toMatchObject({ maxOutputTokens: expect.any(Number) });
   });
 
+  it("asks for minimal thinking on a fast turn and leaves the default otherwise", () => {
+    expect(buildNativeGeminiBody({ ...pdfRequest, reasoningEffort: "none" }).generationConfig).toMatchObject({
+      thinkingConfig: { thinkingLevel: "minimal" },
+    });
+    expect(buildNativeGeminiBody(pdfRequest).generationConfig).not.toHaveProperty("thinkingConfig");
+  });
+
   it("lifts system text into systemInstruction", () => {
     const body = buildNativeGeminiBody({
       ...pdfRequest,
