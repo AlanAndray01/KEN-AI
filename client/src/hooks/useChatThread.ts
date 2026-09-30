@@ -1,15 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   AUTO_MODEL_ID,
+  CLIENT_ROUTES,
   AUTO_PROVIDER_ID,
   GEMINI_FLASH_MODEL_ID,
   isAutoSelection,
   type PublicConversation,
 } from "@Ken/shared";
 import { useAuth } from "@/hooks/useAuth";
-import { CONVERSATION_STALE_MS, MESSAGE_STALE_MS, QUERY_STALE_MS } from "@/query";
+import { CONVERSATION_STALE_MS, MESSAGE_STALE_MS, QUERY_STALE_MS, isNotFoundError } from "@/query";
 import { api } from "@/services/api";
 import { draftKey, useDraftStore } from "@/stores/draftStore";
 import { useModelStore } from "@/stores/modelStore";
@@ -29,6 +30,7 @@ import type { MentionCandidate } from "@/utils/mentions";
 export function useChatThread(conversationId?: string) {
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const storedProviderId = useModelStore((state) => state.providerId);
   const storedModelId = useModelStore((state) => state.modelId);
@@ -169,8 +171,20 @@ export function useChatThread(conversationId?: string) {
         }
         setSearchParams({}, { replace: true });
       })
-      .catch(() => toast("GPT not found", "error"));
+      .catch(() => {
+        toast("GPT not found", "error");
+        setSearchParams({}, { replace: true });
+      });
   }, [gptParam, setSearchParams, setSelection]);
+
+  // A deleted or mistyped chat link can never load, and sending into it would
+  // fail with a misleading "generation failed". Start a fresh chat instead.
+  const missingConversation = Boolean(conversationId) && isNotFoundError(messagesQuery.error);
+  useEffect(() => {
+    if (!missingConversation) return;
+    toast("That chat no longer exists. Starting a new one.", "error");
+    void navigate(CLIENT_ROUTES.chat, { replace: true });
+  }, [missingConversation, navigate]);
 
   useEffect(() => {
     if (currentConversation) return;

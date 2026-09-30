@@ -1,4 +1,5 @@
 import type { PublicUsageByGroup, PublicUsageRecord, PublicUsageSummary } from "@Ken/shared";
+import mongoose from "mongoose";
 import { logger } from "../../config/logger.js";
 import { UsageRecord } from "../../models/UsageRecord.js";
 import { toSafeError } from "../../utils/redact.js";
@@ -80,7 +81,8 @@ function emptyTotals() {
 export async function summarizeUsage(filter: { userId?: string } = {}): Promise<PublicUsageSummary> {
   const match: Record<string, unknown> = {};
   if (filter.userId) {
-    match.userId = filter.userId;
+    // aggregate() skips schema casting, so a string never matches the stored ObjectId.
+    match.userId = new mongoose.Types.ObjectId(filter.userId);
   }
 
   const [totalsRow] = await UsageRecord.aggregate<{

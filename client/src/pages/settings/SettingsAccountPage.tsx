@@ -82,7 +82,7 @@ export function SettingsAccountPage() {
       >
         <h2 className="text-lg font-medium">Change password</h2>
         <p className="text-sm text-fg-muted">
-          New passwords need at least 6 characters. Changing the password revokes other sessions.
+          New passwords need at least 8 characters. Changing the password revokes other sessions.
         </p>
         <label className="block text-sm">
           Current password

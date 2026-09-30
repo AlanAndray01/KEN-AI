@@ -2,23 +2,66 @@ import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import { APP_NAME } from "@Ken/shared";
 
-function titleForPath(pathname: string): string {
-  if (pathname === "/") return APP_NAME;
-  if (pathname.startsWith("/login")) return `Sign in · ${APP_NAME}`;
-  if (pathname.startsWith("/register")) return `Create account · ${APP_NAME}`;
-  if (pathname.startsWith("/forgot-password")) return `Forgot password · ${APP_NAME}`;
-  if (pathname.startsWith("/reset-password")) return `Reset password · ${APP_NAME}`;
-  if (pathname.startsWith("/verify-email")) return `Verify email · ${APP_NAME}`;
-  if (pathname.startsWith("/chat")) return `Chat · ${APP_NAME}`;
-  if (pathname.startsWith("/search") || pathname.startsWith("/history")) return `History · ${APP_NAME}`;
-  if (pathname.startsWith("/library")) return `Library · ${APP_NAME}`;
-  if (pathname.startsWith("/gpts/create")) return `Create GPT · ${APP_NAME}`;
-  if (pathname.startsWith("/gpts/")) return `GPT · ${APP_NAME}`;
-  if (pathname.startsWith("/gpts")) return `GPTs · ${APP_NAME}`;
-  if (pathname.startsWith("/settings")) return `Settings · ${APP_NAME}`;
-  if (pathname.startsWith("/admin")) return `Admin · ${APP_NAME}`;
-  if (pathname.startsWith("/share")) return `Shared chat · ${APP_NAME}`;
-  return APP_NAME;
+const SETTINGS_TITLES: Record<string, string> = {
+  account: "Account",
+  general: "General",
+  appearance: "Appearance",
+  personalization: "Personalization",
+  memory: "Memory",
+  voice: "Voice",
+  notifications: "Notifications",
+  "data-controls": "Data controls",
+  models: "API keys & models",
+};
+
+const ADMIN_TITLES: Record<string, string> = {
+  providers: "Providers",
+  models: "Models",
+  usage: "Usage",
+};
+
+function pageTitle(pathname: string): string | undefined {
+  const [first = "", second] = pathname.split("/").filter(Boolean);
+  switch (first) {
+    case "":
+      return undefined;
+    case "privacy":
+      return "Privacy policy";
+    case "terms":
+      return "Terms of service";
+    case "login":
+      return "Sign in";
+    case "register":
+      return "Create account";
+    case "forgot-password":
+      return "Forgot password";
+    case "reset-password":
+      return "Reset password";
+    case "verify-email":
+      return "Verify email";
+    case "chat":
+      return "Chat";
+    case "search":
+    case "history":
+      return "History";
+    case "library":
+      return "Library";
+    case "gpts":
+      return second === "create" ? "Create GPT" : second ? "GPT" : "GPTs";
+    case "settings":
+      return second ? `${SETTINGS_TITLES[second] ?? "Page not found"} · Settings` : "Settings";
+    case "admin":
+      return second ? `${ADMIN_TITLES[second] ?? "Page not found"} · Admin` : "Admin";
+    case "share":
+      return "Shared chat";
+    default:
+      return "Page not found";
+  }
+}
+
+export function titleForPath(pathname: string): string {
+  const page = pageTitle(pathname);
+  return page ? `${page} · ${APP_NAME}` : APP_NAME;
 }
 
 /** Public pages worth a canonical of their own; everything else points home. */

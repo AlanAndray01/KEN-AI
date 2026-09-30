@@ -61,7 +61,7 @@ Public. Never returns connection strings or keys.
 
 ## Auth
 
-Rate limited (`RATE_LIMIT_AUTH`, default 10 / 60s) except logout, me, and Google callback. Password reset, email verification, and resend-code use `RATE_LIMIT_PASSWORD_RESET` (default 5 / 60s).
+Rate limited (`RATE_LIMIT_AUTH`, default 10 / 60s) except refresh, logout and me. Refresh and logout share their own `RATE_LIMIT_SESSION` bucket (default 60 / 60s), which only counts requests that carry a refresh cookie, so logged-out page loads never use up the sign-in budget. Password reset, email verification, and resend-code use `RATE_LIMIT_PASSWORD_RESET` (default 5 / 60s).
 
 | Method | Path | Auth | Notes |
 | --- | --- | --- | --- |

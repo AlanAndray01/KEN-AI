@@ -6,7 +6,11 @@
   "framework": "vite",
   "rewrites": [
     {
-      "source": "/((?!assets/|robots\\.txt|sitemap\\.xml|og-image\\.png|site\\.webmanifest|favicon\\.ico|apple-touch-icon\\.png|icon-192\\.png|icon-512\\.png).*)",
+      "source": "/:page(privacy|terms|login|register|forgot-password|reset-password|verify-email|chat|search|history|library|gpts|settings|admin)",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/:section(chat|share|gpts|settings|admin)/:rest*",
       "destination": "/index.html"
     }
   ],

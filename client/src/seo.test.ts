@@ -1,7 +1,8 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { CLIENT_ROUTES } from "@Ken/shared";
 import { FAQS } from "./pages/landing/faqs";
 
 /**
@@ -259,57 +260,40 @@ describe("site.webmanifest", () => {
 });
 
 /**
- * The guard for the bug that put this file here in the first place.
+ * vercel.json rewrites only the app's own routes to index.html. Everything
+ * else — a mistyped URL, a dead link — falls through to 404.html with a real
+ * 404 status, instead of a "soft 404" that answers 200 and gets indexed.
  *
- * Excluding a path from the SPA rewrite stops it falling through to index.html.
- * That is the whole point — but if no real file sits at that path, the exclusion
- * turns a harmless 200 into a hard 404. Adding `favicon.ico` to the lookahead
- * without shipping a favicon is exactly how Search Console started reporting
- * "Not found (404)".
+ * The cost of an allowlist is drift: a new top-level route that is not added
+ * here would 404 on a hard refresh. These tests turn that into a test failure.
  */
-describe("vercel rewrite exclusions", () => {
+describe("vercel SPA rewrites", () => {
   const vercel = JSON.parse(
     readFileSync(path.resolve(clientDir, "..", "vercel.json"), "utf8"),
   ) as { rewrites: Array<{ source: string; destination: string }> };
 
-  const source = vercel.rewrites[0]?.source ?? "";
-  /** The literal filenames listed inside the negative lookahead. */
-  const excluded = [...source.matchAll(/([\w-]+\\\.[a-z0-9]+)/g)].map((match) =>
-    (match[1] ?? "").replace(/\\/g, ""),
-  );
-
-  it("excludes at least the SEO and icon assets", () => {
-    expect(excluded).toEqual(
-      expect.arrayContaining([
-        "robots.txt",
-        "sitemap.xml",
-        "og-image.png",
-        "site.webmanifest",
-        "favicon.ico",
-      ]),
-    );
+  /** Converts the two path-to-regexp forms used in vercel.json to a RegExp. */
+  const patterns = vercel.rewrites.map((rewrite) => {
+    const body = rewrite.source.replace(/\/:\w+\*$/, "(?:/.*)?").replace(/:\w+\(([^)]+)\)/g, "($1)");
+    return new RegExp(`^${body}$`);
   });
+  const rewritten = (pathname: string): boolean => patterns.some((re) => re.test(pathname));
 
-  it("ships a real file for every excluded path", () => {
-    for (const name of excluded) {
-      expect(
-        existsSync(path.join(clientDir, "public", name)),
-        `/${name} is excluded from the SPA rewrite but no file exists in client/public — it will 404`,
-      ).toBe(true);
+  it("rewrites every client route, with its params filled in", () => {
+    const routes = Object.values(CLIENT_ROUTES)
+      .filter((route) => route !== "/")
+      .map((route) => route.replace(/:\w+\??/g, "abc123"));
+    for (const route of routes) {
+      expect(rewritten(route), `${route} must rewrite to index.html or it 404s on refresh`).toBe(true);
     }
   });
 
-  it("still rewrites application routes to index.html", () => {
-    const re = new RegExp(`^${source}$`);
-    for (const route of ["/", "/login", "/register", "/privacy", "/terms", "/chat/abc"]) {
-      expect(re.test(route), `${route} should rewrite to index.html`).toBe(true);
+  it("serves public files and unknown paths without the rewrite", () => {
+    for (const name of readdirSync(path.join(clientDir, "public"))) {
+      expect(rewritten(`/${name}`), `/${name} should be served as a file`).toBe(false);
     }
-  });
-
-  it("lets every excluded path bypass the rewrite", () => {
-    const re = new RegExp(`^${source}$`);
-    for (const name of excluded) {
-      expect(re.test(`/${name}`), `/${name} should be served as a file`).toBe(false);
+    for (const unknown of ["/nope", "/wp-admin", "/chatty", "/assets/app.js"]) {
+      expect(rewritten(unknown), `${unknown} should get a real 404`).toBe(false);
     }
   });
 });

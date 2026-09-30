@@ -55,7 +55,8 @@ for (const viewport of VIEWPORTS) {
       expect(send).toBeTruthy();
       if (send) {
         expect(send.width).toBeGreaterThanOrEqual(28);
-        expect(send.width).toBeLessThanOrEqual(40);
+        // Phones grow Send to the 48px touch-target floor (see app.css).
+        expect(send.width).toBeLessThanOrEqual(48);
         expect(send.x + send.width).toBeLessThanOrEqual(viewport.width + 1);
       }
 

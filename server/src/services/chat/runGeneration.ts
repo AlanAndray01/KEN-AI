@@ -1,6 +1,7 @@
 import { MODEL_COOLDOWN_REASON } from "@Ken/shared";
 import { logger } from "../../config/logger.js";
 import { Message } from "../../models/Message.js";
+import { toSafeError } from "../../utils/redact.js";
 import { telemetry } from "../../utils/telemetry.js";
 import { findOwnedConversation } from "./conversationService.js";
 import { generateChatTitle } from "./chatTitle.js";
@@ -18,6 +19,23 @@ import type { ChatMessage } from "../ai/AIProvider.js";
 import type { ChatStreamEvent, GenerationRuntime, PreparedGeneration } from "./generationTypes.js";
 
 export async function runGeneration(
+  prepared: PreparedGeneration,
+  emit: (event: ChatStreamEvent) => void,
+  route: string,
+  preloaded?: { history: ChatMessage[]; persona: ChatMessage[] },
+  runtime?: GenerationRuntime,
+): Promise<void> {
+  try {
+    await runGenerationTurn(prepared, emit, route, preloaded, runtime);
+  } finally {
+    // Idempotent, and scoped to this generation's id, so a newer turn in the
+    // same thread is never released by mistake. Guarantees an unexpected throw
+    // cannot leave the conversation registered as still generating.
+    generationRegistry.finish(prepared.generationId, prepared.userId, prepared.conversationId);
+  }
+}
+
+async function runGenerationTurn(
   prepared: PreparedGeneration,
   emit: (event: ChatStreamEvent) => void,
   route: string,
@@ -119,7 +137,7 @@ export async function runGeneration(
       estimateMatchedMode: estimate.matchedMode,
       deepCode,
     });
-  });
+  }).catch((error: unknown) => logger.warn({ err: toSafeError(error), requestId }, "generation estimate failed"));
   if (clockState.fallbackFrom) {
     emit({
       type: "model",
@@ -191,10 +209,18 @@ export async function runGeneration(
     errorMessage = streamed.errorMessage;
   }
 
-  const assistantAttachments = await loadMessageAttachments(
-    prepared.assistantMessage.id,
-    prepared.assistantMessage.attachments,
-  );
+  // From here on the reply has already streamed to the user. Each database
+  // step below is guarded on its own: a blip while saving must never turn into
+  // a spinner that never stops, or a finished answer replaced by an empty one.
+  let assistantAttachments = prepared.assistantMessage.attachments ?? [];
+  try {
+    assistantAttachments = await loadMessageAttachments(
+      prepared.assistantMessage.id,
+      prepared.assistantMessage.attachments,
+    );
+  } catch (error) {
+    logFinalizeFailure(error, "attachments", requestId);
+  }
   // The picture is the reply. A failed caption must not hide it behind
   // "generation failed" or re-attribute it to the user's prompt.
   if (finishStatus === "error" && prepared.imageGenerated && assistantAttachments.length > 0) {
@@ -203,38 +229,20 @@ export async function runGeneration(
     errorMessage = undefined;
   }
 
-  const assistant = await Message.findById(prepared.assistantMessage.id);
-  if (assistant) {
-    assistant.content = partial;
-    assistant.status = finishStatus;
-    assistant.set("model", clockState.executedModelId);
-    assistant.set("provider", clockState.executedProviderId);
-    if (prepared.autoTask) {
-      // Kept on the reply so a reloaded thread still shows that Auto chose it.
-      assistant.set("metadata", { ...(asRecord(assistant.metadata) ?? {}), autoTask: prepared.autoTask });
-    }
-    if (truncated) {
-      // Persisted, not just streamed, so reopening the thread still shows the
-      // reply was cut rather than presenting a half file as the whole answer.
-      assistant.set("metadata", { ...(asRecord(assistant.metadata) ?? {}), truncated: true });
-    }
-    if (finishStatus === "error") {
-      assistant.set("metadata", {
-        ...(asRecord(assistant.metadata) ?? {}),
-        errorCode,
-        errorMessage,
-      });
-    }
-    await assistant.save();
-  }
-
-  const conversation = await findOwnedConversation(prepared.userId, prepared.conversationId);
-  conversation.lastMessageAt = new Date();
-  conversation.lastMessagePreview = (partial || prepared.userMessage.content).slice(0, 280);
-  await conversation.save();
+  const outcome = { partial, finishStatus, truncated, errorCode, errorMessage };
+  const assistant = await saveAssistantReply(prepared, clockState, outcome).catch((error: unknown) => {
+    logFinalizeFailure(error, "assistant reply", requestId);
+    return null;
+  });
+  const conversation = await touchConversation(prepared, partial).catch((error: unknown) => {
+    logFinalizeFailure(error, "conversation", requestId);
+    return null;
+  });
 
   generationRegistry.finish(prepared.generationId, prepared.userId, prepared.conversationId);
 
+  // Usage feeds limits and estimates. Losing one record is better than
+  // withholding the final event from a reply that already finished.
   await recordUsage({
     userId: prepared.userId,
     providerId: clockState.executedProviderId,
@@ -250,11 +258,21 @@ export async function runGeneration(
     success: finishStatus !== "error",
     ...(errorCode ? { errorCode } : {}),
     route,
-  });
+  }).catch((error: unknown) => logFinalizeFailure(error, "usage record", requestId));
 
+  // Without the saved document, the reply is rebuilt from what streamed. The
+  // prepared placeholder alone has empty content, and sending that in the
+  // final event would blank out an answer the user was already reading.
   const publicAssistant = assistant
     ? toPublicMessage(assistant, assistantAttachments)
-    : { ...prepared.assistantMessage, ...(assistantAttachments.length > 0 ? { attachments: assistantAttachments } : {}) };
+    : {
+        ...prepared.assistantMessage,
+        content: partial,
+        status: finishStatus,
+        model: clockState.executedModelId,
+        provider: clockState.executedProviderId,
+        ...(assistantAttachments.length > 0 ? { attachments: assistantAttachments } : {}),
+      };
   emitTiming({ completeMs: Date.now() - clock });
 
   if (finishStatus === "aborted") {
@@ -273,8 +291,9 @@ export async function runGeneration(
   emit({
     type: "complete",
     assistantMessage: publicAssistant,
-    conversation: toPublicConversation(conversation),
+    conversation: conversation ? toPublicConversation(conversation) : prepared.conversation,
   });
+  if (!conversation) return;
 
   // Naming is a second Groq round-trip. Waiting for it kept the SSE open
   // (and the stop button up) after the user already had the full reply.
@@ -283,7 +302,7 @@ export async function runGeneration(
     { ...prepared, providerId: clockState.executedProviderId, modelId: clockState.executedModelId },
     partial,
     finishStatus,
-  );
+  ).catch((error: unknown) => logFinalizeFailure(error, "title upgrade", requestId));
 
   // Folds turns leaving the recent window into the rolling summary. After the
   // reply, never before it, so the user never waits on it; and only once the
@@ -294,8 +313,62 @@ export async function runGeneration(
       conversationId: prepared.conversationId,
       providerId: clockState.executedProviderId,
       modelId: clockState.executedModelId,
+    }).catch((error: unknown) => logFinalizeFailure(error, "conversation summary", requestId));
+  }
+}
+
+interface ReplyOutcome {
+  partial: string;
+  finishStatus: "complete" | "aborted" | "error";
+  truncated: boolean;
+  errorCode: string | undefined;
+  errorMessage: string | undefined;
+}
+
+async function saveAssistantReply(
+  prepared: PreparedGeneration,
+  clockState: StreamClockState,
+  outcome: ReplyOutcome,
+) {
+  const assistant = await Message.findById(prepared.assistantMessage.id);
+  if (!assistant) return null;
+  assistant.content = outcome.partial;
+  assistant.status = outcome.finishStatus;
+  assistant.set("model", clockState.executedModelId);
+  assistant.set("provider", clockState.executedProviderId);
+  if (prepared.autoTask) {
+    // Kept on the reply so a reloaded thread still shows that Auto chose it.
+    assistant.set("metadata", { ...(asRecord(assistant.metadata) ?? {}), autoTask: prepared.autoTask });
+  }
+  if (outcome.truncated) {
+    // Persisted, not just streamed, so reopening the thread still shows the
+    // reply was cut rather than presenting a half file as the whole answer.
+    assistant.set("metadata", { ...(asRecord(assistant.metadata) ?? {}), truncated: true });
+  }
+  if (outcome.finishStatus === "error") {
+    assistant.set("metadata", {
+      ...(asRecord(assistant.metadata) ?? {}),
+      errorCode: outcome.errorCode,
+      errorMessage: outcome.errorMessage,
     });
   }
+  await assistant.save();
+  return assistant;
+}
+
+async function touchConversation(prepared: PreparedGeneration, partial: string) {
+  const conversation = await findOwnedConversation(prepared.userId, prepared.conversationId);
+  conversation.lastMessageAt = new Date();
+  conversation.lastMessagePreview = (partial || prepared.userMessage.content).slice(0, 280);
+  await conversation.save();
+  return conversation;
+}
+
+function logFinalizeFailure(error: unknown, what: string, requestId?: string): void {
+  logger.error(
+    { err: toSafeError(error), requestId },
+    `chat turn finished but saving the ${what} failed`,
+  );
 }
 
 /**

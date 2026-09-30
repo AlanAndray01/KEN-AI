@@ -10,7 +10,7 @@ vi.mock("@/services/api", () => ({
       status: vi.fn().mockResolvedValue({
         sttConfigured: false,
         ttsConfigured: false,
-        message: "Voice is not configured. Set VOICE_PROVIDER=openai and VOICE_API_KEY or OPENAI_API_KEY. Realtime voice is not enabled.",
+        message: "Server voice isn't turned on for this site yet. Your browser's built-in voice is used where it is available.",
       }),
     },
   },
@@ -30,6 +30,6 @@ describe("SettingsVoicePage", () => {
     expect(await screen.findByRole("heading", { name: "Voice" })).toBeInTheDocument();
     expect(screen.getByText("Speech to text").parentElement).toHaveTextContent("Not configured");
     expect(screen.getByText("Text to speech").parentElement).toHaveTextContent("Not configured");
-    expect(screen.getByText(/Voice is not configured/)).toBeInTheDocument();
+    expect(screen.getByText(/Server voice isn't turned on/)).toBeInTheDocument();
   });
 });

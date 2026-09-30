@@ -4,6 +4,7 @@ import {
   buildResponsePolicyMessages,
   detectTaskSignals,
   isLowThinkingTurn,
+  thinkingEffortFor,
   replyMaxTokens,
 } from "./responsePolicy.js";
 
@@ -146,5 +147,19 @@ describe("buildResponsePolicyMessages token trimming", () => {
     expect(gemini.endsWith("I am Ken AI powered by Gemini 3.5 Flash.")).toBe(true);
     const shared = gemini.indexOf("This turn is running on");
     expect(gemini.slice(0, shared)).toBe(llama.slice(0, shared));
+  });
+});
+
+describe("thinkingEffortFor", () => {
+  it("skips the thinking phase for ordinary explanations, so the first word comes fast", () => {
+    expect(thinkingEffortFor(detectTaskSignals("Explain how vaccines train the immune system"), false)).toBe("none");
+    expect(thinkingEffortFor(detectTaskSignals("hi"), false)).toBe("none");
+  });
+
+  it("keeps the provider's thinking for math, code, deep code builds and requests for depth", () => {
+    expect(thinkingEffortFor(detectTaskSignals("Solve 3x^2 - 12x + 9 = 0"), false)).toBeUndefined();
+    expect(thinkingEffortFor(detectTaskSignals("Write a Python function that parses dates"), false)).toBeUndefined();
+    expect(thinkingEffortFor(detectTaskSignals("Build me a todo app"), true)).toBeUndefined();
+    expect(thinkingEffortFor(detectTaskSignals("Give me a detailed history of Rome"), false)).toBeUndefined();
   });
 });

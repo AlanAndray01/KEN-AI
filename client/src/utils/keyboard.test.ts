@@ -14,34 +14,30 @@ function key(overrides: Partial<SubmitKeyEvent> = {}): SubmitKeyEvent {
 }
 
 describe("shouldSubmitOnKey", () => {
-  it("treats plain Enter as a newline by default", () => {
-    expect(shouldSubmitOnKey(key(), { sendOnEnter: false })).toBe(false);
-  });
-
-  it("sends on Ctrl+Enter and on Cmd+Enter", () => {
-    expect(shouldSubmitOnKey(key({ ctrlKey: true }), { sendOnEnter: false })).toBe(true);
-    expect(shouldSubmitOnKey(key({ metaKey: true }), { sendOnEnter: false })).toBe(true);
+  it("sends on plain Enter from a laptop or desktop keyboard", () => {
+    expect(shouldSubmitOnKey(key())).toBe(true);
   });
 
   it("keeps Shift+Enter as a newline", () => {
-    expect(shouldSubmitOnKey(key({ shiftKey: true }), { sendOnEnter: false })).toBe(false);
-    expect(shouldSubmitOnKey(key({ shiftKey: true }), { sendOnEnter: true })).toBe(false);
+    expect(shouldSubmitOnKey(key({ shiftKey: true }))).toBe(false);
   });
 
-  it("honours the Enter-to-send opt-in on a physical keyboard", () => {
-    expect(shouldSubmitOnKey(key(), { sendOnEnter: true })).toBe(true);
+  it("also sends on Ctrl+Enter and on Cmd+Enter", () => {
+    expect(shouldSubmitOnKey(key({ ctrlKey: true }))).toBe(true);
+    expect(shouldSubmitOnKey(key({ metaKey: true }))).toBe(true);
   });
 
-  it("never sends from a touch keyboard's return key, even when opted in", () => {
-    expect(shouldSubmitOnKey(key(), { sendOnEnter: true, coarsePointer: true })).toBe(false);
+  it("never sends from a touch keyboard's return key; the Send button does that", () => {
+    expect(shouldSubmitOnKey(key(), { coarsePointer: true })).toBe(false);
   });
 
   it("ignores Enter while an IME is composing", () => {
-    expect(shouldSubmitOnKey(key({ ctrlKey: true, isComposing: true }), { sendOnEnter: false })).toBe(false);
+    expect(shouldSubmitOnKey(key({ isComposing: true }))).toBe(false);
+    expect(shouldSubmitOnKey(key({ ctrlKey: true, isComposing: true }))).toBe(false);
   });
 
   it("does not treat Alt+Enter or other keys as send", () => {
-    expect(shouldSubmitOnKey(key({ altKey: true, ctrlKey: true }), { sendOnEnter: false })).toBe(false);
-    expect(shouldSubmitOnKey(key({ key: "a", ctrlKey: true }), { sendOnEnter: false })).toBe(false);
+    expect(shouldSubmitOnKey(key({ altKey: true }))).toBe(false);
+    expect(shouldSubmitOnKey(key({ key: "a", ctrlKey: true }))).toBe(false);
   });
 });

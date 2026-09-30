@@ -44,6 +44,21 @@ describe("createRateLimit", () => {
     expect(res.headers["x-ratelimit-limit"]).toBe("2");
   });
 
+  it("lets skipped requests through without spending the budget", async () => {
+    const limit = createRateLimit({
+      name: "test-skip",
+      windowMs: 60_000,
+      max: 1,
+      enabledInTest: true,
+      skip: (req) => req.ip === "9.9.9.9",
+    });
+    const next = vi.fn();
+
+    for (let i = 0; i < 5; i++) await limit(mockReq("9.9.9.9"), mockRes(), next as NextFunction);
+    await limit(mockReq("9.9.9.9"), mockRes(), next as NextFunction);
+    expect(next.mock.calls.every((call) => call[0] === undefined)).toBe(true);
+  });
+
   it("keys image limits by user id so chat draws and POST /tools/images share a bucket", () => {
     const req = { ip: "1.2.3.4", auth: { userId: "user-1" }, socket: { remoteAddress: "1.2.3.4" } } as unknown as Request;
     expect(imageLimitKey(req)).toBe("user-1");

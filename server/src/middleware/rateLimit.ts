@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 import { env, isTest } from "../config/env.js";
 import { logger } from "../config/logger.js";
 import { redisClient } from "../config/redis.js";
+import { REFRESH_COOKIE } from "../services/auth/config.js";
 import { AppError } from "../utils/AppError.js";
 
 export interface RateLimitWindow {
@@ -151,6 +152,8 @@ export interface RateLimitOptions {
   keyGenerator?: (req: Request) => string;
   /** Shared store so chat-tool image gens and POST /tools/images share a bucket. */
   store?: RateLimitStore;
+  /** Requests this returns true for pass through without spending the budget. */
+  skip?: (req: Request) => boolean;
 }
 
 export function clientKey(req: Request): string {
@@ -197,7 +200,7 @@ export function createRateLimit(options: RateLimitOptions) {
   // not await a middleware's return value, it only cares that next() runs,
   // so this is a no-op difference in production.
   return async function rateLimitMiddleware(req: Request, res: Response, next: NextFunction): Promise<void> {
-    if (isTest && !options.enabledInTest) {
+    if ((isTest && !options.enabledInTest) || options.skip?.(req)) {
       next();
       return;
     }
@@ -231,6 +234,19 @@ export const rateLimitAuth = createRateLimit({
   name: "auth",
   windowMs: env.RATE_LIMIT_WINDOW_MS,
   max: env.RATE_LIMIT_AUTH,
+});
+
+/**
+ * Session upkeep (refresh, logout) has its own bucket. Every logged-out page
+ * load probes /auth/refresh, and sharing the login bucket let ten page loads
+ * lock a whole office network out of signing in. A probe with no refresh
+ * cookie is rejected before any database work, so it costs nothing to skip.
+ */
+export const rateLimitSession = createRateLimit({
+  name: "session",
+  windowMs: env.RATE_LIMIT_WINDOW_MS,
+  max: env.RATE_LIMIT_SESSION,
+  skip: (req) => typeof req.cookies?.[REFRESH_COOKIE] !== "string",
 });
 
 export const rateLimitPasswordReset = createRateLimit({

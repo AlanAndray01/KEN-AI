@@ -4,6 +4,7 @@ import { AIModel } from "../../models/AIModel.js";
 import { AIProvider } from "../../models/AIProvider.js";
 import { toSafeError } from "../../utils/redact.js";
 import { BUILT_IN_PROVIDERS } from "./catalog.js";
+import { invalidateCredentialCaches } from "./credentialCache.js";
 
 export async function bootstrapProviders(): Promise<void> {
   try {
@@ -64,6 +65,8 @@ export async function bootstrapProviders(): Promise<void> {
         }
       }
     }
+    // A read that raced the seed above must not be served for the next 30s.
+    invalidateCredentialCaches();
   } catch (error) {
     logger.error({ err: toSafeError(error) }, "Failed to bootstrap AI providers");
     throw toSafeError(error);

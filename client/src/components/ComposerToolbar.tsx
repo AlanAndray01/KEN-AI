@@ -3,7 +3,6 @@ import { AudioLines, Globe, Image as ImageIcon, Mic, Plus, Send, Square } from "
 import { estimatePromptTokens, type ModelCapability } from "@Ken/shared";
 import { cn } from "@/utils/cn";
 import { composerAccept } from "@/utils/attachmentGate";
-import { submitModifierLabel } from "@/utils/keyboard";
 
 export function ComposerToolbar({
   fileInputRef,
@@ -13,7 +12,6 @@ export function ComposerToolbar({
   uploading,
   generatingImage,
   canSend,
-  sendOnEnter,
   value,
   webSearchEnabled,
   webSearchDisabledReason,
@@ -36,7 +34,6 @@ export function ComposerToolbar({
   uploading: boolean;
   generatingImage: boolean;
   canSend: boolean;
-  sendOnEnter: boolean;
   value: string;
   webSearchEnabled: boolean;
   webSearchDisabledReason?: string;
@@ -114,7 +111,7 @@ export function ComposerToolbar({
           <Mic className="size-4" />
         </button>
         <p className="composer-hint px-1 text-[11px] text-fg-muted">
-          {sendOnEnter ? "Enter to send · Shift+Enter for a new line" : `${submitModifierLabel()}+Enter to send · Enter for a new line`}
+          Enter to send · Shift+Enter for a new line
           {value.trim() ? ` · ~${estimatePromptTokens(value)} tokens` : ""}
         </p>
       </div>

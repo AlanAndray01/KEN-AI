@@ -77,6 +77,7 @@ vi.mock("./conversationService.js", () => ({
 
 vi.mock("../ai/ModelRegistry.js", () => ({
   modelRegistry: {
+    prefetch: vi.fn(),
     listPublicModels: vi.fn(async () => []),
     assertModelAvailable: vi.fn(async () => ({
       id: "mock-text",
@@ -167,6 +168,36 @@ describe("chatService abort", () => {
     expect(input.messages[0]?.content).toContain("You are Ken AI");
     expect(input.messages[1]?.content).toContain("Ken reply policy");
     expect(input).toMatchObject({ skipAvailabilityCheck: true, maxTokens: 256, reasoningEffort: "none" });
+  });
+
+  it("still delivers the streamed reply when saving it at the end fails", async () => {
+    stream.mockImplementation(async function* () {
+      yield { type: "chunk", text: "The full " };
+      yield { type: "chunk", text: "answer" };
+      yield {
+        type: "complete",
+        response: { content: "The full answer", model: "mock-text", provider: "mock", finishReason: "stop" },
+      };
+    });
+
+    const { Message } = await import("../../models/Message.js");
+    const { prepareSend, runGeneration } = await import("./chatService.js");
+    const prepared = await prepareSend({
+      userId: "000000000000000000000001",
+      content: "Explain tides",
+      providerId: "mock",
+      modelId: "mock-text",
+    });
+    vi.mocked(Message.findById).mockRejectedValueOnce(new Error("connection reset"));
+
+    const events: Array<{ type: string; assistantMessage?: { content?: string; status?: string } }> = [];
+    await expect(runGeneration(prepared, (event) => events.push(event), "test")).resolves.toBeUndefined();
+
+    // The final event must carry what streamed, not the empty placeholder,
+    // or the client would blank an answer the user was already reading.
+    const complete = events.find((event) => event.type === "complete");
+    expect(complete?.assistantMessage?.content).toBe("The full answer");
+    expect(complete?.assistantMessage?.status).toBe("complete");
   });
 
   it("asks for low thinking on a short factual question and surfaces a hop", async () => {

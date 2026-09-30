@@ -8,6 +8,7 @@ import {
 import { AppError } from "../../utils/AppError.js";
 import { AIModel } from "../../models/AIModel.js";
 import { BUILT_IN_PROVIDERS, getBuiltInProvider } from "./catalog.js";
+import { onCredentialsChanged } from "./credentialCache.js";
 import { describeConfiguredSecret, loadGlobalProviders } from "./credentials.js";
 import { isMockAiAllowed } from "./providers/MockProvider.js";
 import type { ProviderModelDescriptor } from "./AIProvider.js";
@@ -22,10 +23,29 @@ interface ModelRecord {
   enabled: boolean;
 }
 
-const LIST_CACHE_MS = 15_000;
+/**
+ * Every Auto turn and every attachment route reads this list before the model
+ * is called. Writes to providers, models and keys clear it through
+ * onCredentialsChanged, so the TTL only covers changes made elsewhere.
+ */
+const LIST_CACHE_MS = 60_000;
 
 export class ModelRegistry {
-  private listCache = new Map<string, { at: number; models: PublicAIModel[] }>();
+  // Promises, so concurrent turns share one read instead of racing their own.
+  private listCache = new Map<string, { at: number; models: Promise<PublicAIModel[]> }>();
+
+  constructor() {
+    onCredentialsChanged(() => this.clearCache());
+  }
+
+  clearCache(): void {
+    this.listCache.clear();
+  }
+
+  /** Fire-and-forget warm-up, so a turn's routing finds the list already loaded. */
+  prefetch(userId?: string): void {
+    void this.listAllModels(userId).catch(() => undefined);
+  }
 
   async listPublicModels(userId?: string): Promise<PublicAIModel[]> {
     const models = await this.listAllModels(userId);
@@ -43,6 +63,16 @@ export class ModelRegistry {
     const hit = this.listCache.get(cacheKey);
     if (hit && Date.now() - hit.at < LIST_CACHE_MS) return hit.models;
 
+    const models = this.loadAllModels(userId);
+    this.listCache.set(cacheKey, { at: Date.now(), models });
+    // A failed read is never served to the next turn.
+    models.catch(() => {
+      if (this.listCache.get(cacheKey)?.models === models) this.listCache.delete(cacheKey);
+    });
+    return models;
+  }
+
+  private async loadAllModels(userId?: string): Promise<PublicAIModel[]> {
     const [providers, stored] = await Promise.all([this.providerAvailability(userId), this.loadStoredModels()]);
     const merged = new Map<string, PublicAIModel>();
 
@@ -108,7 +138,6 @@ export class ModelRegistry {
       if (byRank !== 0) return byRank;
       return catalogIndex(a.providerId, a.id) - catalogIndex(b.providerId, b.id);
     });
-    this.listCache.set(cacheKey, { at: Date.now(), models });
     return models;
   }
 

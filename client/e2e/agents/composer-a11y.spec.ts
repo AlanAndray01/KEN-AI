@@ -16,8 +16,11 @@ test.describe("Composer accessibility", () => {
   test("model trigger accessible name includes the visible model", async ({ page }) => {
     await openEmptyChat(page);
 
+    // Whatever the trigger shows (a pinned model, or "Auto" by default), a
+    // screen reader must hear the same name.
     const trigger = page.locator("button.model-selector-trigger");
-    await expect(trigger).toHaveText(/Qwen 3.8 27B/);
-    await expect(trigger).toHaveAttribute("aria-label", "Select model: Qwen 3.8 27B");
+    const visible = (await trigger.innerText()).trim();
+    expect(visible.length).toBeGreaterThan(0);
+    await expect(trigger).toHaveAttribute("aria-label", `Select model: ${visible}`);
   });
 });

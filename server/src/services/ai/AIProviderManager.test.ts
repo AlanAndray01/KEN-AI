@@ -337,6 +337,73 @@ describe("AIProviderManager", () => {
     });
   });
 
+  describe("a hop that fails after streaming text", () => {
+    const failingHopRun = async (hopFailsAfterText: boolean) => {
+      // Starting on 3.8 gives a chain with more than one hop: Lite, then Groq.
+      listPublicModels.mockResolvedValue([
+        { id: "gemini-3.8-flash", providerId: "gemini", name: "Gemini 3.8 Flash", capabilities: ["text", "streaming"], enabled: true, available: true },
+        { id: "gemini-3.5-flash-lite", providerId: "gemini", name: "Gemini 3.5 Flash Lite", capabilities: ["text", "streaming"], enabled: true, available: true },
+        { id: "openai/gpt-oss-20b", providerId: "groq", name: "GPT OSS 20B", capabilities: ["text", "streaming"], enabled: true, available: true },
+      ]);
+      resolveCredentials.mockImplementation(async (providerId: string) => ({
+        providerId,
+        name: providerId,
+        type: providerId,
+        apiKey: "test-fallback-key-zzzz",
+        enabled: true,
+        configured: true,
+        source: "environment",
+        capabilities: ["text"],
+      }));
+      const attempted: string[] = [];
+      fakeAdapter.stream = async function* (request: { modelId: string }) {
+        attempted.push(request.modelId);
+        if (attempted.length === 1) {
+          throw new AppError("Groq rate limited", { statusCode: 429, code: "PROVIDER_RATE_LIMITED" });
+        }
+        if (attempted.length === 2) {
+          if (hopFailsAfterText) yield { type: "chunk", text: "Half an answer" };
+          throw new AppError("Upstream dropped", { statusCode: 503, code: "PROVIDER_UNAVAILABLE" });
+        }
+        yield { type: "chunk", text: "A second, complete answer" };
+        yield {
+          type: "complete",
+          response: { content: "A second, complete answer", model: request.modelId, provider: "groq", finishReason: "stop" },
+        };
+      };
+
+      const { AIProviderManager } = await import("./AIProviderManager.js");
+      const text: string[] = [];
+      let failure: unknown;
+      try {
+        for await (const event of new AIProviderManager().stream({
+          providerId: "gemini",
+          modelId: "gemini-3.8-flash",
+          messages: [{ role: "user", content: "Explain tides" }],
+          skipAvailabilityCheck: true,
+        })) {
+          if (event.type === "chunk") text.push(event.text);
+        }
+      } catch (error) {
+        failure = error;
+      }
+      return { attempted, text: text.join(""), failure };
+    };
+
+    it("moves on to the next hop when the failing one sent nothing", async () => {
+      const run = await failingHopRun(false);
+      expect(run.attempted.length).toBeGreaterThanOrEqual(3);
+      expect(run.text).toBe("A second, complete answer");
+    });
+
+    it("ends with the text it has instead of appending a second answer", async () => {
+      const run = await failingHopRun(true);
+      expect(run.attempted).toHaveLength(2);
+      expect(run.text).toBe("Half an answer");
+      expect(run.failure).toBeInstanceOf(AppError);
+    });
+  });
+
   it("walks the free fallback chain when no explicit hop is set", async () => {
     listPublicModels.mockResolvedValue([
       {

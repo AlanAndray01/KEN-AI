@@ -32,7 +32,8 @@ test.describe("Desktop Regression Agent", () => {
     expect(await computed(hint, "display")).not.toBe("none");
 
     const input = page.locator("#composer-input");
-    expect(px(await computed(input, "min-height"))).toBeCloseTo(48, 0);
+    // 52px: one line of 15px/1.625 text plus the composer's top and bottom padding.
+    expect(px(await computed(input, "min-height"))).toBeCloseTo(52, 0);
 
     const shell = page.locator(".composer-shell");
     expect(px(await computed(shell, "border-top-left-radius"))).toBeCloseTo(28, 0);

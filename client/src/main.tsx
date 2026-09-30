@@ -6,7 +6,7 @@ import { AuthProvider } from "@/contexts/AuthProvider";
 import { ThemeProvider } from "@/contexts/ThemeProvider";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import App from "@/App";
-import { QUERY_STALE_MS } from "@/query";
+import { QUERY_STALE_MS, shouldRetryQuery } from "@/query";
 import { hideBootLoader } from "@/utils/bootLoader";
 import { showLandingPage } from "@/utils/featureFlags";
 import "@/utils/errorReporting";
@@ -17,6 +17,7 @@ const queryClient = new QueryClient({
     queries: {
       refetchOnWindowFocus: false,
       staleTime: QUERY_STALE_MS,
+      retry: shouldRetryQuery,
     },
   },
 });

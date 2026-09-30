@@ -10,8 +10,9 @@ import {
 import { MAX_IMAGE_PROMPT_CHARS } from "../constants/index.js";
 
 describe("passwordSchema", () => {
-  it("accepts passwords of at least 6 characters", () => {
-    expect(passwordSchema.safeParse("abcdef").success).toBe(true);
+  it("requires at least 8 characters for a new password", () => {
+    expect(passwordSchema.safeParse("abcdefgh").success).toBe(true);
+    expect(passwordSchema.safeParse("abcdefg").success).toBe(false);
     expect(passwordSchema.safeParse("correct-horse-battery").success).toBe(true);
     expect(passwordSchema.safeParse("short").success).toBe(false);
   });

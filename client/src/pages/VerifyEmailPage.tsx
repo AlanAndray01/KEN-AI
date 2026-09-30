@@ -19,6 +19,9 @@ export function VerifyEmailPage() {
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
   const inFlight = useRef(false);
+  // A verified code is spent: a second submit (the button racing the auto-submit)
+  // would only earn a contradictory "already verified" error.
+  const verified = useRef(false);
   const [cooldown, setCooldown] = useState(RESEND_COOLDOWN_SECONDS);
 
   useEffect(() => {
@@ -30,12 +33,13 @@ export function VerifyEmailPage() {
   }, [cooldown]);
 
   async function submitCode(nextCode: string): Promise<void> {
-    if (!email || nextCode.length !== 6 || inFlight.current) return;
+    if (!email || nextCode.length !== 6 || inFlight.current || verified.current) return;
     inFlight.current = true;
     setError("");
     setPending(true);
     try {
       await verifyEmail(email, nextCode);
+      verified.current = true;
       toast("Email verified. You're signed in.", "success");
       void navigate(CLIENT_ROUTES.chat, { replace: true });
     } catch (err) {
@@ -89,10 +93,14 @@ export function VerifyEmailPage() {
       </div>
       {emailSent === false ? (
         <p className="text-center text-sm text-fg-muted">
-          Mail was not delivered. In development, look for <code className="font-mono text-fg">[DEV AUTH CODE]</code> in
-          the API terminal. For inbox delivery, set <code className="font-mono text-fg">RESEND_API_KEY</code> and a
-          verified sender. Resend's test address only delivers to the account that owns the API key until you add a
-          domain.
+          {import.meta.env.DEV ? (
+            <>
+              Mail was not delivered. Look for <code className="font-mono text-fg">[DEV AUTH CODE]</code> in the API
+              terminal.
+            </>
+          ) : (
+            "We couldn't send the email just now. Wait a minute, then use Resend code below."
+          )}
         </p>
       ) : null}
       {error ? (

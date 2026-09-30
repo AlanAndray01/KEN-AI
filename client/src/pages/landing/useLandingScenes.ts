@@ -139,7 +139,12 @@ export function useLandingScenes(rootRef: RefObject<HTMLElement | null>): void {
     // cannot be recorded until that overlay lifts, so waiting was ~1.2s of pure
     // render delay against text that was ready all along. The scenes fade in
     // behind it afterwards.
-    hideBootLoader("instant");
+    //
+    // Faded rather than removed: an instant removal cut the mark off mid
+    // entrance and swapped screens in one hard frame, which read as a glitch.
+    // The hero is already painted underneath, so the fade reveals rather than
+    // delays it.
+    hideBootLoader("fade");
     $$(".hero-reveal").forEach((el, i) => {
       const t = window.setTimeout(() => el.classList.add("on"), 260 + i * 120);
       cleanups.push(() => clearTimeout(t));

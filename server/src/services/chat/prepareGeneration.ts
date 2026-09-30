@@ -11,6 +11,7 @@ import {
   loadOwnedFiles,
   publicAttachmentsForMessages,
 } from "../storage/fileService.js";
+import { modelRegistry } from "../ai/ModelRegistry.js";
 import { prepareTurn } from "./prepareTurn.js";
 import { toPublicConversation, toPublicMessage } from "./toPublic.js";
 import type { PreparedGeneration } from "./generationTypes.js";
@@ -33,6 +34,9 @@ export async function prepareSend(input: {
   enabledTools?: ChatToolId[];
   customGptId?: string;
 }): Promise<PreparedGeneration> {
+  // Routing below reads the model list; loading it now overlaps that read
+  // with the conversation lookup instead of queueing behind it.
+  modelRegistry.prefetch(input.userId);
   const conversation = input.conversationId
     ? await findOwnedConversation(input.userId, input.conversationId)
     : null;
@@ -99,6 +103,8 @@ export async function prepareSend(input: {
     owned.title = titleFromContent(titleSource);
   }
 
+  // One round trip, not two: the conversation's own save does not depend on
+  // either message, and every one of these sits in front of the first token.
   const [userDoc, assistantDoc] = await Promise.all([
     Message.create({
       _id: userOid,
@@ -118,8 +124,8 @@ export async function prepareSend(input: {
       turn,
       expiresAt: owned.expiresAt,
     })),
+    owned.save(),
   ]);
-  await owned.save();
 
   const userAttachments = await persistFilesOnMessage({
     userId: input.userId,

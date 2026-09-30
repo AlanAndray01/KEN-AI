@@ -8,9 +8,12 @@ import {
   PROVIDER_TYPES,
 } from "../constants/index.js";
 
-export const PASSWORD_POLICY_MESSAGE = "Password must be at least 6 characters";
+/** New passwords only: sign-in still accepts older, shorter passwords. */
+export const PASSWORD_MIN_LENGTH = 8;
 
-export const passwordSchema = z.string().min(6, PASSWORD_POLICY_MESSAGE).max(128);
+export const PASSWORD_POLICY_MESSAGE = `Password must be at least ${PASSWORD_MIN_LENGTH} characters`;
+
+export const passwordSchema = z.string().min(PASSWORD_MIN_LENGTH, PASSWORD_POLICY_MESSAGE).max(128);
 
 export const healthStatusSchema = z.enum(["ok", "degraded", "error"]);
 

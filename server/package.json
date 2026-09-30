@@ -17,7 +17,8 @@
     "verify:health": "tsx src/scripts/verify-health.ts",
     "clear:dummy": "tsx src/scripts/clearDummyData.ts",
     "check:catalog-drift": "tsx src/scripts/checkCatalogDrift.ts",
-    "ping:cloudflare": "tsx src/scripts/pingCloudflareModels.ts"
+    "ping:cloudflare": "tsx src/scripts/pingCloudflareModels.ts",
+    "check:storage": "tsx src/scripts/checkStorage.ts"
   },
   "dependencies": {
     "@Ken/shared": "*",

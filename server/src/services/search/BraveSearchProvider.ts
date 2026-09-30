@@ -12,7 +12,7 @@ export class BraveSearchProvider implements SearchProvider {
   }
 
   unavailableReason(): string {
-    return "Web search is not configured. Set SEARCH_API_KEY for Brave.";
+    return "Web search isn't turned on for this site yet.";
   }
 
   async search(request: SearchRequest): Promise<PublicSearchHit[]> {

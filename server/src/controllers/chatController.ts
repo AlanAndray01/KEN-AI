@@ -236,8 +236,11 @@ async function streamFromPrepare(
   const persistP = prepare();
   const contextP = (async () => {
     if (!hint) return undefined;
-    const history = hint.conversationId ? await loadHistory(hint.userId, hint.conversationId) : [];
-    const persona = await buildPersonaMessages(hint.userId, hint.customGptId);
+    // Independent reads, so they overlap rather than queue.
+    const [history, persona] = await Promise.all([
+      hint.conversationId ? loadHistory(hint.userId, hint.conversationId) : Promise.resolve([]),
+      buildPersonaMessages(hint.userId, hint.customGptId),
+    ]);
     return [history, persona] as const;
   })().catch(() => undefined);
 

@@ -19,6 +19,7 @@ import { UserProviderCredential } from "../../models/UserProviderCredential.js";
 import { AppError } from "../../utils/AppError.js";
 import { BUILT_IN_PROVIDERS, getBuiltInProvider } from "./catalog.js";
 import { createProviderAdapter } from "./createProviderAdapter.js";
+import { invalidateCredentialCaches } from "./credentialCache.js";
 import {
   describeConfiguredSecret,
   loadGlobalProvider,
@@ -142,6 +143,7 @@ export async function createProvider(input: UpsertProviderInput): Promise<Public
     }
   }
 
+  invalidateCredentialCaches();
   return toPublicFromRecord(created.providerId);
 }
 
@@ -158,6 +160,7 @@ export async function updateProvider(id: string, input: PatchProviderInput): Pro
     doc.keyLastFour = fields.keyLastFour;
   }
   await doc.save();
+  invalidateCredentialCaches();
   return toPublicFromRecord(doc.providerId);
 }
 
@@ -165,6 +168,7 @@ export async function deleteProvider(id: string): Promise<void> {
   const doc = await findProviderDoc(id);
   await AIModel.deleteMany({ providerId: doc.providerId });
   await doc.deleteOne();
+  invalidateCredentialCaches();
 }
 
 export async function testProviderConnection(
@@ -194,6 +198,7 @@ export async function testProviderConnection(
   doc.lastTestedAt = new Date();
   doc.lastTestMessage = result.message.slice(0, 200);
   await doc.save();
+  invalidateCredentialCaches();
   return toPublicFromRecord(doc.providerId);
 }
 
@@ -252,6 +257,7 @@ export async function patchModel(providerId: string, modelId: string, input: Pat
   if (input.name) doc.name = input.name;
   if (input.description !== undefined) doc.description = input.description;
   await doc.save();
+  invalidateCredentialCaches();
   const model = (await modelRegistry.listAllModels()).find(
     (item) => item.providerId === doc.providerId && item.id === doc.modelId,
   );
@@ -300,6 +306,7 @@ export async function upsertUserCredential(
     },
     { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
   );
+  invalidateCredentialCaches();
 
   if (!doc) {
     throw new AppError("Provider not found", { statusCode: 404, code: "PROVIDER_NOT_FOUND" });
@@ -316,6 +323,7 @@ export async function upsertUserCredential(
 
 export async function deleteUserCredential(userId: string, providerId: string): Promise<void> {
   const result = await UserProviderCredential.deleteOne({ userId, providerId });
+  invalidateCredentialCaches();
   if (result.deletedCount === 0) {
     throw new AppError("Credential not found", { statusCode: 404, code: "CREDENTIAL_NOT_FOUND" });
   }

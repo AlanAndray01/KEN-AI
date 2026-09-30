@@ -5,7 +5,7 @@ import { ShortcutsModal } from "./ShortcutsModal";
 
 describe("ShortcutsModal", () => {
   it("lists send and navigation shortcuts", () => {
-    render(<ShortcutsModal open onClose={() => undefined} sendOnEnter />);
+    render(<ShortcutsModal open onClose={() => undefined} />);
     expect(screen.getByRole("dialog", { name: "Keyboard shortcuts" })).toBeInTheDocument();
     expect(screen.getByText("Send message")).toBeInTheDocument();
     expect(screen.getByText("New chat")).toBeInTheDocument();
@@ -20,7 +20,7 @@ describe("ShortcutsModal", () => {
           <button type="button" onClick={() => setOpen(true)}>
             Open shortcuts
           </button>
-          <ShortcutsModal open={open} onClose={() => setOpen(false)} sendOnEnter />
+          <ShortcutsModal open={open} onClose={() => setOpen(false)} />
         </>
       );
     }
@@ -37,7 +37,7 @@ describe("ShortcutsModal", () => {
 
   it("calls onClose from the visible Close button", () => {
     const onClose = vi.fn();
-    render(<ShortcutsModal open onClose={onClose} sendOnEnter />);
+    render(<ShortcutsModal open onClose={onClose} />);
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });

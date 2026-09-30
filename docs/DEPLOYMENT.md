@@ -89,6 +89,40 @@ next request waits ~50 seconds for a cold boot. Chat streaming will look broken
 to the first visitor after an idle period. Upgrade to the paid Starter plan
 before showing the app to real users.
 
+### File storage — Cloudflare R2
+
+The free instance's disk is wiped on every restart and deploy, so with the
+default `STORAGE_PROVIDER=local` uploaded files quietly disappear. Store them in
+Cloudflare R2 instead (free up to 10 GB, no charge for downloads).
+
+1. Cloudflare dashboard → **R2 Object Storage** → **Create bucket**. Name it,
+   for example `ken-ai-uploads`. Leave **public access off**: files are always
+   served through the API, so the bucket never needs a public URL.
+2. On the R2 overview page, copy the **Account ID**.
+3. **Manage R2 API Tokens** → **Create API token** → permission
+   **Object Read & Write**, scoped to that bucket only. Copy the
+   **Access Key ID** and **Secret Access Key**. The secret is shown once.
+4. In Render → the service → **Environment**, set:
+
+| Variable | Value |
+|---|---|
+| `STORAGE_BUCKET` | `ken-ai-uploads` |
+| `STORAGE_ENDPOINT` | `https://<ACCOUNT_ID>.r2.cloudflarestorage.com` |
+| `STORAGE_ACCESS_KEY` | the Access Key ID |
+| `STORAGE_SECRET_KEY` | the Secret Access Key |
+| `STORAGE_PROVIDER` | `r2` (set this last) |
+
+Leave `STORAGE_REGION` and `STORAGE_PUBLIC_URL` unset. Pasting the endpoint
+with `/<bucket>` on the end, as Cloudflare displays it, also works.
+
+To test before switching production, put the same values in `server/.env` and
+run `npm run check:storage -w @Ken/server`. It uploads, reads back, and deletes
+a test object and names the problem if any step fails. If a setting is
+missing on Render, the boot log says which one.
+
+Files uploaded before the switch were stored on the old disk and are already
+gone; they are not migrated.
+
 ## 4. Vercel — the client
 
 The repository contains `vercel.json`. Import the repo and **leave the Root

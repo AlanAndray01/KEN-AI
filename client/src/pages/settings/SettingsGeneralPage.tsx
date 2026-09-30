@@ -8,14 +8,13 @@ import { toast } from "@/stores/toastStore";
 export function SettingsGeneralPage() {
   const { user, refreshUser } = useAuth();
   const [language, setLanguage] = useState(user?.preferences?.language ?? "en");
-  const [sendOnEnter, setSendOnEnter] = useState(user?.preferences?.sendOnEnter ?? false);
   const [pending, setPending] = useState(false);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     setPending(true);
     try {
-      await api.me.update({ preferences: { language, sendOnEnter } });
+      await api.me.update({ preferences: { language } });
       await refreshUser();
       toast("Preferences saved", "success");
     } catch (err) {
@@ -31,7 +30,7 @@ export function SettingsGeneralPage() {
         <p className="text-sm text-fg-muted">Settings</p>
         <h1 className="text-3xl font-semibold tracking-tight">General</h1>
         <p className="text-fg-muted">
-          Language is saved to your account. The interface is currently English. Send-on-Enter applies to the chat composer.
+          Language is saved to your account. The interface is currently English. In chat, Enter sends and Shift+Enter adds a new line; on a phone, use the Send button.
         </p>
       </div>
       <form className="space-y-4 rounded-xl border border-border bg-surface p-4" aria-label="General preferences" onSubmit={(event) => void onSubmit(event)}>
@@ -48,14 +47,6 @@ export function SettingsGeneralPage() {
               </option>
             ))}
           </select>
-        </label>
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={sendOnEnter}
-            onChange={(event) => setSendOnEnter(event.target.checked)}
-          />
-          Press Enter to send. When off, Enter adds a new line and Ctrl/⌘+Enter sends. Touch keyboards always add a new line.
         </label>
         <button
           type="submit"

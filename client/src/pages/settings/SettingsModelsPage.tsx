@@ -80,7 +80,7 @@ export function SettingsModelsPage() {
         <h1 className="text-3xl font-semibold tracking-tight">API Keys & Models</h1>
         <p className="text-fg-muted">
           Bring-your-own keys are encrypted with AES-256-GCM and never returned to the browser. If you
-          do not save a key, chat uses the server env key for that provider and is rate-limited more
+          do not save a key, chat uses Ken AI's shared key for that provider and is rate-limited more
           strictly.
         </p>
       </div>

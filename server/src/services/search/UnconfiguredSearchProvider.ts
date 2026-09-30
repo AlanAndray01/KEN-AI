@@ -10,7 +10,7 @@ export class UnconfiguredSearchProvider implements SearchProvider {
   }
 
   unavailableReason(): string {
-    return "Web search is not configured. Set SEARCH_PROVIDER and SEARCH_API_KEY.";
+    return "Web search isn't turned on for this site yet.";
   }
 
   async search(_request: SearchRequest): Promise<PublicSearchHit[]> {

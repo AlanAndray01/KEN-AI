@@ -1,5 +1,5 @@
 import { test, expect, type Page, type Request } from "@playwright/test";
-import { DEMO_CONVERSATION_ID, DEMO_MODEL, DEMO_USER } from "../helpers/demoAccount";
+import { DEMO_CONVERSATION_ID, DEMO_MODEL } from "../helpers/demoAccount";
 import { installMockSession } from "../helpers/mockSession";
 import { assertNoHorizontalOverflow, boxOf, computed, px } from "../helpers/layout";
 
@@ -56,20 +56,13 @@ function isSendRequest(request: Request): boolean {
   return /\/api\/(chat|conversations\/[^/]+\/messages)$/.test(pathname);
 }
 
-async function openThread(page: Page, options: { sendOnEnter?: boolean } = {}): Promise<void> {
+async function openThread(page: Page): Promise<void> {
   await installMockSession(page);
   // Registered after the shared mock, so Playwright matches these first.
   await page.route(
     (url) => url.pathname.endsWith(`/conversations/${DEMO_CONVERSATION_ID}/messages`),
     (route) => (route.request().method() === "GET" ? route.fulfill(json({ messages: THREAD })) : route.fallback()),
   );
-  if (options.sendOnEnter !== undefined) {
-    const user = { ...DEMO_USER, preferences: { ...DEMO_USER.preferences, sendOnEnter: options.sendOnEnter } };
-    await page.route(
-      (url) => /\/auth\/(me|refresh)$/.test(url.pathname),
-      (route) => route.fulfill(json({ user })),
-    );
-  }
   await page.goto(`/chat/${DEMO_CONVERSATION_ID}`, { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("form", { name: "Send message" })).toBeVisible({ timeout: 20_000 });
   await page.locator("#boot-loader").waitFor({ state: "detached", timeout: 8_000 }).catch(() => undefined);
@@ -89,7 +82,7 @@ test.describe("Chat UX polish — desktop", () => {
     expect(chipsBox.bottom, "attachment list ends above the text").toBeLessThanOrEqual(textBox.y + 1);
   });
 
-  test("Enter inserts a newline and never sends; Ctrl+Enter sends", async ({ page }) => {
+  test("Shift+Enter inserts a newline; Enter sends", async ({ page }) => {
     await openThread(page);
     const sends: string[] = [];
     page.on("request", (request) => {
@@ -100,18 +93,16 @@ test.describe("Chat UX polish — desktop", () => {
     await expect(input).toHaveAttribute("enterkeyhint", "enter");
     await input.click();
     await page.keyboard.type("first line");
-    await page.keyboard.press("Enter");
-    await page.keyboard.type("second line");
     await page.keyboard.press("Shift+Enter");
-    await page.keyboard.type("third line");
+    await page.keyboard.type("second line");
 
     // Submitting clears the draft synchronously, so an intact multi-line value
-    // proves neither key reached onSubmit.
-    await expect(input).toHaveValue("first line\nsecond line\nthird line");
-    expect(sends, "plain Enter / Shift+Enter must not send").toEqual([]);
+    // proves Shift+Enter never reached onSubmit.
+    await expect(input).toHaveValue("first line\nsecond line");
+    expect(sends, "Shift+Enter must not send").toEqual([]);
 
     const sent = page.waitForRequest(isSendRequest);
-    await page.keyboard.press("Control+Enter");
+    await page.keyboard.press("Enter");
     await sent;
     await expect(input).toHaveValue("");
   });
@@ -208,8 +199,8 @@ for (const viewport of SMALL_SCREENS) {
 test.describe("Chat UX polish — touch keyboard", () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
-  test("the return key adds a newline even when Enter-to-send is on", async ({ page }) => {
-    await openThread(page, { sendOnEnter: true });
+  test("the return key adds a newline; the Send button is how a phone sends", async ({ page }) => {
+    await openThread(page);
     const coarse = await page.evaluate(() => window.matchMedia("(pointer: coarse)").matches);
     expect(coarse, "touch emulation reports a coarse pointer").toBe(true);
 
