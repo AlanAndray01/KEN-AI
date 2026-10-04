@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { Request, Response } from "express";
 import {
   abortGenerationSchema,
@@ -20,6 +21,7 @@ import {
   prepareSend,
   runGeneration,
 } from "../services/chat/chatService.js";
+import { generationRegistry } from "../services/chat/generationRegistry.js";
 import { buildPersonaMessages } from "../services/memory/persona.js";
 import { isTrivialTurn } from "../services/chat/responsePolicy.js";
 import {
@@ -106,9 +108,10 @@ export async function sendConversationMessageHandler(req: Request, res: Response
   await streamFromPrepare(
     req,
     res,
-    () =>
+    (attempt) =>
       prepareSend({
         userId,
+        ...attempt,
         content: body.content,
         ...(req.params.id ? { conversationId: req.params.id } : {}),
         ...(body.providerId ? { providerId: body.providerId } : {}),
@@ -133,9 +136,10 @@ export async function sendChatHandler(req: Request, res: Response): Promise<void
   await streamFromPrepare(
     req,
     res,
-    () =>
+    (attempt) =>
       prepareSend({
         userId,
+        ...attempt,
         content: body.content,
         ...(body.conversationId ? { conversationId: body.conversationId } : {}),
         ...(body.providerId ? { providerId: body.providerId } : {}),
@@ -160,19 +164,19 @@ export async function regenerateHandler(req: Request, res: Response): Promise<vo
   await streamFromPrepare(
     req,
     res,
-    () =>
+    (attempt) =>
       prepareRegenerate({
         userId,
+        ...attempt,
         conversationId: req.params.id ?? "",
         messageId: req.params.messageId ?? "",
         ...(body.providerId ? { providerId: body.providerId } : {}),
         ...(body.modelId ? { modelId: body.modelId } : {}),
       }),
     "POST /conversations/:id/messages/:messageId/regenerate",
-    {
-      userId,
-      conversationId: req.params.id ?? "",
-    },
+    // No preload hint, for the same reason as edit: regenerate supersedes the
+    // replaced answer and everything after it, and a history read racing that
+    // write could hand the model the discarded branch.
   );
 }
 
@@ -182,9 +186,10 @@ export async function editMessageHandler(req: Request, res: Response): Promise<v
   await streamFromPrepare(
     req,
     res,
-    () =>
+    (attempt) =>
       prepareEdit({
         userId,
+        ...attempt,
         conversationId: req.params.id ?? "",
         messageId: req.params.messageId ?? "",
         content: body.content,
@@ -227,13 +232,24 @@ export async function feedbackHandler(req: Request, res: Response): Promise<void
 async function streamFromPrepare(
   req: Request,
   res: Response,
-  prepare: () => Promise<Awaited<ReturnType<typeof prepareSend>>>,
+  prepare: (attempt: { abortSignal: AbortSignal; generationId: string }) => Promise<Awaited<ReturnType<typeof prepareSend>>>,
   route: string,
   hint?: { userId: string; conversationId?: string; customGptId?: string },
 ): Promise<void> {
   const startedAt = Date.now();
   writeSseHeaders(res);
-  const persistP = prepare();
+  // The attempt exists before preparation, so Stop or a disconnect during a
+  // slow image tool cancels it, and heartbeats cover that silent window too.
+  const generationId = randomUUID();
+  const attempt = generationRegistry.reserve(generationId);
+  const onClose = (): void => {
+    if (!res.writableEnded) generationRegistry.abort(generationId);
+  };
+  // `res`, not `req`: on current Node the request emits close as soon as its
+  // body has been read, which says nothing about the client going away.
+  res.on("close", onClose);
+  const stopHeartbeat = startSseHeartbeat(res);
+  const persistP = prepare({ abortSignal: attempt.signal, generationId });
   const contextP = (async () => {
     if (!hint) return undefined;
     // Independent reads, so they overlap rather than queue.
@@ -248,10 +264,17 @@ async function streamFromPrepare(
   try {
     prepared = await persistP;
   } catch (error) {
-    const failure = error instanceof AppError ? error : new AppError("Unable to start chat", { code: "INTERNAL_ERROR" });
+    stopHeartbeat();
+    res.off("close", onClose);
+    generationRegistry.finish(generationId);
+    const failure = attempt.signal.aborted
+      ? new AppError("Generation stopped", { code: "GENERATION_ABORTED" })
+      : error instanceof AppError
+        ? error
+        : new AppError("Unable to start chat", { code: "INTERNAL_ERROR" });
     if (!res.writableEnded) {
-      writeSseEvent(res, "error", {
-        type: "error",
+      writeSseEvent(res, attempt.signal.aborted ? "aborted" : "error", {
+        type: attempt.signal.aborted ? "aborted" : "error",
         message: failure.message,
         code: failure.code,
       });
@@ -262,15 +285,6 @@ async function streamFromPrepare(
   }
 
   const preloaded = await contextP;
-  const onClose = (): void => {
-    if (!res.writableEnded) {
-      abortGeneration(prepared.userId, prepared.conversationId, prepared.generationId);
-    }
-  };
-  req.on("close", onClose);
-  // Started before the model is asked for anything: the silent window this
-  // covers is the one before the first token, not the one between tokens.
-  const stopHeartbeat = startSseHeartbeat(res);
   try {
     await runGeneration(
       prepared,
@@ -295,7 +309,7 @@ async function streamFromPrepare(
     }
   } finally {
     stopHeartbeat();
-    req.off("close", onClose);
+    res.off("close", onClose);
     if (!res.writableEnded) {
       writeSseDone(res);
       res.end();

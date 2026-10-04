@@ -30,7 +30,6 @@ export async function bootstrapProviders(): Promise<void> {
           providerId: definition.providerId,
           name: definition.name,
           type: definition.type,
-          ...(definition.defaultBaseUrl ? { baseUrl: definition.defaultBaseUrl } : {}),
           enabled: true,
           capabilities: definition.capabilities,
         });
@@ -55,11 +54,8 @@ export async function bootstrapProviders(): Promise<void> {
         if (definition.providerId === "gemini") {
           await stored.updateOne({
             $set: {
-              name: model.name,
-              ...(model.description ? { description: model.description } : {}),
               capabilities: model.capabilities,
               ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
-              enabled: true,
             },
           });
         }

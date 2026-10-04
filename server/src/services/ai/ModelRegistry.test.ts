@@ -22,6 +22,7 @@ vi.mock("../../models/AIModel.js", () => ({
 }));
 
 vi.mock("./credentials.js", () => ({
+  resolveCredentials: vi.fn(async () => null),
   loadGlobalProviders: vi.fn(async () => [
     {
       id: "groq",
@@ -57,6 +58,8 @@ describe("ModelRegistry", () => {
     expect(publicModels.some((model) => model.providerId === "openai")).toBe(false);
     expect(JSON.stringify(publicModels)).not.toContain("encryptedApiKey");
     expect(JSON.stringify(publicModels)).not.toMatch(/"apiKey"/);
+    const { resolveCredentials } = await import("./credentials.js");
+    expect(resolveCredentials).not.toHaveBeenCalled();
   });
 
   it("reuses the provider listing for a few seconds so chat prepare is not a second fan-out", async () => {

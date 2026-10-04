@@ -76,9 +76,9 @@ export const GEMINI_LOW_THINKING_TOKEN_RESERVE = 256;
  * `minimal` 0.56-0.92s, with answers of similar length. Turns that need the
  * thinking (math, code, depth) do not send `none`; see thinkingEffortFor.
  */
-export function geminiReasoningParams(effort?: "none" | "low" | "medium" | "default"): Record<string, unknown> {
+export function geminiReasoningParams(effort?: "none" | "low" | "medium" | "default", modelId?: string): Record<string, unknown> {
   if (effort === "medium" || effort === "default") return { reasoning_effort: "medium" };
-  if (effort === "none") return { reasoning_effort: "minimal" };
+  if (effort === "none") return { reasoning_effort: modelId === "gemini-3.8-flash" ? "low" : "minimal" };
   return { reasoning_effort: "low" };
 }
 
@@ -172,7 +172,7 @@ export function buildCompatibleChatBody(
   }
 
   if (options.providerId === "gemini") {
-    Object.assign(body, geminiReasoningParams(request.reasoningEffort));
+    Object.assign(body, geminiReasoningParams(request.reasoningEffort, request.modelId));
     body.max_tokens = geminiMaxOutputTokens(request.maxTokens, request.reasoningEffort);
     return body;
   }

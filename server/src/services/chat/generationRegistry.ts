@@ -62,9 +62,22 @@ export class GenerationRegistry {
       .catch((error: Error) => logger.warn({ err: error }, "Redis abort publish failed"));
   }
 
+  /**
+   * Registers a generation before its conversation is known, so Stop or a
+   * disconnect during slow preparation (image tools, uploads) cancels it.
+   * `start` later adopts the same controller rather than replacing it.
+   */
+  reserve(generationId: string): AbortController {
+    const existing = this.controllers.get(generationId);
+    if (existing) return existing;
+    const controller = new AbortController();
+    this.controllers.set(generationId, controller);
+    return controller;
+  }
+
   start(userId: string, conversationId: string, generationId: string): { signal: AbortSignal } {
     this.abortConversation(userId, conversationId);
-    const controller = new AbortController();
+    const controller = this.controllers.get(generationId) ?? new AbortController();
     this.controllers.set(generationId, controller);
     this.byConversation.set(conversationKey(userId, conversationId), generationId);
     return {

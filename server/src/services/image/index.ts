@@ -1,6 +1,7 @@
-import { CLOUDFLARE_IMAGE_MODEL_ID } from "@Ken/shared";
+import { CLOUDFLARE_IMAGE_MODEL_ID, GEMINI_IMAGE_MODEL_ID } from "@Ken/shared";
 import { env } from "../../config/env.js";
 import { gatewayWorkersAiRunUrl } from "../ai/aiGateway.js";
+import { workerGeminiNativeBaseUrl } from "../ai/workerRouting.js";
 import { CloudflareImageProvider } from "./CloudflareImageProvider.js";
 import { FailoverImageProvider } from "./failoverImageProvider.js";
 import { GeminiImageProvider } from "./GeminiImageProvider.js";
@@ -39,9 +40,9 @@ export function resolveImageGenerationBackend(input: {
 
 export function createImageGenerationProvider(): ImageGenerationProvider {
   const openaiKey = env.IMAGE_GENERATION_API_KEY ?? env.OPENAI_API_KEY;
-  const geminiKey = env.GEMINI_API_KEY;
-  const accountId = env.CF_ACCOUNT_ID;
-  const apiToken = env.CF_TOKEN;
+  const geminiKey = env.CLOUDFLARE_WORKER_URL ? env.KEN_API_KEY : env.GEMINI_API_KEY;
+  const accountId = env.CLOUDFLARE_WORKER_URL ? "worker" : env.CF_ACCOUNT_ID;
+  const apiToken = env.CLOUDFLARE_WORKER_URL ? env.KEN_API_KEY : env.CF_TOKEN;
   const backend = resolveImageGenerationBackend({
     ...(env.IMAGE_GENERATION_PROVIDER ? { provider: env.IMAGE_GENERATION_PROVIDER } : {}),
     ...(openaiKey ? { openaiKey } : {}),
@@ -52,7 +53,9 @@ export function createImageGenerationProvider(): ImageGenerationProvider {
     accountId && apiToken
       ? new CloudflareImageProvider(accountId, apiToken, cloudflareRunOptions())
       : undefined;
-  const gemini = geminiKey ? new GeminiImageProvider(geminiKey) : undefined;
+  const workerGemini = workerGeminiNativeBaseUrl();
+  const gemini = geminiKey ? new GeminiImageProvider(geminiKey,
+    workerGemini ? { runUrl: `${workerGemini}/models/${GEMINI_IMAGE_MODEL_ID}:generateContent` } : {}) : undefined;
   const openai = openaiKey ? new OpenAIImageProvider(openaiKey) : undefined;
   const primary =
     backend === "openai" ? openai : backend === "gemini" ? gemini : backend === "cloudflare" ? cloudflare : undefined;
@@ -62,15 +65,21 @@ export function createImageGenerationProvider(): ImageGenerationProvider {
     if (provider && !candidates.includes(provider)) candidates.push(provider);
   }
   if (candidates.length === 0) return new UnconfiguredImageProvider();
-  if (candidates.length === 1) return candidates[0] ?? new UnconfiguredImageProvider();
   return new FailoverImageProvider(candidates);
 }
 
-function cloudflareRunOptions(): { runUrl?: string; gatewayToken?: string } {
-  const runUrl = gatewayWorkersAiRunUrl(CLOUDFLARE_IMAGE_MODEL_ID);
+function cloudflareRunOptions(): {
+  runUrlFor?: (modelId: string) => string | undefined;
+  gatewayToken?: string;
+} {
+  if (env.CLOUDFLARE_WORKER_URL) {
+    return { runUrlFor: (modelId) => `${env.CLOUDFLARE_WORKER_URL!.replace(/\/v1$/, "")}/ai/run/${modelId}` };
+  }
+  // Probe with the default model: the gateway is either on for every model or none.
+  const gatewayOn = Boolean(gatewayWorkersAiRunUrl(CLOUDFLARE_IMAGE_MODEL_ID));
   return {
-    ...(runUrl ? { runUrl } : {}),
-    ...(runUrl && env.CF_AI_GATEWAY_TOKEN ? { gatewayToken: env.CF_AI_GATEWAY_TOKEN } : {}),
+    ...(gatewayOn ? { runUrlFor: (modelId: string) => gatewayWorkersAiRunUrl(modelId) } : {}),
+    ...(gatewayOn && env.CF_AI_GATEWAY_TOKEN ? { gatewayToken: env.CF_AI_GATEWAY_TOKEN } : {}),
   };
 }
 

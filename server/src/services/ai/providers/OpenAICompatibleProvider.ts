@@ -15,6 +15,7 @@ import type {
   StreamEvent,
 } from "../AIProvider.js";
 import { getBuiltInProvider } from "../catalog.js";
+import { workerProviderBaseUrl } from "../workerRouting.js";
 import { normalizeAIResponse, compactUsage } from "../normalizers/normalize.js";
 import { createReasoningFilter, stripReasoning } from "@Ken/shared";
 import { buildCompatibleChatBody } from "./compatibleChatBody.js";
@@ -59,6 +60,24 @@ export class OpenAICompatibleProvider implements AIProvider {
   }
 
   async getModels(): Promise<ProviderModelDescriptor[]> {
+    const workerBase = workerProviderBaseUrl(this.id);
+    if (workerBase && this.credentials.baseUrl?.replace(/\/$/, "") === workerBase) {
+      const response = await fetch(`${workerBase}/models`, {
+        headers: { Authorization: `Bearer ${this.credentials.apiKey ?? ""}` },
+        redirect: "error", signal: AbortSignal.timeout(5_000),
+      });
+      if (!response.ok) throw new AppError("Unable to load Worker models. Check the provider's Worker Secrets.", {
+        statusCode: 503, code: "PROVIDER_UNAVAILABLE", expose: true,
+      });
+      const payload = await response.json() as { data?: Array<{ id?: string }> };
+      if (!Array.isArray(payload.data)) throw new AppError("The Worker returned an invalid model list.", {
+        statusCode: 502, code: "PROVIDER_ERROR", expose: true,
+      });
+      const available = new Set(payload.data.map((model) => this.id === "gemini"
+        ? model?.id?.replace(/^models\//, "") : model?.id));
+      // Keep established capabilities/context budgets; exclude unsupported model types.
+      return (getBuiltInProvider(this.id)?.models ?? []).filter((model) => available.has(model.id));
+    }
     return getBuiltInProvider(this.id)?.models ?? [];
   }
 
@@ -328,7 +347,8 @@ export function parseProviderHttpError(
   const extracted = extractProviderError(bodyText);
   const providerMessage = extracted.message;
   const providerCode = extracted.code;
-  const errorClass = classifyProviderMessage(providerMessage);
+  const errorClass = providerId === "cloudflare" && (String(providerCode) === "4006" || providerCode === "quota_exceeded")
+    ? "quota_exceeded" : classifyProviderMessage(providerMessage);
   const retryAfterMs = parseRetryAfterMs(providerMessage);
   const extra: Record<string, unknown> = {
     httpStatus: status,
@@ -353,7 +373,7 @@ export function parseProviderHttpError(
     "Provider HTTP error",
   );
 
-  if (status === 401 || status === 403) {
+  if (status === 401 || status === 403 || providerCode === "provider_invalid_credentials" || providerCode === "provider_access_denied") {
     // 502, not 401: Ken's own 401 is a session problem. A vendor/gateway
     // rejection must not log the user out or toast "Invalid credentials".
     return new AppError("That model could not authenticate the request.", {
@@ -363,7 +383,9 @@ export function parseProviderHttpError(
     });
   }
   if (status === 429) {
-    return new AppError("Provider rate limit reached.", {
+    return new AppError(providerId === "cloudflare" && errorClass === "quota_exceeded"
+      ? "Cloudflare AI daily limit reached. It resets at 00:00 UTC (5:00 AM PKT). Try another provider or upgrade the Workers plan."
+      : "Provider rate limit reached.", {
       statusCode: 429,
       code: "PROVIDER_RATE_LIMITED",
       extra,
@@ -387,6 +409,7 @@ export function parseProviderHttpError(
       statusCode: 503,
       code: "PROVIDER_UNAVAILABLE",
       extra,
+      expose: true,
     });
   }
   return new AppError(providerMessage || "Provider request failed", {

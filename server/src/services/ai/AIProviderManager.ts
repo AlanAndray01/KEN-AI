@@ -19,7 +19,7 @@ import { describeSelectedModel, withKenIdentity } from "../chat/identity.js";
 import type { AIProvider, AIResponse, GenerateRequest, StreamEvent } from "./AIProvider.js";
 import { createProviderAdapter } from "./createProviderAdapter.js";
 import { requireConfigured, resolveCredentials, envKeyCount, type CredentialSource } from "./credentials.js";
-import { GATEWAY_URL_PREFIX } from "./aiGateway.js";
+import { runtimeCredentials } from "./endpointPolicy.js";
 import { providerReadsPdfNatively } from "./nativeDocuments.js";
 import { foldInlineDocuments } from "../chat/documentParts.js";
 import { consumePlatformChatQuota } from "./platformChatQuota.js";
@@ -79,6 +79,9 @@ export class AIProviderManager {
     content: string;
     userId: string;
     capabilities: ModelCapability[];
+    abortSignal?: AbortSignal;
+    imageProviderId?: string;
+    imageModelId?: string;
   }): Promise<ChatToolOutcome> {
     return this.tools.applyForChat(input);
   }
@@ -535,17 +538,10 @@ export class AIProviderManager {
       id: resolved.providerId,
       name: resolved.name,
       type: resolved.type,
-      credentials: {
+      credentials: runtimeCredentials(resolved.providerId, {
         ...(resolved.apiKey ? { apiKey: resolved.apiKey } : {}),
         ...(resolved.baseUrl ? { baseUrl: resolved.baseUrl } : {}),
-        // Derived from the URL actually chosen rather than passed down
-        // separately, so the gateway header can never be attached to a request
-        // that ended up going straight to the vendor, or omitted from one that
-        // did not.
-        ...(resolved.baseUrl?.startsWith(GATEWAY_URL_PREFIX) && env.CF_AI_GATEWAY_TOKEN
-          ? { gatewayToken: env.CF_AI_GATEWAY_TOKEN }
-          : {}),
-      },
+      }),
     });
   }
 

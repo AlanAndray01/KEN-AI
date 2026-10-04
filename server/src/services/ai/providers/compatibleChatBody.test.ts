@@ -102,7 +102,7 @@ describe("buildCompatibleChatBody", () => {
         { stream: true, providerId: "gemini" },
       ),
     ).toMatchObject({
-      reasoning_effort: "minimal",
+      reasoning_effort: "low",
       max_tokens: 1024 + GEMINI_LOW_THINKING_TOKEN_RESERVE,
     });
   });

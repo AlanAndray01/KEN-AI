@@ -56,11 +56,14 @@ services:
       - key: ENCRYPTION_KEY
         sync: false
 
-      # ---- Chat engine. Gemini is the default; Groq is the next hop. ----
-      - key: GEMINI_API_KEY
+      # ---- All five supported AI providers route through the kenai Worker. ----
+      # Provider API keys belong in Cloudflare Worker Secrets, not Render.
+      - key: CLOUDFLARE_WORKER_URL
+        value: https://kenai.syedarslanshah7861.workers.dev/v1
+      - key: KEN_API_KEY
         sync: false
-      - key: GROQ_API_KEY
-        sync: false
+      - key: IMAGE_GENERATION_PROVIDER
+        value: cloudflare
 
       # ---- Email verification + password reset (required to boot) ----
       - key: RESEND_API_KEY

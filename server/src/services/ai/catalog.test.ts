@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   CLOUDFLARE_IMAGE_MODEL_ID,
+  CLOUDFLARE_IMAGE_MODEL_IDS,
+  isCloudflareImageModel,
   CLOUDFLARE_QUALITY_MODEL_ID,
   CLOUDFLARE_TINY_MODEL_ID,
   CLOUDFLARE_VISION_MODEL_ID,
@@ -11,6 +13,13 @@ import {
   GEMINI_PRO_MODEL_ID,
 } from "@Ken/shared";
 import { getBuiltInProvider } from "./catalog.js";
+
+describe("current vendor catalog", () => {
+  it("uses the Cerebras and DeepSeek IDs advertised by authenticated discovery", () => {
+    expect(getBuiltInProvider("cerebras")!.models.map((model) => model.id)).toEqual(["qwen-3.8-27b", "gpt-oss-120b"]);
+    expect(getBuiltInProvider("deepseek")!.models.map((model) => model.id)).toEqual(["deepseek-flash", "deepseek-v4-pro"]);
+  });
+});
 
 describe("Gemini catalog", () => {
   it("lists official AI Studio chat models with vision and files", () => {
@@ -54,11 +63,11 @@ describe("Cloudflare catalog", () => {
     const ids = getBuiltInProvider("cloudflare")!.models.map((model) => model.id);
     expect(ids).toEqual(expect.arrayContaining([
       "@cf/openai/gpt-oss-120b",
-      "@cf/qwen/qwen3.8-27b",
       "@cf/qwen/qwen2.5-coder-32b-instruct",
       "@cf/google/gemma-4-26b-a4b-it",
     ]));
     expect(ids).not.toContain("@cf/moonshotai/kimi-k2.6");
+    expect(ids).not.toContain("@cf/qwen/qwen3.8-27b");
     expect(ids).not.toContain("@cf/zai-org/glm-5.3");
     expect(ids).toContain(CLOUDFLARE_IMAGE_MODEL_ID);
     expect(getBuiltInProvider("cloudflare")!.models.find((model) => model.id === CLOUDFLARE_IMAGE_MODEL_ID)?.capabilities).toEqual([
@@ -98,11 +107,23 @@ describe("Cloudflare catalog", () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it("does not list embeddings, SDXL, or agreement-gated vision as chat ids", () => {
-    const ids = getBuiltInProvider("cloudflare")!.models.map((model) => model.id);
+  it("does not list embeddings, image models, or agreement-gated vision as chat ids", () => {
+    const models = getBuiltInProvider("cloudflare")!.models;
+    const ids = models.map((model) => model.id);
     expect(ids).not.toContain("@cf/baai/bge-small-en-v1.5");
-    expect(ids).not.toContain("@cf/stabilityai/stable-diffusion-xl-base-1.0");
     expect(ids).not.toContain("@cf/meta/llama-3.2-11b-vision-instruct");
+    // SDXL is listed, but only as an image model.
+    const sdxl = models.find((model) => model.id === "@cf/stabilityai/stable-diffusion-xl-base-1.0");
+    expect(sdxl?.capabilities).toEqual(["imageGeneration"]);
+  });
+
+  it("lists every Cloudflare image model as image-only, and nothing else as image-only", () => {
+    const models = getBuiltInProvider("cloudflare")!.models;
+    const imageOnly = models.filter((model) => model.capabilities.includes("imageGeneration")).map((model) => model.id);
+    expect(imageOnly.sort()).toEqual([...CLOUDFLARE_IMAGE_MODEL_IDS].sort());
+    for (const model of models.filter((item) => isCloudflareImageModel(item.id))) {
+      expect(model.capabilities).toEqual(["imageGeneration"]);
+    }
   });
 
   it("sends Flux through image generation only, never as a /chat/completions id", () => {

@@ -34,6 +34,12 @@ const turnProps = {
 };
 
 describe("ChatTurn", () => {
+  it("keeps the provider quota explanation visible on a failed turn", () => {
+    render(<ChatTurn {...turnProps} message={{ ...assistant, content: "", status: "error",
+      errorCode: "PROVIDER_RATE_LIMITED", errorMessage: "Cloudflare AI daily limit reached. It resets at 00:00 UTC (5:00 AM PKT)." }} />);
+    expect(screen.getByRole("alert")).toHaveTextContent("Cloudflare AI daily limit reached");
+    expect(screen.getByRole("alert")).toHaveTextContent("5:00 AM PKT");
+  });
   it("renders a generated image on the assistant turn", async () => {
     render(
       <ChatTurn

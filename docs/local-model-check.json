@@ -1,0 +1,104 @@
+{
+  "checkedAt": "2026-10-03T12:07:55.578Z",
+  "workerMode": true,
+  "sharedSecretPresent": true,
+  "localHealth": {
+    "status": 200,
+    "healthy": true,
+    "databaseConnected": true
+  },
+  "providers": [
+    {
+      "providerId": "cloudflare",
+      "modelIds": [
+        "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+        "@cf/meta/llama-3.2-3b-instruct",
+        "@cf/meta/llama-4-scout-17b-16e-instruct",
+        "@cf/openai/gpt-oss-120b",
+        "@cf/openai/gpt-oss-20b",
+        "@cf/nvidia/nemotron-3-120b-a12b",
+        "@cf/google/gemma-4-26b-a4b-it",
+        "@cf/zai-org/glm-4.7-flash",
+        "@cf/ibm-granite/granite-4.0-h-micro",
+        "@cf/mistralai/mistral-small-3.1-24b-instruct",
+        "@cf/qwen/qwen3-30b-a3b-fp8",
+        "@cf/qwen/qwen2.5-coder-32b-instruct",
+        "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b",
+        "@cf/qwen/qwq-32b",
+        "@cf/aisingapore/gemma-sea-lion-v4-27b-it",
+        "@cf/meta/llama-3.1-8b-instruct-fp8",
+        "@cf/meta/llama-3.2-1b-instruct",
+        "@cf/mistral/mistral-7b-instruct-v0.2-lora",
+        "@cf/google/gemma-2b-it-lora",
+        "@cf/meta-llama/llama-2-7b-chat-hf-lora",
+        "@cf/black-forest-labs/flux-1-schnell",
+        "@cf/black-forest-labs/flux-2-klein-4b",
+        "@cf/black-forest-labs/flux-2-klein-9b",
+        "@cf/black-forest-labs/flux-2-dev",
+        "@cf/leonardo/lucid-origin",
+        "@cf/leonardo/phoenix-1.0",
+        "@cf/stabilityai/stable-diffusion-xl-base-1.0",
+        "@cf/bytedance/stable-diffusion-xl-lightning",
+        "@cf/lykon/dreamshaper-8-lcm"
+      ]
+    },
+    {
+      "providerId": "gemini",
+      "modelIds": [
+        "gemini-3.5-flash-lite",
+        "gemini-3.8-flash",
+        "gemini-3.6-flash",
+        "gemini-3.1-pro-preview"
+      ]
+    },
+    {
+      "providerId": "groq",
+      "modelIds": [
+        "qwen/qwen3.8-27b",
+        "openai/gpt-oss-20b",
+        "openai/gpt-oss-120b"
+      ]
+    },
+    {
+      "providerId": "cerebras",
+      "modelIds": [
+        "qwen-3.8-27b",
+        "gpt-oss-120b"
+      ]
+    },
+    {
+      "providerId": "deepseek",
+      "modelIds": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ]
+    }
+  ],
+  "autoQuick": {
+    "providerId": "groq",
+    "modelId": "qwen/qwen3.8-27b"
+  },
+  "adapterChecks": [
+    {
+      "providerId": "groq",
+      "modelId": "qwen/qwen3.8-27b",
+      "generateHasText": true,
+      "streamHasText": true,
+      "streamComplete": true
+    },
+    {
+      "providerId": "gemini",
+      "modelId": "gemini-3.5-flash-lite",
+      "generateHasText": true,
+      "streamHasText": true,
+      "streamComplete": true
+    },
+    {
+      "providerId": "gemini",
+      "modelId": "gemini-3.8-flash",
+      "generateHasText": true,
+      "streamHasText": true,
+      "streamComplete": true
+    }
+  ]
+}

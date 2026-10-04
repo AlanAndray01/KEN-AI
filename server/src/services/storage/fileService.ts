@@ -49,6 +49,7 @@ export async function uploadUserFile(input: {
   originalName: string;
   mimeType: string;
   buffer: Buffer;
+  metadata?: Record<string, unknown>;
 }): Promise<PublicFile> {
   const validated = validateUploadBuffer({
     originalName: input.originalName,
@@ -74,7 +75,7 @@ export async function uploadUserFile(input: {
     checksum,
     kind: validated.kind,
     status: "ready",
-    ...(cdnUrl ? { metadata: { cdnUrl } } : {}),
+    ...(cdnUrl || input.metadata ? { metadata: { ...input.metadata, ...(cdnUrl ? { cdnUrl } : {}) } } : {}),
   });
   return toPublicFile(doc);
 }

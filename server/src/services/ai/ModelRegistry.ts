@@ -9,7 +9,9 @@ import { AppError } from "../../utils/AppError.js";
 import { AIModel } from "../../models/AIModel.js";
 import { BUILT_IN_PROVIDERS, getBuiltInProvider } from "./catalog.js";
 import { onCredentialsChanged } from "./credentialCache.js";
-import { describeConfiguredSecret, loadGlobalProviders } from "./credentials.js";
+import { describeConfiguredSecret, loadGlobalProviders, resolveCredentials } from "./credentials.js";
+import { createProviderAdapter } from "./createProviderAdapter.js";
+import { workerProviderBaseUrl, WORKER_PROVIDER_IDS } from "./workerRouting.js";
 import { isMockAiAllowed } from "./providers/MockProvider.js";
 import type { ProviderModelDescriptor } from "./AIProvider.js";
 
@@ -132,6 +134,36 @@ export class ModelRegistry {
         ),
       );
     }
+
+    await Promise.all(WORKER_PROVIDER_IDS.map(async (providerId) => {
+      const workerBase = workerProviderBaseUrl(providerId);
+      if (!providers.get(providerId)?.configured || (!workerBase && providerId !== "cloudflare")) return;
+      const resolved = await resolveCredentials(providerId);
+      if (resolved?.baseUrl && (workerBase || providerId === "cloudflare" &&
+        !["api.cloudflare.com", "gateway.ai.cloudflare.com"].includes(new URL(resolved.baseUrl).hostname))) {
+        // Worker discovery is authoritative for each provider, including Cloudflare images.
+        // Missing vendor secrets or failed discovery must not advertise unavailable models.
+        let remote: ProviderModelDescriptor[] = [];
+        try {
+          remote = await createProviderAdapter({ id: providerId, name: resolved.name,
+            type: resolved.type, credentials: { ...(resolved.apiKey ? { apiKey: resolved.apiKey } : {}), baseUrl: resolved.baseUrl } }).getModels();
+        } catch { /* A subsequent cache refresh retries discovery. */ }
+        const advertised = new Set(remote.map((model) => model.id));
+        for (const model of merged.values()) {
+          if (model.providerId === providerId && !advertised.has(model.id)) {
+            model.available = false;
+          }
+        }
+        for (const model of remote) {
+          const previous = merged.get(key(providerId, model.id));
+          merged.set(key(providerId, model.id), toPublicModel({ modelId: model.id, providerId,
+            name: model.name, capabilities: model.capabilities,
+            ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
+            enabled: previous?.enabled ?? true,
+          }, providers.get(providerId)!));
+        }
+      }
+    }));
 
     const models = [...merged.values()].sort((a, b) => {
       const byRank = providerRank(a.providerId) - providerRank(b.providerId);

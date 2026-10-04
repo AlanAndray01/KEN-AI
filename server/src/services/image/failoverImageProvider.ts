@@ -33,9 +33,14 @@ export class FailoverImageProvider implements ImageGenerationProvider {
   }
 
   async generate(request: ImageGenerationRequest): Promise<GeneratedImage> {
+    const deadline = AbortSignal.timeout(120_000);
+    request = { ...request, abortSignal: request.abortSignal ? AbortSignal.any([request.abortSignal, deadline]) : deadline };
+    const chain = request.providerId ? this.chain.filter((item) => item.id === request.providerId) : this.chain;
+    if (chain.length === 0) throw new AppError("Selected image provider is not configured", { statusCode: 503, code: "IMAGE_GENERATION_NOT_CONFIGURED" });
     const errors: AppError[] = [];
-    for (let index = 0; index < this.chain.length; index += 1) {
-      const provider = this.chain[index];
+    for (let index = 0; index < chain.length; index += 1) {
+      request.abortSignal?.throwIfAborted();
+      const provider = chain[index];
       if (!provider) continue;
       if (isImageBackendCooling(provider.id)) {
         const skip =
@@ -71,8 +76,10 @@ export class FailoverImageProvider implements ImageGenerationProvider {
           }),
           "image generation succeeded",
         );
-        return generated;
+        return { ...generated, providerId: generated.providerId ?? provider.id, modelId: generated.modelId ?? imageSkipModelId(provider.id) };
       } catch (error) {
+        request.abortSignal?.throwIfAborted();
+        if (error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError")) throw error;
         const failure =
           error instanceof AppError
             ? error
@@ -84,7 +91,7 @@ export class FailoverImageProvider implements ImageGenerationProvider {
               });
         errors.push(failure);
         rememberModelSkip(provider.id, imageSkipModelId(provider.id), failure);
-        const canHop = index < this.chain.length - 1 && shouldTryNextImageBackend(error);
+        const canHop = index < chain.length - 1 && shouldTryNextImageBackend(error);
         logger.warn(
           telemetry({
             event: "image_backend_fail",
@@ -99,7 +106,7 @@ export class FailoverImageProvider implements ImageGenerationProvider {
           "image generation backend failed",
         );
         if (!canHop) {
-          if (index === this.chain.length - 1) break;
+          if (index === chain.length - 1) break;
           throw error;
         }
       }

@@ -61,8 +61,9 @@ export function finishPreparedGeneration(input: {
   assistantMessage: PublicMessage;
   conversation: PublicConversation;
   customGptId?: string;
-}): PreparedGeneration {
-  const { signal } = generationRegistry.start(input.userId, input.conversationId, input.generationId);
+}, preparationSignal?: AbortSignal): PreparedGeneration {
+  const registered = generationRegistry.start(input.userId, input.conversationId, input.generationId).signal;
+  const signal = preparationSignal ? AbortSignal.any([registered, preparationSignal]) : registered;
   const { turn } = input;
   return {
     userId: input.userId,

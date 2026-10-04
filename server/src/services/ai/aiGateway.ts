@@ -53,7 +53,7 @@ const GATEWAY_PROVIDER_PATHS: Readonly<Record<string, string>> = {
  * call regardless of how valid the provider credentials are.
  */
 export function gatewayEnabled(): boolean {
-  return Boolean(env.CF_AI_GATEWAY_TOKEN && env.CF_ACCOUNT_ID);
+  return Boolean(!env.CLOUDFLARE_WORKER_URL && env.CF_AI_GATEWAY_TOKEN && env.CF_ACCOUNT_ID);
 }
 
 /**

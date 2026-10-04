@@ -82,6 +82,12 @@ const baseEnvSchema = z.object({
   DEEPSEEK_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
   CF_ACCOUNT_ID: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
   CF_TOKEN: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+  CLOUDFLARE_WORKER_URL: z.preprocess(emptyToUndefined, z.string().url().refine((value) => {
+    const url = new URL(value);
+    return url.protocol === "https:" && !url.username && !url.password && !url.search && !url.hash &&
+      url.pathname.replace(/\/$/, "") === "/v1";
+  }, "Use an HTTPS Worker base URL ending in /v1").optional()),
+  KEN_API_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
   /** Name of the AI Gateway to route through. Only used when a token is set. */
   CF_AI_GATEWAY: z.string().min(1).default("ken-ai-gateway"),
   /**
@@ -138,6 +144,9 @@ const baseEnvSchema = z.object({
 });
 
 export const envSchema = baseEnvSchema.superRefine((value, ctx) => {
+  if (value.CLOUDFLARE_WORKER_URL && !value.KEN_API_KEY) {
+    ctx.addIssue({ code: "custom", path: ["KEN_API_KEY"], message: "KEN_API_KEY is required with CLOUDFLARE_WORKER_URL" });
+  }
   if (value.NODE_ENV !== "production") return;
 
   // Production must never fall back to a generated or implicit secret.
@@ -228,6 +237,8 @@ export const env = {
   DEEPSEEK_KEY: parsed.data.DEEPSEEK_KEY,
   CF_ACCOUNT_ID: parsed.data.CF_ACCOUNT_ID,
   CF_TOKEN: parsed.data.CF_TOKEN,
+  CLOUDFLARE_WORKER_URL: parsed.data.CLOUDFLARE_WORKER_URL?.replace(/\/$/, ""),
+  KEN_API_KEY: parsed.data.KEN_API_KEY,
   CF_AI_GATEWAY: parsed.data.CF_AI_GATEWAY,
   CF_AI_GATEWAY_TOKEN: parsed.data.CF_AI_GATEWAY_TOKEN,
   OPENROUTER_API_KEY: parsed.data.OPENROUTER_API_KEY,

@@ -279,44 +279,49 @@ export async function resetPassword(input: {
 }): Promise<void> {
   const secret = input.code ?? input.token ?? "";
   const email = input.email?.trim().toLowerCase();
-  if (!secret) {
+  if (!secret || !email) {
     throw new AppError("Reset code is invalid or has expired", {
       statusCode: 400,
       code: "RESET_TOKEN_INVALID",
     });
   }
 
-  const user = email ? await User.findOne({ email }).select("+passwordHash") : null;
-  const reset = await PasswordReset.findOne({
-    tokenHash: hashToken(secret),
-    usedAt: { $exists: false },
-    expiresAt: { $gt: new Date() },
-    ...(user ? { userId: user._id } : {}),
-  }).select("+tokenHash");
-
-  if (!reset) {
+  const user = await User.findOne({ email });
+  if (!user) {
     throw new AppError("Reset code is invalid or has expired", {
       statusCode: 400,
       code: "RESET_TOKEN_INVALID",
     });
   }
 
-  const account = user ?? (await User.findById(reset.userId).select("+passwordHash"));
-  if (!account) {
+  // One atomic single-document claim. The lookup is scoped to the account the
+  // email names, so a code can never select a different account, and two
+  // concurrent submits of the same code cannot both pass this line.
+  const now = new Date();
+  const claimed = await PasswordReset.findOneAndUpdate(
+    {
+      userId: user._id,
+      tokenHash: hashToken(secret),
+      usedAt: { $exists: false },
+      expiresAt: { $gt: now },
+    },
+    { $set: { usedAt: now } },
+  );
+  if (!claimed) {
     throw new AppError("Reset code is invalid or has expired", {
       statusCode: 400,
       code: "RESET_TOKEN_INVALID",
     });
   }
 
-  account.passwordHash = await hashPassword(input.password);
-  account.authProvider = "local";
+  // If anything below fails the code stays consumed and the old password
+  // stays valid: the user requests a new code. That fails closed.
+  user.passwordHash = await hashPassword(input.password);
+  user.authProvider = "local";
   // The inbox code is proof of address ownership, same as email OTP.
-  account.isVerified = true;
-  await account.save();
-  reset.usedAt = new Date();
-  await reset.save();
-  await revokeUserSessions(String(account._id));
+  user.isVerified = true;
+  await user.save();
+  await revokeUserSessions(String(user._id));
 }
 
 export async function loginWithGoogleProfile(profile: GoogleProfile, req: Request): Promise<AuthResult> {
