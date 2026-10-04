@@ -58,9 +58,15 @@ const ANALYSIS_VERB = /\b(?:describe|explain|analy[sz]e|read|identify|caption|tr
 export function detectImageRequest(content: string): boolean {
   const text = content.trim();
   if (!text) return false;
+  // Discussion, quoted examples and negation must not spend image quota.
+  if (/\b(?:do not|don't|dont|never|avoid|without)\b[^.!?\n]{0,60}\b(?:generate|create|make|draw|paint|render|image|picture)\b/i.test(text)) return false;
+  if (/\b(?:how (?:can|do|would|to)|explain how|teach me|show me how|write (?:a |the )?(?:code|function|script))\b/i.test(text)) return false;
+  if (/\b(?:mat|nahi|nahin)\b[^.!?\n]{0,30}\b(?:banao|banana|banaye|karo)\b/i.test(text)) return false;
+  if (/\b(?:image|picture|tasveer|taswir|photo)\b[^.!?\n]{0,40}\b(?:banao|bana do|bana dein|banaye)\b/i.test(text)) return true;
+  const unquoted = text.replace(/```[\s\S]*?```|`[^`]*`|"[^"]*"|“[^”]*”/g, "");
   // A question about an existing image is a vision turn, not a creation turn.
   if (ABOUT_EXISTING.test(text) && ANALYSIS_VERB.test(text)) return false;
-  return VERB_THEN_NOUN.test(text) || VISUAL_VERB_ALONE.test(text) || NOUN_LED.test(text);
+  return VERB_THEN_NOUN.test(unquoted) || VISUAL_VERB_ALONE.test(unquoted) || NOUN_LED.test(unquoted);
 }
 
 /**

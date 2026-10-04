@@ -180,6 +180,23 @@ vi.mock("../models/PasswordReset.js", () => ({
         }
       }
     }),
+    findOneAndUpdate: vi.fn(
+      async (
+        query: { tokenHash: string; userId: Types.ObjectId | string; expiresAt: { $gt: Date } },
+        update: { $set: { usedAt: Date } },
+      ) => {
+        const found = [...resets.values()].find(
+          (reset) =>
+            reset.tokenHash === query.tokenHash &&
+            String(reset.userId) === String(query.userId) &&
+            !reset.usedAt &&
+            reset.expiresAt > query.expiresAt.$gt,
+        );
+        if (!found) return null;
+        found.usedAt = update.$set.usedAt;
+        return found;
+      },
+    ),
     findOne: vi.fn((query: { tokenHash: string; userId?: Types.ObjectId | string }) => {
       const found = [...resets.values()].find((reset) => {
         if (reset.tokenHash !== query.tokenHash) return false;
@@ -388,6 +405,35 @@ describe("auth API", () => {
     });
     expect(unknown.status).toBe(400);
     expect(unknown.body.error.code).toBe("RESET_TOKEN_INVALID");
+  });
+
+  it("binds a reset code to its own account and allows it once (N1)", async () => {
+    await registerAndVerify(request.agent(app), { name: "Alan Turing", email: "alan@example.com", password });
+    await registerAndVerify(request.agent(app), { name: "Grace Hopper", email: "grace@example.com", password });
+
+    const forgot = await request(app).post("/api/auth/forgot-password").send({ email: "alan@example.com" });
+    const code = forgot.body.resetToken as string;
+
+    // Alan's code submitted against another account, or an unknown email,
+    // must not reset anybody.
+    for (const email of ["grace@example.com", "missing@example.com"]) {
+      const crossed = await request(app)
+        .post("/api/auth/reset-password")
+        .send({ email, code, password: "Hijacked-123!" });
+      expect(crossed.status).toBe(400);
+      expect(crossed.body.error.code).toBe("RESET_TOKEN_INVALID");
+    }
+    const graceLogin = await request(app).post("/api/auth/login").send({ email: "grace@example.com", password });
+    expect(graceLogin.status).toBe(200);
+
+    const first = await request(app)
+      .post("/api/auth/reset-password")
+      .send({ email: "alan@example.com", code, password: "New-password-123!" });
+    expect(first.status).toBe(200);
+    const reused = await request(app)
+      .post("/api/auth/reset-password")
+      .send({ email: "alan@example.com", code, password: "Another-123!" });
+    expect(reused.status).toBe(400);
   });
 
   it("resends a verification code without revealing whether the email exists", async () => {

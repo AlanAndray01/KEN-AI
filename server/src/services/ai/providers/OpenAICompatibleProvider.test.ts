@@ -31,6 +31,11 @@ describe("parseProviderHttpError", () => {
     expect(error).toMatchObject({ code: "PROVIDER_RATE_LIMITED", statusCode: 429 });
   });
 
+  it.each(["provider_invalid_credentials", "provider_access_denied"])("recognizes Worker-wrapped %s as a provider auth failure", (code) => {
+    const error = parseProviderHttpError(503, JSON.stringify({ error: { code, message: "Check provider access." } }), "gemini");
+    expect(error).toMatchObject({ code: "PROVIDER_INVALID_CREDENTIALS", statusCode: 502 });
+  });
+
   it("captures Google's 429 quota class and retry-in hint", () => {
     const error = parseProviderHttpError(
       429,

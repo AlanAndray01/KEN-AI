@@ -139,6 +139,107 @@ describe("CloudflareImageProvider", () => {
     expect(headers["cf-aig-authorization"]).toBe("Bearer aig-token");
   });
 
+  describe("other Workers AI image models", () => {
+    const PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
+    const JPEG_BYTES = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+
+    it("sends Flux 2 as multipart form data and reads its base64 reply", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(
+          new Response(JSON.stringify({ result: { image: JPEG_B64 } }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      vi.stubGlobal("fetch", fetchMock);
+
+      const image = await new CloudflareImageProvider("acct123", "cf-token").generate({
+        prompt: "a fox",
+        userId: "user1",
+        modelId: "@cf/black-forest-labs/flux-2-klein-4b",
+      });
+
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe("https://api.cloudflare.com/client/v4/accounts/acct123/ai/run/@cf/black-forest-labs/flux-2-klein-4b");
+      expect(init.body).toBeInstanceOf(FormData);
+      expect((init.body as FormData).get("prompt")).toBe("a fox");
+      // fetch must set the multipart boundary itself.
+      expect((init.headers as Record<string, string>)["Content-Type"]).toBeUndefined();
+      expect(image).toMatchObject({ mimeType: "image/jpeg", modelId: "@cf/black-forest-labs/flux-2-klein-4b" });
+    });
+
+    it("reads raw image bytes and types them from the bytes, not the header", async () => {
+      // Verified live: SDXL Lightning sends JPEG bytes labelled image/png.
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(new Response(JPEG_BYTES, { status: 200, headers: { "content-type": "image/png" } })),
+      );
+      const image = await new CloudflareImageProvider("acct123", "cf-token").generate({
+        prompt: "a fox",
+        userId: "user1",
+        modelId: "@cf/bytedance/stable-diffusion-xl-lightning",
+      });
+      expect(image.mimeType).toBe("image/jpeg");
+      expect(image.buffer.equals(JPEG_BYTES)).toBe(true);
+    });
+
+    it("posts JSON with only the prompt to the binary-reply models", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(new Response(PNG_BYTES, { status: 200, headers: { "content-type": "image/png" } }));
+      vi.stubGlobal("fetch", fetchMock);
+      const image = await new CloudflareImageProvider("acct123", "cf-token").generate({
+        prompt: "a fox",
+        userId: "user1",
+        modelId: "@cf/stabilityai/stable-diffusion-xl-base-1.0",
+      });
+      expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({ prompt: "a fox" });
+      expect(image.mimeType).toBe("image/png");
+    });
+
+    it("fails loudly when a binary reply is not an image", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(new Response("<html>oops</html>", { status: 200, headers: { "content-type": "text/html" } })),
+      );
+      await expect(
+        new CloudflareImageProvider("acct123", "cf-token").generate({
+          prompt: "x",
+          userId: "user1",
+          modelId: "@cf/leonardo/phoenix-1.0",
+        }),
+      ).rejects.toMatchObject({ code: "IMAGE_GENERATION_PROVIDER_ERROR" });
+    });
+
+    it("refuses a model that is not on the image list, without calling Cloudflare", async () => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+      await expect(
+        new CloudflareImageProvider("acct123", "cf-token").generate({
+          prompt: "x",
+          userId: "user1",
+          modelId: "@cf/meta/llama-3.2-1b-instruct",
+        }),
+      ).rejects.toMatchObject({ code: "IMAGE_MODEL_UNAVAILABLE" });
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("routes each model through its own gateway path", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(new Response(PNG_BYTES, { status: 200, headers: { "content-type": "image/png" } }));
+      vi.stubGlobal("fetch", fetchMock);
+      await new CloudflareImageProvider("acct123", "cf-token", {
+        runUrlFor: (id) => `https://gateway.ai.cloudflare.com/v1/acct123/gw/workers-ai/${id}`,
+        gatewayToken: "aig-token",
+      }).generate({ prompt: "x", userId: "user1", modelId: "@cf/lykon/dreamshaper-8-lcm" });
+      expect(fetchMock.mock.calls[0]?.[0]).toBe(
+        "https://gateway.ai.cloudflare.com/v1/acct123/gw/workers-ai/@cf/lykon/dreamshaper-8-lcm",
+      );
+    });
+  });
+
   it("is unconfigured without both the account id and the token", () => {
     expect(new CloudflareImageProvider("", "cf-token").isConfigured()).toBe(false);
     expect(new CloudflareImageProvider("acct123", "").isConfigured()).toBe(false);

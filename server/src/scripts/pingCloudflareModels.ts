@@ -26,6 +26,7 @@ import { getBuiltInProvider } from "../services/ai/catalog.js";
 import { cloudflareBaseUrl, getEnvApiKey } from "../services/ai/credentials.js";
 import { buildCompatibleChatBody } from "../services/ai/providers/compatibleChatBody.js";
 import { redactSensitive } from "../utils/redact.js";
+import { CloudflareImageProvider } from "../services/image/CloudflareImageProvider.js";
 
 const PING_PROMPT = "Reply with the single word pong.";
 const TINY_PNG_B64 =
@@ -247,6 +248,43 @@ async function pingFlux(apiKey: string): Promise<PingRow> {
   }
 }
 
+/**
+ * The other image models differ in request and response shape, so they are
+ * pinged through the production provider itself rather than a hand-built
+ * request that could drift from it.
+ */
+async function pingImageModel(modelId: string, apiKey: string): Promise<PingRow> {
+  const runUrl = gatewayWorkersAiRunUrl(modelId);
+  const provider = new CloudflareImageProvider(env.CF_ACCOUNT_ID ?? "", apiKey, {
+    ...(runUrl ? { runUrlFor: (id: string) => gatewayWorkersAiRunUrl(id) } : {}),
+    ...(runUrl && env.CF_AI_GATEWAY_TOKEN ? { gatewayToken: env.CF_AI_GATEWAY_TOKEN } : {}),
+  });
+  const via = runUrl ? viaFor(runUrl) : "direct";
+  const started = Date.now();
+  try {
+    const image = await provider.generate({ prompt: "a tiny red square", userId: "ping", modelId });
+    return {
+      modelId,
+      kind: "image",
+      via,
+      ok: image.buffer.length > 0,
+      status: 200,
+      ms: Date.now() - started,
+      detail: `${image.mimeType} ${image.buffer.length} bytes`,
+    };
+  } catch (error) {
+    return {
+      modelId,
+      kind: "image",
+      via,
+      ok: false,
+      status: 0,
+      ms: Date.now() - started,
+      detail: clipDetail(error instanceof Error ? error.message : "request failed"),
+    };
+  }
+}
+
 function requestedIds(): string[] {
   const catalog = getBuiltInProvider("cloudflare")?.models.map((model) => model.id) ?? [];
   const quick = process.argv.includes("--quick");
@@ -280,7 +318,7 @@ export async function pingCloudflareModels(): Promise<PingRow[]> {
   const rows: PingRow[] = [];
   for (const modelId of ids) {
     if (isCloudflareImageModel(modelId)) {
-      rows.push(await pingFlux(apiKey));
+      rows.push(modelId === CLOUDFLARE_IMAGE_MODEL_ID ? await pingFlux(apiKey) : await pingImageModel(modelId, apiKey));
       continue;
     }
     rows.push(await pingChat({ modelId, kind: "chat", apiKey }));

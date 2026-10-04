@@ -29,6 +29,8 @@ import {
 import { canPersistSecrets, encryptSecret, lastFour } from "./encryption.js";
 import { isMockAiAllowed } from "./providers/MockProvider.js";
 import { modelRegistry } from "./ModelRegistry.js";
+import { assertUserEndpoint, runtimeCredentials } from "./endpointPolicy.js";
+import { workerProviderBaseUrl } from "./workerRouting.js";
 
 type UpsertProviderInput = z.infer<typeof upsertProviderSchema>;
 type PatchProviderInput = z.infer<typeof patchProviderSchema>;
@@ -83,7 +85,7 @@ async function listProviders(userId: string | undefined, includeDisabled: boolea
 
     const secret = await describeConfiguredSecret(providerId, userId);
     const type = record?.type ?? builtIn?.type ?? "custom";
-    const baseUrl = record?.baseUrl ?? builtIn?.defaultBaseUrl;
+    const baseUrl = workerProviderBaseUrl(providerId) ?? record?.baseUrl ?? builtIn?.defaultBaseUrl;
     providers.push({
       id: record?.id ?? providerId,
       providerId,
@@ -123,7 +125,7 @@ export async function createProvider(input: UpsertProviderInput): Promise<Public
     providerId,
     name: input.name,
     type: input.type,
-    ...(input.baseUrl ? { baseUrl: input.baseUrl } : {}),
+    ...(input.baseUrl ? { baseUrl: input.baseUrl, metadata: { baseUrlSource: "admin" } } : {}),
     enabled: input.enabled ?? true,
     capabilities: getBuiltInProvider(providerId)?.capabilities ?? ["text", "streaming"],
     ...(input.apiKey ? encryptedKeyFields(input.apiKey) : {}),
@@ -153,6 +155,7 @@ export async function updateProvider(id: string, input: PatchProviderInput): Pro
   if (input.enabled !== undefined) doc.enabled = input.enabled;
   if (input.baseUrl !== undefined) {
     doc.set("baseUrl", input.baseUrl === "" ? null : input.baseUrl);
+    doc.set("metadata.baseUrlSource", input.baseUrl ? "admin" : undefined);
   }
   if (input.apiKey) {
     const fields = encryptedKeyFields(input.apiKey);
@@ -179,20 +182,17 @@ export async function testProviderConnection(
   const resolved = await resolveCredentials(doc.providerId);
   const apiKey = input.apiKey ?? resolved?.apiKey;
   const baseUrl = input.baseUrl || resolved?.baseUrl;
+  const credentials = runtimeCredentials(doc.providerId, {
+    ...(apiKey ? { apiKey } : {}), ...(baseUrl ? { baseUrl } : {}),
+  });
   const adapter = createProviderAdapter({
     id: doc.providerId,
     name: doc.name,
     type: doc.type,
-    credentials: {
-      ...(apiKey ? { apiKey } : {}),
-      ...(baseUrl ? { baseUrl } : {}),
-    },
+    credentials,
   });
 
-  const result = await adapter.validateCredentials({
-    ...(apiKey ? { apiKey } : {}),
-    ...(baseUrl ? { baseUrl } : {}),
-  });
+  const result = await adapter.validateCredentials(credentials);
 
   doc.lastTestStatus = result.status;
   doc.lastTestedAt = new Date();
@@ -215,23 +215,22 @@ export async function testUserCredential(
 
   const name = stored?.name ?? builtIn?.name ?? providerId;
   const type = stored?.type ?? builtIn?.type ?? "custom";
+  const approved = await resolveCredentials(providerId);
+  assertUserEndpoint(input.baseUrl, approved?.baseUrl);
   const resolved = await resolveCredentials(providerId, userId);
   const apiKey = input.apiKey ?? resolved?.apiKey;
-  const baseUrl = input.baseUrl || resolved?.baseUrl || builtIn?.defaultBaseUrl;
+  const baseUrl = input.baseUrl || resolved?.baseUrl;
+  const credentials = runtimeCredentials(providerId, {
+    ...(apiKey ? { apiKey } : {}), ...(baseUrl ? { baseUrl } : {}),
+  });
   const adapter = createProviderAdapter({
     id: providerId,
     name,
     type,
-    credentials: {
-      ...(apiKey ? { apiKey } : {}),
-      ...(baseUrl ? { baseUrl } : {}),
-    },
+    credentials,
   });
 
-  const result = await adapter.validateCredentials({
-    ...(apiKey ? { apiKey } : {}),
-    ...(baseUrl ? { baseUrl } : {}),
-  });
+  const result = await adapter.validateCredentials(credentials);
 
   return { status: result.status, message: result.message };
 }
@@ -294,6 +293,8 @@ export async function upsertUserCredential(
     throw new AppError("Provider not found", { statusCode: 404, code: "PROVIDER_NOT_FOUND" });
   }
 
+  const approved = await resolveCredentials(providerId);
+  assertUserEndpoint(input.baseUrl, approved?.baseUrl);
   const fields = encryptedKeyFields(input.apiKey);
   const doc = await UserProviderCredential.findOneAndUpdate(
     { userId, providerId },

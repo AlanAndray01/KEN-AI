@@ -75,6 +75,7 @@ export {
   CLOUDFLARE_VISION_MODEL_ID,
   CLOUDFLARE_QUALITY_MODEL_ID,
   CLOUDFLARE_IMAGE_MODEL_ID,
+  CLOUDFLARE_IMAGE_MODEL_IDS,
   DEFAULT_DEEPSEEK_MODEL_ID,
   DEEPSEEK_MODEL_ALIASES,
   GROQ_MODEL_ALIASES,
@@ -168,3 +169,5 @@ export {
 } from "./constants/index.js";
 export type { AutoTask } from "./constants/index.js";
 export type { ModelSelectionMode } from "./types/domain.js";
+
+export { CLOUDFLARE_MODELS, CLOUDFLARE_DISABLED_MODEL_IDS } from "./constants/cloudflareModels.js";

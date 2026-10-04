@@ -52,4 +52,6 @@ jobs:
       # with them — this is what would have caught a broken Vercel build
       # before it reached production instead of after.
       - name: Build
+        env:
+          VITE_API_BASE_URL: https://api.ken-ai.tech/api
         run: npm run build

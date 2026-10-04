@@ -8,6 +8,7 @@ import { AssistantRichBody } from "@/components/RichContent";
 import { ThinkingPipeline } from "@/components/ThinkingPipeline";
 import { UserMessageBubble } from "@/components/UserMessageBubble";
 import { cn } from "@/utils/cn";
+import { describeGenerationError } from "@/utils/apiErrors";
 
 interface ChatTurnProps {
   message: PublicMessage;
@@ -138,7 +139,9 @@ export const ChatTurn = memo(function ChatTurn({
             <div role="alert">
               <p className="font-medium">Generation failed</p>
               <p className="mt-1 text-sm text-fg-muted">
-                The model dropped or returned an error. You can retry this turn.
+                {message.errorCode || message.errorMessage
+                  ? describeGenerationError(message.errorCode, message.errorMessage)
+                  : "The model dropped or returned an error. You can retry this turn."}
               </p>
               <button
                 type="button"

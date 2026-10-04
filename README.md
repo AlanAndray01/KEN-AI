@@ -29,6 +29,8 @@ The frontend does not import vendor AI SDKs and does not connect to MongoDB. App
 
 HTTP API: [docs/API.md](docs/API.md).
 
+Current Worker routing, environment ownership and live readiness: [AI system flow and verification, 3 October 2026](docs/AI_SYSTEM_FLOW_AND_READINESS_2026-10-03.md).
+
 ## Technology stack
 
 - **Client:** React, TypeScript, Vite, Tailwind CSS, React Router, TanStack Query, Zustand, Lucide React

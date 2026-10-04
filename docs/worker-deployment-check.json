@@ -1,0 +1,136 @@
+{
+  "checkedAt": "2026-10-03T12:03:43.915Z",
+  "checks": [
+    {
+      "label": "worker-health",
+      "status": 200,
+      "ms": 565,
+      "ready": true
+    },
+    {
+      "label": "worker-custom-domain-health",
+      "status": 200,
+      "ms": 425,
+      "ready": true
+    },
+    {
+      "label": "express-health",
+      "status": 200,
+      "ms": 757,
+      "health": "ok",
+      "database": "connected"
+    },
+    {
+      "label": "gemini-models",
+      "status": 200,
+      "ms": 249
+    },
+    {
+      "provider": "gemini",
+      "modelCount": 61,
+      "supportedCount": 4,
+      "supportedIds": [
+        "gemini-3.5-flash-lite",
+        "gemini-3.8-flash",
+        "gemini-3.6-flash",
+        "gemini-3.1-pro-preview"
+      ],
+      "sampleIds": [
+        "gemini-2.5-flash",
+        "gemini-2.5-pro",
+        "gemini-2.5-flash-preview-tts",
+        "gemini-2.5-pro-preview-tts",
+        "gemma-4-26b-a4b-it",
+        "gemma-4-31b-it"
+      ]
+    },
+    {
+      "label": "gemini-chat",
+      "status": 429,
+      "ms": 369,
+      "upstreamStatus": 429,
+      "error": "rate_limit_exceeded"
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.1-pro-preview",
+      "chatHasText": false
+    },
+    {
+      "label": "gemini-stream",
+      "status": 429,
+      "ms": 358,
+      "upstreamStatus": 429,
+      "error": "rate_limit_exceeded"
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.1-pro-preview",
+      "streamHasText": false,
+      "streamDone": false
+    },
+    {
+      "label": "gemini-chat",
+      "status": 200,
+      "ms": 741
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.5-flash-lite",
+      "chatHasText": true
+    },
+    {
+      "label": "gemini-chat",
+      "status": 200,
+      "ms": 1147
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.6-flash",
+      "chatHasText": true
+    },
+    {
+      "label": "gemini-stream",
+      "status": 200,
+      "ms": 838
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.5-flash-lite",
+      "streamHasText": true,
+      "streamDone": true
+    },
+    {
+      "label": "gemini-stream",
+      "status": 200,
+      "ms": 1060
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.6-flash",
+      "streamHasText": true,
+      "streamDone": true
+    },
+    {
+      "label": "gemini-chat",
+      "status": 200,
+      "ms": 8045
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.8-flash",
+      "chatHasText": true
+    },
+    {
+      "label": "gemini-stream",
+      "status": 200,
+      "ms": 7055
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.8-flash",
+      "streamHasText": true,
+      "streamDone": true
+    }
+  ]
+}

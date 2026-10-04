@@ -4,6 +4,8 @@ import { AIProvider } from "../../models/AIProvider.js";
 import { UserProviderCredential } from "../../models/UserProviderCredential.js";
 import { AppError } from "../../utils/AppError.js";
 import { gatewayBaseUrl } from "./aiGateway.js";
+import { workerProviderBaseUrl } from "./workerRouting.js";
+import { assertUserEndpoint } from "./endpointPolicy.js";
 import { getBuiltInProvider } from "./catalog.js";
 import { CREDENTIAL_CACHE_MS, createTtlCache, onCredentialsChanged } from "./credentialCache.js";
 import { decryptSecret, lastFour } from "./encryption.js";
@@ -17,6 +19,7 @@ export interface ProviderRecord {
   name: string;
   type: ProviderType;
   baseUrl?: string;
+  baseUrlSource?: "admin";
   enabled: boolean;
   capabilities: ModelCapability[];
   keyLastFour?: string;
@@ -41,6 +44,7 @@ export interface ResolvedCredentials {
 import { nextPoolKey, parseKeyPool } from "./keyPool.js";
 
 function envKeysFor(providerId: string): string[] {
+  if (workerProviderBaseUrl(providerId)) return parseKeyPool(env.KEN_API_KEY);
   switch (providerId) {
     case "groq":
       return parseKeyPool(env.GROQ_KEYS, env.GROQ_API_KEY);
@@ -49,7 +53,7 @@ function envKeysFor(providerId: string): string[] {
     case "deepseek":
       return parseKeyPool(env.DEEPSEEK_KEY, env.DEEPSEEK_API_KEY);
     case "cloudflare":
-      return parseKeyPool(env.CF_TOKEN);
+      return parseKeyPool(env.CLOUDFLARE_WORKER_URL ? env.KEN_API_KEY : env.CF_TOKEN);
     case "openai":
       return parseKeyPool(env.OPENAI_API_KEY);
     case "gemini":
@@ -62,23 +66,24 @@ function envKeysFor(providerId: string): string[] {
 }
 
 export function getEnvApiKey(providerId: string): string | undefined {
-  if (providerId === "cloudflare" && !env.CF_ACCOUNT_ID) return undefined;
+  if (providerId === "cloudflare" && !env.CLOUDFLARE_WORKER_URL && !env.CF_ACCOUNT_ID) return undefined;
   return nextPoolKey(providerId, envKeysFor(providerId));
 }
 
 export function cloudflareBaseUrl(): string | undefined {
+  if (env.CLOUDFLARE_WORKER_URL) return env.CLOUDFLARE_WORKER_URL;
   if (!env.CF_ACCOUNT_ID) return undefined;
   return `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/ai/v1`;
 }
 
 
 export function hasEnvApiKey(providerId: string): boolean {
-  if (providerId === "cloudflare" && !env.CF_ACCOUNT_ID) return false;
+  if (providerId === "cloudflare" && !env.CLOUDFLARE_WORKER_URL && !env.CF_ACCOUNT_ID) return false;
   return envKeysFor(providerId).length > 0;
 }
 
 export function envKeyCount(providerId: string): number {
-  if (providerId === "cloudflare" && !env.CF_ACCOUNT_ID) return 0;
+  if (providerId === "cloudflare" && !env.CLOUDFLARE_WORKER_URL && !env.CF_ACCOUNT_ID) return 0;
   return envKeysFor(providerId).length;
 }
 
@@ -153,6 +158,7 @@ function toProviderRecord(doc: {
   name: string;
   type: string;
   baseUrl?: string | null;
+  metadata?: unknown;
   enabled: boolean;
   capabilities?: ModelCapability[] | null;
   keyLastFour?: string | null;
@@ -165,6 +171,8 @@ function toProviderRecord(doc: {
     name: doc.name,
     type: asProviderType(doc.type),
     ...(doc.baseUrl ? { baseUrl: doc.baseUrl } : {}),
+    ...((doc.metadata as { baseUrlSource?: string } | undefined)?.baseUrlSource === "admin"
+      ? { baseUrlSource: "admin" as const } : {}),
     enabled: doc.enabled,
     capabilities: asCapabilities(doc.capabilities),
     ...(doc.keyLastFour ? { keyLastFour: doc.keyLastFour } : {}),
@@ -221,10 +229,23 @@ export async function resolveCredentials(
   const enabled = stored?.enabled ?? true;
   const name = stored?.name ?? builtIn?.name ?? providerId;
   const type = stored?.type ?? builtIn?.type ?? "custom";
-  // An admin's explicitly stored base URL still wins — the gateway only
-  // redirects providers that were otherwise going to their vendor default.
+  // Worker mode owns both the destination and its shared secret. A personal
+  // vendor token or an old database key cannot authenticate this endpoint.
+  const workerBaseUrl = workerProviderBaseUrl(providerId);
+  if (workerBaseUrl) {
+    return {
+      providerId, name, type, enabled, configured: Boolean(env.KEN_API_KEY), source: "environment",
+      baseUrl: workerBaseUrl,
+      ...(env.KEN_API_KEY ? { apiKey: env.KEN_API_KEY, keyLastFour: lastFour(env.KEN_API_KEY) } : {}),
+      capabilities: builtIn?.capabilities ?? [],
+    };
+  }
+  // Legacy bootstrap stored exact vendor defaults without provenance.
+  // Preserve custom endpoints and newly explicit administrator choices.
+  const implicitDefault = stored?.baseUrlSource !== "admin" &&
+    stored?.baseUrl?.replace(/\/$/, "") === builtIn?.defaultBaseUrl?.replace(/\/$/, "");
   const baseUrl =
-    stored?.baseUrl ??
+    (implicitDefault ? undefined : stored?.baseUrl) ??
     gatewayBaseUrl(providerId) ??
     (providerId === "cloudflare" ? cloudflareBaseUrl() : undefined) ??
     builtIn?.defaultBaseUrl;
@@ -232,6 +253,7 @@ export async function resolveCredentials(
 
   if (userId) {
     const userCred = await loadUserCredential(userId, providerId);
+    assertUserEndpoint(userCred?.baseUrl, baseUrl);
     const userKey = userCred?.apiKey;
     if (userKey || (type === "ollama" && userCred?.baseUrl)) {
       const resolvedBase = userCred?.baseUrl ?? baseUrl;
@@ -315,6 +337,10 @@ export async function describeConfiguredSecret(
   keyLastFour?: string;
   hasUserKey: boolean;
 }> {
+  if (workerProviderBaseUrl(providerId)) {
+    return { configured: Boolean(env.KEN_API_KEY), source: "environment", hasUserKey: false,
+      ...(env.KEN_API_KEY ? { keyLastFour: lastFour(env.KEN_API_KEY) } : {}) };
+  }
   if (userId) {
     const userCred = await loadUserCredential(userId, providerId);
     if (userCred?.keyLastFour) {

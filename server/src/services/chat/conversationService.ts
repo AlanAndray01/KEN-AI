@@ -8,6 +8,9 @@ import {
 } from "@Ken/shared";
 import { Conversation } from "../../models/Conversation.js";
 import { Message } from "../../models/Message.js";
+import { Attachment } from "../../models/Attachment.js";
+import { SharedConversation } from "../../models/SharedConversation.js";
+import { atomicConversation } from "./atomicConversation.js";
 import { AppError } from "../../utils/AppError.js";
 import { modelRegistry } from "../ai/ModelRegistry.js";
 import { getAccessibleGpt } from "../gpts/gptService.js";
@@ -20,6 +23,15 @@ type PatchConversationInput = z.infer<typeof patchConversationSchema>;
 export function conversationExpiry(pinned: boolean): Date | undefined {
   if (pinned) return undefined;
   return new Date(Date.now() + CONVERSATION_TTL_SECONDS * 1000);
+}
+
+/** Call inside the same transaction as the conversation retention change. */
+export async function synchronizeConversationRetention(
+  conversationId: string, userId: string, expiresAt?: Date | null,
+): Promise<void> {
+  await Message.updateMany({ conversationId, userId }, expiresAt
+    ? { $set: { expiresAt } }
+    : { $unset: { expiresAt: 1 } });
 }
 
 export async function capStoredTurns(conversationId: string, userId: string): Promise<void> {
@@ -82,6 +94,7 @@ export async function updateConversation(
   conversationId: string,
   input: PatchConversationInput,
 ) {
+  return atomicConversation(async () => {
   const doc = await findOwnedConversation(userId, conversationId);
   if (input.title) {
     doc.title = input.title;
@@ -100,13 +113,23 @@ export async function updateConversation(
     await modelRegistry.assertModelAvailable(doc.providerId, doc.modelId, userId);
   }
   await doc.save();
+  if (input.pinned !== undefined) {
+    await synchronizeConversationRetention(conversationId, userId, doc.expiresAt);
+  }
   return toPublicConversation(doc);
+  });
 }
 
 export async function deleteConversation(userId: string, conversationId: string): Promise<void> {
+  await atomicConversation(async () => {
   const doc = await findOwnedConversation(userId, conversationId);
+  // Delete only relationships. Library File records and their reusable bytes
+  // remain owned by the user independently of this conversation.
+  await SharedConversation.deleteMany({ conversationId: doc._id, userId });
+  await Attachment.deleteMany({ conversationId: doc._id, userId });
   await Message.deleteMany({ conversationId: doc._id, userId });
   await doc.deleteOne();
+  });
 }
 
 export async function listMessages(
@@ -120,11 +143,18 @@ export async function listMessages(
   if (!options.includeSuperseded) {
     filter["metadata.superseded"] = { $ne: true };
   }
-  if (options.before && mongoose.isValidObjectId(options.before)) {
-    const before = await Message.findOne({ _id: options.before, conversationId: conversation._id, userId });
-    if (before) {
-      filter.createdAt = { $lt: before.createdAt };
+  if (options.before) {
+    if (!mongoose.isValidObjectId(options.before)) {
+      throw new AppError("Invalid message cursor", { statusCode: 400, code: "INVALID_CURSOR" });
     }
+    const before = await Message.findOne({ ...filter, _id: options.before });
+    if (!before) {
+      throw new AppError("Invalid message cursor", { statusCode: 400, code: "INVALID_CURSOR" });
+    }
+    filter.$or = [
+      { createdAt: { $lt: before.createdAt } },
+      { createdAt: before.createdAt, _id: { $lt: before._id } },
+    ];
   }
 
   // The _id tiebreak is load-bearing, not cosmetic. prepareSend writes a user

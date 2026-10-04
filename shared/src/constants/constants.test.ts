@@ -20,10 +20,16 @@ import {
   modelCapabilityLabel,
   resolveGeminiModelId,
   resolveGroqModelId,
+  resolveDeepSeekModelId,
   USER_ROLES,
 } from "./index.js";
 
 describe("shared constants", () => {
+  it("keeps existing DeepSeek chat selections on the current Flash endpoint", () => {
+    expect(resolveDeepSeekModelId("deepseek-chat")).toBe("deepseek-flash");
+    expect(resolveDeepSeekModelId("deepseek-v4-flash")).toBe("deepseek-flash");
+    expect(resolveDeepSeekModelId("deepseek-v4-pro")).toBe("deepseek-v4-pro");
+  });
   it("uses the Ken product name", () => {
     expect(APP_NAME).toBe("Ken AI");
   });

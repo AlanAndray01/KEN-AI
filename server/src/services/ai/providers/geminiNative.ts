@@ -5,6 +5,7 @@ import { toSafeError } from "../../../utils/redact.js";
 import { iterateSseData } from "../../../utils/sse.js";
 import type { AIResponse, ChatMessage, GenerateRequest, StreamEvent } from "../AIProvider.js";
 import { GATEWAY_URL_PREFIX } from "../aiGateway.js";
+import { workerGeminiNativeBaseUrl } from "../workerRouting.js";
 import { compactUsage, normalizeAIResponse, toProviderContents } from "../normalizers/normalize.js";
 import { geminiMaxOutputTokens } from "./compatibleChatBody.js";
 import { geminiEmptyReplyError } from "./geminiReply.js";
@@ -185,18 +186,11 @@ async function fetchNativeGemini(
   auth: NativeGeminiAuth,
   stream: boolean,
 ): Promise<{ response: Response; connectMs: number }> {
+  // No silent retry straight to Google: a gateway rejection is a routing or
+  // auth fault to surface, not a reason to bypass the route the admin chose.
   const first = await postNativeGemini(request, auth, stream);
-  if (
-    !first.response.ok &&
-    (first.response.status === 401 || first.response.status === 403 || first.response.status === 404) &&
-    auth.baseUrl?.startsWith(GATEWAY_URL_PREFIX)
-  ) {
-    logger.warn(
-      { status: first.response.status, modelId: request.modelId },
-      "native Gemini via AI Gateway failed; retrying Google directly",
-    );
-    await first.response.arrayBuffer();
-    return postNativeGemini(request, { apiKey: auth.apiKey }, stream);
+  if (!first.response.ok && auth.baseUrl?.startsWith(GATEWAY_URL_PREFIX)) {
+    logger.warn({ status: first.response.status, modelId: request.modelId }, "native Gemini via AI Gateway failed");
   }
   return first;
 }
@@ -219,7 +213,8 @@ async function postNativeGemini(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-goog-api-key": auth.apiKey,
+        ...(auth.baseUrl && auth.baseUrl === workerGeminiNativeBaseUrl()
+          ? { Authorization: `Bearer ${auth.apiKey}` } : { "x-goog-api-key": auth.apiKey }),
         ...(auth.gatewayToken ? { "cf-aig-authorization": `Bearer ${auth.gatewayToken}` } : {}),
         ...(stream ? { Accept: "text/event-stream" } : {}),
       },

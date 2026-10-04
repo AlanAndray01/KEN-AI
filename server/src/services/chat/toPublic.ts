@@ -1,6 +1,7 @@
 import type { PublicConversation, PublicMessage, PublicMessageFeedback } from "@Ken/shared";
 import type { MessageStatus } from "@Ken/shared";
 import { AUTO_TASKS } from "@Ken/shared";
+import { redactSensitive } from "../../utils/redact.js";
 
 function iso(value: unknown): string {
   if (value instanceof Date) return value.toISOString();
@@ -80,6 +81,9 @@ export function toPublicMessage(
     ...(doc.model ? { model: doc.model } : {}),
     ...(doc.provider ? { provider: doc.provider } : {}),
     status: doc.status ?? "complete",
+    ...(doc.status === "error" && typeof metadata?.errorCode === "string" ? { errorCode: metadata.errorCode } : {}),
+    ...(doc.status === "error" && typeof metadata?.errorMessage === "string"
+      ? { errorMessage: redactSensitive(metadata.errorMessage).slice(0, 500) } : {}),
     ...(doc.parentMessageId ? { parentMessageId: String(doc.parentMessageId) } : {}),
     ...(feedback ? { feedback } : {}),
     ...(doc.generationId ? { generationId: doc.generationId } : {}),

@@ -28,6 +28,7 @@ interface CloudflareModelSearchResponse {
  */
 export function cloudflareModelsUrl(baseUrl: string): string | undefined {
   const trimmed = baseUrl.replace(/\/$/, "");
+  if (new URL(trimmed).hostname !== "api.cloudflare.com") return undefined;
   if (!trimmed.endsWith(OPENAI_COMPAT_SUFFIX)) return undefined;
   return `${trimmed.slice(0, -OPENAI_COMPAT_SUFFIX.length)}/ai/models/search`;
 }

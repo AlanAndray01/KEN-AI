@@ -35,6 +35,13 @@ export interface PrepareTurnInput {
   modelId: string;
   files?: ReadonlyArray<TurnFile>;
   enabledTools?: ChatToolId[];
+  abortSignal?: AbortSignal;
+  /**
+   * The user is sending a picture the composer's Generate button already made.
+   * Its draft still reads like a creation request, so only an explicit tool
+   * toggle may generate again.
+   */
+  skipImageIntent?: boolean;
 }
 
 export interface PreparedTurn {
@@ -78,7 +85,9 @@ interface AutoResolution extends ResolvedModel {
  */
 export async function prepareTurn(input: PrepareTurnInput): Promise<PreparedTurn> {
   const userFiles = input.files ?? [];
-  const enabledTools = withImageGenerationTool(input.content, input.enabledTools);
+  const enabledTools = input.skipImageIntent
+    ? input.enabledTools && input.enabledTools.length > 0 ? [...input.enabledTools] : undefined
+    : withImageGenerationTool(input.content, input.enabledTools);
   const autoPlan = isAutoSelection(input.providerId, input.modelId)
     ? await routeAuto(input.userId, {
         content: input.content,
@@ -89,6 +98,20 @@ export async function prepareTurn(input: PrepareTurnInput): Promise<PreparedTurn
   const requested = autoPlan ?? (await resolveExecutionModel(input.userId, input.providerId, input.modelId));
   const imageOnly = isImageOnlyTurn(requested.modelId, autoPlan?.autoTask);
   const toolsForTurn = imageOnly ? ensureImageGenerationTool(enabledTools) : enabledTools;
+  const generates = Boolean(toolsForTurn?.includes("image_generation"));
+  // Everything that can reject this turn runs before an image is generated,
+  // so a refusal never costs image quota, storage, or a provider call.
+  if (generates && userFiles.length > 0) {
+    if (imageOnly) {
+      throw new AppError(
+        "Image generation can't use attachments. Remove the file to generate a picture, or choose a vision model to ask about it.",
+        { statusCode: 400, code: "IMAGE_INPUT_UNSUPPORTED", expose: true },
+      );
+    }
+    const preRouted = await routeForAttachments(input.userId, requested, [...userFiles]);
+    assertAttachmentsAllowed(preRouted.model.capabilities, [...userFiles]);
+  }
+  input.abortSignal?.throwIfAborted();
   const toolOutcome =
     toolsForTurn && toolsForTurn.length > 0
       ? await aiProviderManager.applyEnabledTools({
@@ -96,8 +119,15 @@ export async function prepareTurn(input: PrepareTurnInput): Promise<PreparedTurn
           userId: input.userId,
           capabilities: imageOnly ? ["imageGeneration"] : requested.model.capabilities,
           enabledTools: toolsForTurn,
+          ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
+          // A pinned Flux selection must be answered by Flux. Auto and
+          // chat-detected pictures may fail over; the file records the producer.
+          ...(imageOnly && !autoPlan
+            ? { imageProviderId: requested.providerId, imageModelId: requested.modelId }
+            : {}),
         })
       : { systemMessages: [], files: [] };
+  input.abortSignal?.throwIfAborted();
   const generatedIds = toolOutcome.files.map((file) => file.id);
   if (imageOnly && generatedIds.length === 0) {
     throw imageGenerationEmptyError();
@@ -126,10 +156,15 @@ export async function prepareTurn(input: PrepareTurnInput): Promise<PreparedTurn
   // Lite downshift and greetings-as-lite pruning are Auto-only. A pinned 70B
   // or Pro selection must run as that model, including on "hi".
   const neuronTier = autoPlan ? classifyNeuronTier(autoPlan.autoTask) : "large";
+  // On an image-only turn the picture is the reply, so the message is labelled
+  // with the backend that actually drew it — after a failover that is not the
+  // one Auto first chose.
+  const producer = imageOnly ? imageProducer(generatedFiles[0]) : undefined;
+  const label = producer && producer.modelId !== routed.modelId ? producer : undefined;
   return {
-    providerId: routed.providerId,
-    modelId: routed.modelId,
-    modelName: describeSelectedModel(routed.modelId, routed.model.name),
+    providerId: label?.providerId ?? routed.providerId,
+    modelId: label?.modelId ?? routed.modelId,
+    modelName: label ? describeSelectedModel(label.modelId) : describeSelectedModel(routed.modelId, routed.model.name),
     threadProviderId: autoPlan ? AUTO_PROVIDER_ID : routed.providerId,
     threadModelId: autoPlan ? AUTO_MODEL_ID : routed.modelId,
     imageOnly,
@@ -163,7 +198,7 @@ async function routeAuto(
           ? "No configured model can read this image. Add a Gemini or OpenAI key, or pick a model, then send again."
           : plan.task === "image"
             ? "Image generation isn't turned on for this site yet, so Auto has no image model to use."
-            : "No model is available for Auto. Add an API key, or pick a model, then send again.";
+            : "No model is available for Auto right now. Providers may be unavailable or over quota. Check provider configuration, then retry or select an available model.";
     throw new AppError(message, { statusCode: 503, code: "AUTO_ROUTE_UNAVAILABLE", expose: true });
   }
   const route = applyLiteDownshift(plan.route, models, plan.task);
@@ -225,6 +260,15 @@ function applyLiteDownshift(
     preferred: false,
     reason: `${route.reason}|${NEURON_GUARD_REASON}`,
   };
+}
+
+function imageProducer(file: { metadata?: unknown } | undefined): { providerId: string; modelId: string } | undefined {
+  const meta = file?.metadata;
+  const generatedBy =
+    meta && typeof meta === "object" ? (meta as { generatedBy?: { providerId?: unknown; modelId?: unknown } }).generatedBy : undefined;
+  return typeof generatedBy?.providerId === "string" && typeof generatedBy.modelId === "string"
+    ? { providerId: generatedBy.providerId, modelId: generatedBy.modelId }
+    : undefined;
 }
 
 function isImageOnlyTurn(modelId: string, autoTask?: AutoTask): boolean {

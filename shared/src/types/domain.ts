@@ -189,6 +189,8 @@ export interface PublicMessage {
   /** Set when Auto chose this model, naming what it routed for. */
   autoTask?: AutoTask;
   status: MessageStatus;
+  errorCode?: string;
+  errorMessage?: string;
   parentMessageId?: string;
   feedback?: PublicMessageFeedback;
   generationId?: string;

@@ -2,6 +2,7 @@ import { logger } from "../../config/logger.js";
 import { AppError } from "../../utils/AppError.js";
 import { redactSensitive } from "../../utils/redact.js";
 import type { GeneratedImage, ImageGenerationProvider, ImageGenerationRequest } from "./ImageGenerationProvider.js";
+import { imageRequestSignal } from "./ImageGenerationProvider.js";
 
 const OPENAI_IMAGE_URL = "https://api.openai.com/v1/images/generations";
 const OPENAI_IMAGE_MODEL_ID = "dall-e-3";
@@ -20,7 +21,9 @@ export class OpenAIImageProvider implements ImageGenerationProvider {
   }
 
   async generate(request: ImageGenerationRequest): Promise<GeneratedImage> {
+    const signal = imageRequestSignal(request);
     const response = await fetch(OPENAI_IMAGE_URL, {
+      signal,
       method: "POST",
       headers: {
         Authorization: `Bearer ${this.apiKey}`,
@@ -58,10 +61,12 @@ export class OpenAIImageProvider implements ImageGenerationProvider {
         mimeType: "image/png",
         buffer: Buffer.from(item.b64, "base64"),
         prompt: request.prompt,
+        providerId: this.id,
+        modelId: OPENAI_IMAGE_MODEL_ID,
       };
     }
     if (item?.url) {
-      return fetchRemoteImage(item.url, request.prompt);
+      return fetchRemoteImage(item.url, request.prompt, signal);
     }
     logger.warn({ status: response.status, model: OPENAI_IMAGE_MODEL_ID }, "openai returned no image bytes");
     throw new AppError("Image generation provider returned no image", {
@@ -72,8 +77,8 @@ export class OpenAIImageProvider implements ImageGenerationProvider {
   }
 }
 
-async function fetchRemoteImage(url: string, prompt: string): Promise<GeneratedImage> {
-  const image = await fetch(url);
+async function fetchRemoteImage(url: string, prompt: string, signal: AbortSignal): Promise<GeneratedImage> {
+  const image = await fetch(url, { signal });
   if (!image.ok) {
     const body = await image.text().catch(() => "");
     logger.warn(
@@ -94,6 +99,8 @@ async function fetchRemoteImage(url: string, prompt: string): Promise<GeneratedI
     mimeType: image.headers.get("content-type") || "image/png",
     buffer: Buffer.from(await image.arrayBuffer()),
     prompt,
+    providerId: "openai",
+    modelId: OPENAI_IMAGE_MODEL_ID,
   };
 }
 

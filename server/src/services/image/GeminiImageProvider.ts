@@ -3,13 +3,14 @@ import { logger } from "../../config/logger.js";
 import { AppError } from "../../utils/AppError.js";
 import { redactSensitive } from "../../utils/redact.js";
 import type { GeneratedImage, ImageGenerationProvider, ImageGenerationRequest } from "./ImageGenerationProvider.js";
+import { imageRequestSignal } from "./ImageGenerationProvider.js";
 
 const GEMINI_IMAGE_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_IMAGE_MODEL_ID}:generateContent`;
 
 export class GeminiImageProvider implements ImageGenerationProvider {
   readonly id = "gemini";
 
-  constructor(private readonly apiKey: string) {}
+  constructor(private readonly apiKey: string, private readonly options: { runUrl?: string } = {}) {}
 
   isConfigured(): boolean {
     return this.apiKey.length > 0;
@@ -20,11 +21,12 @@ export class GeminiImageProvider implements ImageGenerationProvider {
   }
 
   async generate(request: ImageGenerationRequest): Promise<GeneratedImage> {
-    const response = await fetch(GEMINI_IMAGE_URL, {
+    const response = await fetch(this.options.runUrl ?? GEMINI_IMAGE_URL, {
+      signal: imageRequestSignal(request),
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-goog-api-key": this.apiKey,
+        ...(this.options.runUrl ? { Authorization: `Bearer ${this.apiKey}` } : { "x-goog-api-key": this.apiKey }),
       },
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: request.prompt }] }],
@@ -65,6 +67,8 @@ export class GeminiImageProvider implements ImageGenerationProvider {
       mimeType: image.mimeType,
       buffer: Buffer.from(image.data, "base64"),
       prompt: request.prompt,
+      providerId: this.id,
+      modelId: GEMINI_IMAGE_MODEL_ID,
     };
   }
 }

@@ -181,18 +181,19 @@ export const MAX_STORED_MESSAGE_TURNS = 100;
 /** Unpinned chats and their messages auto-purge after 30 days. */
 export const CONVERSATION_TTL_SECONDS = 2_592_000;
 
-/** DeepSeek's public chat id. Requested "v4 flash" aliases onto this. */
-export const DEFAULT_DEEPSEEK_MODEL_ID = "deepseek-chat";
+/** Current public Flash id, verified by authenticated provider discovery. */
+export const DEFAULT_DEEPSEEK_MODEL_ID = "deepseek-flash";
 
 export const DEEPSEEK_MODEL_ALIASES: Readonly<Record<string, string>> = {
   "deepseek-v4-flash": DEFAULT_DEEPSEEK_MODEL_ID,
+  "deepseek-chat": DEFAULT_DEEPSEEK_MODEL_ID,
 };
 
 export function resolveDeepSeekModelId(modelId: string): string {
   return DEEPSEEK_MODEL_ALIASES[modelId] ?? modelId;
 }
 
-export const DEFAULT_CEREBRAS_MODEL_ID = "llama-3.3-70b";
+export const DEFAULT_CEREBRAS_MODEL_ID = "qwen-3.8-27b";
 
 /** Fast/small Cloudflare default — real 80k-token window, verified live against the API. */
 export const DEFAULT_CLOUDFLARE_MODEL_ID = "@cf/meta/llama-3.2-3b-instruct";
@@ -225,8 +226,26 @@ export const CLOUDFLARE_QUALITY_MODEL_ID = "@cf/meta/llama-3.3-70b-instruct-fp8-
  */
 export const CLOUDFLARE_IMAGE_MODEL_ID = "@cf/black-forest-labs/flux-1-schnell";
 
+/**
+ * Every Workers AI text-to-image model this account can run on the free plan,
+ * each verified with a live generation. Schnell stays first: it is Auto's
+ * image model and the default when no image model is pinned. Request and
+ * response shapes differ per model; CloudflareImageProvider owns that mapping.
+ */
+export const CLOUDFLARE_IMAGE_MODEL_IDS = [
+  CLOUDFLARE_IMAGE_MODEL_ID,
+  "@cf/black-forest-labs/flux-2-klein-4b",
+  "@cf/black-forest-labs/flux-2-klein-9b",
+  "@cf/black-forest-labs/flux-2-dev",
+  "@cf/leonardo/lucid-origin",
+  "@cf/leonardo/phoenix-1.0",
+  "@cf/stabilityai/stable-diffusion-xl-base-1.0",
+  "@cf/bytedance/stable-diffusion-xl-lightning",
+  "@cf/lykon/dreamshaper-8-lcm",
+] as const;
+
 export function isCloudflareImageModel(modelId: string): boolean {
-  return modelId === CLOUDFLARE_IMAGE_MODEL_ID;
+  return (CLOUDFLARE_IMAGE_MODEL_IDS as readonly string[]).includes(modelId);
 }
 
 /** Heuristic token estimate used in the composer and server context trimmer (~4 chars/token). */

@@ -1,0 +1,358 @@
+{
+  "checkedAt": "2026-10-03T12:12:53.840Z",
+  "checks": [
+    {
+      "label": "worker-health",
+      "status": 200,
+      "ms": 260,
+      "ready": true
+    },
+    {
+      "label": "worker-custom-domain-health",
+      "status": 200,
+      "ms": 335,
+      "ready": true
+    },
+    {
+      "label": "express-health",
+      "status": 200,
+      "ms": 792,
+      "health": "ok",
+      "database": "connected"
+    },
+    {
+      "label": "cerebras-models",
+      "status": 200,
+      "ms": 334
+    },
+    {
+      "provider": "cerebras",
+      "modelCount": 2,
+      "supportedCount": 2,
+      "supportedIds": [
+        "qwen-3.8-27b",
+        "gpt-oss-120b"
+      ],
+      "sampleIds": [
+        "gpt-oss-120b",
+        "qwen-3.8-27b"
+      ]
+    },
+    {
+      "label": "groq-models",
+      "status": 200,
+      "ms": 365
+    },
+    {
+      "provider": "groq",
+      "modelCount": 11,
+      "supportedCount": 3,
+      "supportedIds": [
+        "qwen/qwen3.8-27b",
+        "openai/gpt-oss-20b",
+        "openai/gpt-oss-120b"
+      ],
+      "sampleIds": [
+        "openai/gpt-oss-120b",
+        "meta-llama/llama-prompt-guard-2-22m",
+        "allam-2-7b",
+        "whisper-large-v3-turbo",
+        "openai/gpt-oss-20b",
+        "canopylabs/orpheus-arabic-saudi"
+      ]
+    },
+    {
+      "label": "deepseek-models",
+      "status": 200,
+      "ms": 831
+    },
+    {
+      "provider": "deepseek",
+      "modelCount": 2,
+      "supportedCount": 2,
+      "supportedIds": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ],
+      "sampleIds": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ]
+    },
+    {
+      "label": "gemini-models",
+      "status": 200,
+      "ms": 1069
+    },
+    {
+      "provider": "gemini",
+      "modelCount": 61,
+      "supportedCount": 4,
+      "supportedIds": [
+        "gemini-3.5-flash-lite",
+        "gemini-3.8-flash",
+        "gemini-3.6-flash",
+        "gemini-3.1-pro-preview"
+      ],
+      "sampleIds": [
+        "gemini-2.5-flash",
+        "gemini-2.5-pro",
+        "gemini-2.5-flash-preview-tts",
+        "gemini-2.5-pro-preview-tts",
+        "gemma-4-26b-a4b-it",
+        "gemma-4-31b-it"
+      ]
+    },
+    {
+      "label": "groq-chat",
+      "status": 200,
+      "ms": 186
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "chatHasText": true
+    },
+    {
+      "label": "groq-stream",
+      "status": 200,
+      "ms": 97
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "streamHasText": true,
+      "streamDone": true
+    },
+    {
+      "label": "cerebras-chat",
+      "status": 503,
+      "ms": 350,
+      "upstreamStatus": 402,
+      "error": "provider_billing_required"
+    },
+    {
+      "provider": "cerebras",
+      "model": "qwen-3.8-27b",
+      "chatHasText": false
+    },
+    {
+      "label": "cerebras-chat",
+      "status": 503,
+      "ms": 360,
+      "upstreamStatus": 402,
+      "error": "provider_billing_required"
+    },
+    {
+      "provider": "cerebras",
+      "model": "gpt-oss-120b",
+      "chatHasText": false
+    },
+    {
+      "label": "groq-chat",
+      "status": 200,
+      "ms": 428
+    },
+    {
+      "provider": "groq",
+      "model": "openai/gpt-oss-20b",
+      "chatHasText": true
+    },
+    {
+      "label": "groq-chat",
+      "status": 200,
+      "ms": 521
+    },
+    {
+      "provider": "groq",
+      "model": "openai/gpt-oss-120b",
+      "chatHasText": true
+    },
+    {
+      "label": "gemini-chat",
+      "status": 429,
+      "ms": 540,
+      "upstreamStatus": 429,
+      "error": "rate_limit_exceeded"
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.1-pro-preview",
+      "chatHasText": false
+    },
+    {
+      "label": "deepseek-chat",
+      "status": 503,
+      "ms": 714,
+      "upstreamStatus": 402,
+      "error": "provider_billing_required"
+    },
+    {
+      "provider": "deepseek",
+      "model": "deepseek-v4-pro",
+      "chatHasText": false
+    },
+    {
+      "label": "deepseek-chat",
+      "status": 503,
+      "ms": 721,
+      "upstreamStatus": 402,
+      "error": "provider_billing_required"
+    },
+    {
+      "provider": "deepseek",
+      "model": "deepseek-flash",
+      "chatHasText": false
+    },
+    {
+      "label": "cerebras-stream",
+      "status": 503,
+      "ms": 429,
+      "upstreamStatus": 402,
+      "error": "provider_billing_required"
+    },
+    {
+      "provider": "cerebras",
+      "model": "gpt-oss-120b",
+      "streamHasText": false,
+      "streamDone": false
+    },
+    {
+      "label": "cerebras-stream",
+      "status": 503,
+      "ms": 446,
+      "upstreamStatus": 402,
+      "error": "provider_billing_required"
+    },
+    {
+      "provider": "cerebras",
+      "model": "qwen-3.8-27b",
+      "streamHasText": false,
+      "streamDone": false
+    },
+    {
+      "label": "groq-stream",
+      "status": 200,
+      "ms": 382
+    },
+    {
+      "provider": "groq",
+      "model": "openai/gpt-oss-20b",
+      "streamHasText": true,
+      "streamDone": true
+    },
+    {
+      "label": "groq-stream",
+      "status": 200,
+      "ms": 528
+    },
+    {
+      "provider": "groq",
+      "model": "openai/gpt-oss-120b",
+      "streamHasText": true,
+      "streamDone": true
+    },
+    {
+      "label": "gemini-stream",
+      "status": 429,
+      "ms": 530,
+      "upstreamStatus": 429,
+      "error": "rate_limit_exceeded"
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.1-pro-preview",
+      "streamHasText": false,
+      "streamDone": false
+    },
+    {
+      "label": "deepseek-stream",
+      "status": 503,
+      "ms": 628,
+      "upstreamStatus": 402,
+      "error": "provider_billing_required"
+    },
+    {
+      "provider": "deepseek",
+      "model": "deepseek-v4-pro",
+      "streamHasText": false,
+      "streamDone": false
+    },
+    {
+      "label": "deepseek-stream",
+      "status": 503,
+      "ms": 643,
+      "upstreamStatus": 402,
+      "error": "provider_billing_required"
+    },
+    {
+      "provider": "deepseek",
+      "model": "deepseek-flash",
+      "streamHasText": false,
+      "streamDone": false
+    },
+    {
+      "label": "gemini-chat",
+      "status": 200,
+      "ms": 1414
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.6-flash",
+      "chatHasText": true
+    },
+    {
+      "label": "gemini-stream",
+      "status": 200,
+      "ms": 1130
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.6-flash",
+      "streamHasText": true,
+      "streamDone": true
+    },
+    {
+      "label": "gemini-chat",
+      "status": 200,
+      "ms": 2557
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.8-flash",
+      "chatHasText": true
+    },
+    {
+      "label": "gemini-stream",
+      "status": 200,
+      "ms": 4951
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.8-flash",
+      "streamHasText": true,
+      "streamDone": true
+    },
+    {
+      "label": "gemini-chat",
+      "status": 200,
+      "ms": 12108
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.5-flash-lite",
+      "chatHasText": true
+    },
+    {
+      "label": "gemini-stream",
+      "status": 200,
+      "ms": 7878
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.5-flash-lite",
+      "streamHasText": true,
+      "streamDone": true
+    }
+  ]
+}

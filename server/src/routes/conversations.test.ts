@@ -209,6 +209,8 @@ describe("conversation APIs", () => {
       end: vi.fn(),
       writableEnded: false,
       socket: { setNoDelay: vi.fn() },
+      on: vi.fn(),
+      off: vi.fn(),
     };
     const req = {
       body: { content: "Hi" },

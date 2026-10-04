@@ -1,0 +1,7 @@
+# Local development only. Put production secrets in Cloudflare -> kenai -> Settings -> Variables and Secrets.
+# Use the SAME single random KEN_API_KEY in server/.env and the Worker.
+KEN_API_KEY=
+GEMINI_KEYS=
+GROQ_KEYS=
+CEREBRAS_KEYS=
+DEEPSEEK_API_KEY=

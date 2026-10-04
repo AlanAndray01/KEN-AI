@@ -17,6 +17,11 @@ export interface ToolExecuteContext {
    * Chat draws do not, so they consume here. Default is to consume.
    */
   skipImageRateLimit?: boolean;
+  abortSignal?: AbortSignal;
+  /** Restrict generation to this backend instead of the failover chain. */
+  imageProviderId?: string;
+  /** The exact image model the user picked on that backend. */
+  imageModelId?: string;
 }
 
 export type ToolExecuteResult =
@@ -113,12 +118,27 @@ export class ToolManager {
       if (!ctx.skipImageRateLimit) {
         await consumeImageGenerationLimit(ctx.userId);
       }
-      const generated = await this.images.generate({ prompt, userId: ctx.userId });
+      const generated = await this.images.generate({
+        prompt,
+        userId: ctx.userId,
+        ...(ctx.abortSignal ? { abortSignal: ctx.abortSignal } : {}),
+        ...(ctx.imageProviderId ? { providerId: ctx.imageProviderId } : {}),
+        ...(ctx.imageModelId ? { modelId: ctx.imageModelId } : {}),
+      });
+      ctx.abortSignal?.throwIfAborted();
       const file = await uploadUserFile({
         userId: ctx.userId,
         originalName: generated.mimeType === "image/jpeg" ? "Ken-image.jpg" : "Ken-image.png",
         mimeType: generated.mimeType,
         buffer: generated.buffer,
+        // Provenance is the backend that actually produced the bytes, which
+        // after a failover is not necessarily the one first asked.
+        metadata: {
+          generatedBy: {
+            ...(generated.providerId ? { providerId: generated.providerId } : {}),
+            ...(generated.modelId ? { modelId: generated.modelId } : {}),
+          },
+        },
       });
       return { type: "image", file };
     }
@@ -141,6 +161,9 @@ export class ToolManager {
     content: string;
     userId: string;
     capabilities: ModelCapability[];
+    abortSignal?: AbortSignal;
+    imageProviderId?: string;
+    imageModelId?: string;
   }): Promise<ChatToolOutcome> {
     const enabled = input.enabledTools ?? [];
     const systemMessages: ChatMessage[] = [];
@@ -164,7 +187,12 @@ export class ToolManager {
       const result = await this.execute(
         "image_generation",
         { prompt: input.content },
-        { userId: input.userId },
+        {
+          userId: input.userId,
+          ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
+          ...(input.imageProviderId ? { imageProviderId: input.imageProviderId } : {}),
+          ...(input.imageModelId ? { imageModelId: input.imageModelId } : {}),
+        },
       );
       if (result.type === "image") files.push(result.file);
     }

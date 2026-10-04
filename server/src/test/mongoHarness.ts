@@ -1,9 +1,9 @@
-import { MongoMemoryServer } from "mongodb-memory-server";
+import { MongoMemoryReplSet } from "mongodb-memory-server";
 import mongoose from "mongoose";
 import type { Express } from "express";
 import { registerModels } from "../models/index.js";
 
-let instance: MongoMemoryServer | undefined;
+let instance: MongoMemoryReplSet | undefined;
 let startFailure: string | undefined;
 
 export interface MongoStartResult {
@@ -24,7 +24,7 @@ export async function tryStartInMemoryMongo(): Promise<MongoStartResult> {
   if (startFailure) return { ok: false, reason: startFailure };
 
   try {
-    instance = await MongoMemoryServer.create();
+    instance = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
     mongoose.set("strictQuery", true);
     await mongoose.connect(instance.getUri(), { autoIndex: false });
     registerModels();

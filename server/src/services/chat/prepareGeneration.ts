@@ -1,10 +1,11 @@
+import { atomicConversation } from "./atomicConversation.js";
 import { randomUUID } from "node:crypto";
 import mongoose from "mongoose";
 import type { ChatToolId } from "@Ken/shared";
 import { AppError } from "../../utils/AppError.js";
 import { Conversation } from "../../models/Conversation.js";
 import { Message } from "../../models/Message.js";
-import { findOwnedConversation, titleFromContent, capStoredTurns, conversationExpiry } from "./conversationService.js";
+import { findOwnedConversation, titleFromContent, capStoredTurns, conversationExpiry, synchronizeConversationRetention } from "./conversationService.js";
 import { getAccessibleGpt } from "../gpts/gptService.js";
 import {
   copyMessageAttachments,
@@ -33,6 +34,8 @@ export async function prepareSend(input: {
   attachmentIds?: string[];
   enabledTools?: ChatToolId[];
   customGptId?: string;
+  abortSignal?: AbortSignal;
+  generationId?: string;
 }): Promise<PreparedGeneration> {
   // Routing below reads the model list; loading it now overlaps that read
   // with the conversation lookup instead of queueing behind it.
@@ -55,6 +58,8 @@ export async function prepareSend(input: {
   const earlyIds = input.attachmentIds ?? [];
   const earlyFiles = earlyIds.length > 0 ? await loadOwnedFiles(input.userId, earlyIds) : [];
   const turn = await prepareTurn({
+    ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
+    ...(earlyFiles.some(isGeneratedImage) ? { skipImageIntent: true } : {}),
     userId: input.userId,
     content: input.content,
     providerId: requestedProviderId,
@@ -63,6 +68,9 @@ export async function prepareSend(input: {
     ...(input.enabledTools ? { enabledTools: input.enabledTools } : {}),
   });
 
+  // Preparation can spend a long time in tools; nothing is written for a turn
+  // the user already stopped.
+  input.abortSignal?.throwIfAborted();
   const titleFile = earlyFiles[0] ?? turn.generatedFiles[0];
   const titleSource = input.content.trim() || titleFile?.originalName || "New chat";
   const expiresAt = conversationExpiry(false);
@@ -89,11 +97,12 @@ export async function prepareSend(input: {
   if (customGptId) {
     owned.customGptId = new mongoose.Types.ObjectId(customGptId);
   }
+  const renewsExpiry = Boolean(conversation) && !owned.pinned;
   if (!owned.pinned) {
     owned.set("expiresAt", conversationExpiry(false));
   }
 
-  const generationId = randomUUID();
+  const generationId = input.generationId ?? randomUUID();
   const userOid = new mongoose.Types.ObjectId();
   const assistantOid = new mongoose.Types.ObjectId();
   owned.messageCount = (owned.messageCount ?? 0) + 2;
@@ -125,6 +134,11 @@ export async function prepareSend(input: {
       expiresAt: owned.expiresAt,
     })),
     owned.save(),
+    // Activity renews the thread's expiry. Earlier turns move with it, or they
+    // expire underneath a conversation that is still alive.
+    renewsExpiry
+      ? synchronizeConversationRetention(String(owned._id), input.userId, owned.expiresAt)
+      : Promise.resolve(),
   ]);
 
   const userAttachments = await persistFilesOnMessage({
@@ -146,7 +160,7 @@ export async function prepareSend(input: {
     assistantMessage: toPublicMessage(assistantDoc, assistantAttachments),
     conversation: toPublicConversation(owned),
     ...(customGptId ? { customGptId } : {}),
-  });
+  }, input.abortSignal);
 }
 
 /**
@@ -167,6 +181,8 @@ export async function prepareEdit(input: {
   content: string;
   providerId?: string;
   modelId?: string;
+  abortSignal?: AbortSignal;
+  generationId?: string;
 }): Promise<PreparedGeneration> {
   const conversation = await findOwnedConversation(input.userId, input.conversationId);
   if (!mongoose.isValidObjectId(input.messageId)) {
@@ -194,9 +210,28 @@ export async function prepareEdit(input: {
     });
   }
 
-  const generationId = randomUUID();
+  const attachmentMap = await publicAttachmentsForMessages([String(target._id)]);
+  const existingAttachments = attachmentMap.get(String(target._id)) ?? [];
+  const selectedProviderId = input.providerId ?? conversation.providerId;
+  const selectedModelId = input.modelId ?? conversation.modelId;
+  const turn = await prepareTurn({
+    ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
+    userId: input.userId,
+    content: input.content,
+    providerId: selectedProviderId,
+    modelId: selectedModelId,
+    files: existingAttachments,
+  });
+  input.abortSignal?.throwIfAborted();
+  // Validation and tools ran above, so a failure there writes nothing. The
+  // revised turn, its attachments, the reply placeholder and the counters
+  // commit together or not at all.
+  const persisted = await atomicConversation(async () => {
+  const current = await findOwnedConversation(input.userId, input.conversationId);
+  await assertStillActive(target._id, current._id, input.userId);
+  const generationId = input.generationId ?? randomUUID();
   const userDoc = await Message.create({
-    conversationId: conversation._id,
+    conversationId: current._id,
     userId: input.userId,
     role: "user",
     content: input.content,
@@ -206,7 +241,7 @@ export async function prepareEdit(input: {
       editedAt: new Date().toISOString(),
       editedFromMessageId: String(target._id),
     },
-    ...(conversation.expiresAt ? { expiresAt: conversation.expiresAt } : {}),
+    ...(current.expiresAt ? { expiresAt: current.expiresAt } : {}),
   });
 
   // The model only sees files hanging off the newest user turn, so a reworded
@@ -220,49 +255,42 @@ export async function prepareEdit(input: {
     await userDoc.save();
   }
 
-  const selectedProviderId = input.providerId ?? conversation.providerId;
-  const selectedModelId = input.modelId ?? conversation.modelId;
-  const turn = await prepareTurn({
-    userId: input.userId,
-    content: input.content,
-    providerId: selectedProviderId,
-    modelId: selectedModelId,
-    files: attachments,
-  });
-  applyThreadSelection(conversation, turn);
+  applyThreadSelection(current, turn);
 
   const assistantDoc = await Message.create(
     streamingAssistantFields({
-      conversationId: conversation._id,
+      conversationId: current._id,
       userId: input.userId,
       parentMessageId: userDoc._id,
       generationId,
       turn,
-      expiresAt: conversation.expiresAt,
+      expiresAt: current.expiresAt,
     }),
   );
-  conversation.messageCount = (conversation.messageCount ?? 0) + 2;
-  conversation.lastMessageAt = new Date();
-  conversation.lastMessagePreview = input.content.slice(0, 280);
-  await conversation.save();
+  current.messageCount = (current.messageCount ?? 0) + 2;
+  current.lastMessageAt = new Date();
+  current.lastMessagePreview = input.content.slice(0, 280);
+  await current.save();
 
   const assistantAttachments = await persistGeneratedFiles(
     input.userId,
-    String(conversation._id),
+    String(current._id),
     assistantDoc,
     turn,
   );
 
-  return finishPreparedGeneration({
+  return {
     turn,
     userId: input.userId,
-    conversationId: String(conversation._id),
+    conversationId: String(current._id),
     generationId,
     userMessage: toPublicMessage(userDoc, attachments),
     assistantMessage: toPublicMessage(assistantDoc, assistantAttachments),
-    conversation: toPublicConversation(conversation),
-    ...(conversation.customGptId ? { customGptId: String(conversation.customGptId) } : {}),
+    conversation: toPublicConversation(current),
+    ...(current.customGptId ? { customGptId: String(current.customGptId) } : {}),
+  };
   });
+  return finishPreparedGeneration(persisted, input.abortSignal);
 }
 
 export async function prepareRegenerate(input: {
@@ -271,6 +299,8 @@ export async function prepareRegenerate(input: {
   messageId: string;
   providerId?: string;
   modelId?: string;
+  abortSignal?: AbortSignal;
+  generationId?: string;
 }): Promise<PreparedGeneration> {
   const conversation = await findOwnedConversation(input.userId, input.conversationId);
   if (!mongoose.isValidObjectId(input.messageId)) {
@@ -302,6 +332,50 @@ export async function prepareRegenerate(input: {
     throw new AppError("Cannot regenerate this message", { statusCode: 400, code: "REGENERATE_UNAVAILABLE" });
   }
 
+  const attachmentMap = await publicAttachmentsForMessages([String(userMessage._id)]);
+  const existingAttachments = attachmentMap.get(String(userMessage._id)) ?? [];
+  const selectedProviderId = input.providerId ?? conversation.providerId;
+  const selectedModelId = input.modelId ?? conversation.modelId;
+  const turn = await prepareTurn({
+    ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
+    userId: input.userId,
+    content: userMessage.content ?? "",
+    providerId: selectedProviderId,
+    modelId: selectedModelId,
+    files: existingAttachments,
+  });
+  input.abortSignal?.throwIfAborted();
+  // Nothing is superseded until a replacement exists, so a failed preparation
+  // above leaves the old answer and everything after it visible. A concurrent
+  // regenerate of the same branch conflicts here instead of silently winning.
+  const persisted = await atomicConversation(async () => {
+  const current = await findOwnedConversation(input.userId, input.conversationId);
+  await assertStillActive(target._id, current._id, input.userId);
+  if (!userMessage._id.equals(target._id)) {
+    await assertStillActive(userMessage._id, current._id, input.userId);
+  }
+  applyThreadSelection(current, turn);
+
+  const generationId = input.generationId ?? randomUUID();
+  const assistantDoc = await Message.create(
+    streamingAssistantFields({
+      conversationId: current._id,
+      userId: input.userId,
+      parentMessageId: userMessage._id,
+      generationId,
+      turn,
+      expiresAt: current.expiresAt,
+    }),
+  );
+  current.messageCount = (current.messageCount ?? 0) + 1;
+  await current.save();
+  const assistantAttachments = await persistGeneratedFiles(
+    input.userId,
+    String(current._id),
+    assistantDoc,
+    turn,
+  );
+
   // Regenerating is a branch, not an append: every turn after the target
   // answered a reply that is about to be replaced, so keeping them would leave
   // the thread reading as a conversation that never happened and would feed the
@@ -314,8 +388,9 @@ export async function prepareRegenerate(input: {
   // millisecond, and a plain $gt would leave that reply behind.
   await Message.updateMany(
     {
-      conversationId: conversation._id,
+      conversationId: current._id,
       userId: input.userId,
+      _id: { $ne: assistantDoc._id },
       "metadata.superseded": { $ne: true },
       $or: [
         ...(target.role === "assistant" ? [{ _id: target._id }] : []),
@@ -326,46 +401,46 @@ export async function prepareRegenerate(input: {
     { $set: { "metadata.superseded": true } },
   );
 
-  const attachmentMap = await publicAttachmentsForMessages([String(userMessage._id)]);
-  const existingAttachments = attachmentMap.get(String(userMessage._id)) ?? [];
-  const selectedProviderId = input.providerId ?? conversation.providerId;
-  const selectedModelId = input.modelId ?? conversation.modelId;
-  const turn = await prepareTurn({
-    userId: input.userId,
-    content: userMessage.content ?? "",
-    providerId: selectedProviderId,
-    modelId: selectedModelId,
-    files: existingAttachments,
-  });
-  applyThreadSelection(conversation, turn);
-
-  const generationId = randomUUID();
-  const assistantDoc = await Message.create(
-    streamingAssistantFields({
-      conversationId: conversation._id,
-      userId: input.userId,
-      parentMessageId: userMessage._id,
-      generationId,
-      turn,
-    }),
-  );
-  conversation.messageCount = (conversation.messageCount ?? 0) + 1;
-  await conversation.save();
-  const assistantAttachments = await persistGeneratedFiles(
-    input.userId,
-    String(conversation._id),
-    assistantDoc,
-    turn,
-  );
-
-  return finishPreparedGeneration({
+  return {
     turn,
     userId: input.userId,
-    conversationId: String(conversation._id),
+    conversationId: String(current._id),
     generationId,
     userMessage: toPublicMessage(userMessage, existingAttachments),
     assistantMessage: toPublicMessage(assistantDoc, assistantAttachments),
-    conversation: toPublicConversation(conversation),
-    ...(conversation.customGptId ? { customGptId: String(conversation.customGptId) } : {}),
+    conversation: toPublicConversation(current),
+    ...(current.customGptId ? { customGptId: String(current.customGptId) } : {}),
+  };
   });
+  return finishPreparedGeneration(persisted, input.abortSignal);
+}
+
+/** A picture Ken generated (toolbar or chat), as opposed to a user upload. */
+function isGeneratedImage(file: { metadata?: unknown }): boolean {
+  return Boolean(asRecord(asRecord(file.metadata)?.["generatedBy"]));
+}
+
+/**
+ * Re-read inside the transaction. A turn that another edit or regenerate has
+ * already superseded is a lost race, so the caller gets a retryable 409 rather
+ * than a second branch silently replacing the first.
+ */
+async function assertStillActive(
+  messageId: mongoose.Types.ObjectId,
+  conversationId: mongoose.Types.ObjectId,
+  userId: string,
+): Promise<void> {
+  const active = await Message.exists({
+    _id: messageId,
+    conversationId,
+    userId,
+    "metadata.superseded": { $ne: true },
+  });
+  if (!active) {
+    throw new AppError("This conversation changed while your request was being prepared. Please try again.", {
+      statusCode: 409,
+      code: "CONVERSATION_CONFLICT",
+      expose: true,
+    });
+  }
 }

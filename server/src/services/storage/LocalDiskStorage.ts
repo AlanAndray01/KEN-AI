@@ -25,10 +25,12 @@ export class LocalDiskStorage implements StorageService {
   }
 
   async delete(key: string): Promise<void> {
+    const absolute = this.resolveKey(key);
     try {
-      await unlink(this.resolveKey(key));
-    } catch {
-      // Missing objects are treated as already deleted.
+      await unlink(absolute);
+    } catch (error) {
+      // Only absence is success. Permission/I/O failures must remain retryable.
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
   }
 
