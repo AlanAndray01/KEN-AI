@@ -6,6 +6,10 @@ import { assertAttachmentsAllowed } from "./fileService.js";
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
 
 describe("validateUploadBuffer", () => {
+  it.each(["png", "jpg", "webp", "gif", "pdf", "docx"])("rejects non-binary bytes disguised as .%s", (extension) => {
+    expect(() => validateUploadBuffer({ originalName: `fake.${extension}`,
+      mimeType: "application/octet-stream", buffer: Buffer.from("not an image or document") })).toThrow(/match contents/);
+  });
   it("accepts a PNG image", () => {
     const result = validateUploadBuffer({
       originalName: "photo.png",

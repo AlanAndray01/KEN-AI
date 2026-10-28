@@ -1,13 +1,43 @@
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileText, Image as ImageIcon, Trash2 } from "lucide-react";
+import { Download, FileText, Image as ImageIcon, Trash2 } from "lucide-react";
 import { ApiError, api } from "@/services/api";
 import { toast } from "@/stores/toastStore";
+import { retainChatImage } from "@/utils/chatImageCache";
 import { downloadBlob } from "@/utils/download";
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** Square preview for an image file, sharing the chat's blob cache. */
+function LibraryThumb({ fileId, name }: { fileId: string; name: string }) {
+  const [url, setUrl] = useState<string>();
+
+  useEffect(() => {
+    let cancelled = false;
+    const release = retainChatImage(fileId, (entry) => {
+      if (!cancelled) setUrl(entry.url);
+    });
+    return () => {
+      cancelled = true;
+      release();
+    };
+  }, [fileId]);
+
+  return (
+    <div className="aspect-square overflow-hidden rounded-lg bg-surface-muted">
+      {url ? (
+        <img src={url} alt={name} loading="lazy" className="size-full object-cover" />
+      ) : (
+        <div className="flex size-full items-center justify-center">
+          <ImageIcon className="size-6 text-fg-muted" aria-hidden="true" />
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function LibraryPage() {
@@ -40,7 +70,7 @@ export function LibraryPage() {
   const files = filesQuery.data?.files ?? [];
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-6 py-12">
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-12 sm:px-6">
       <div className="space-y-1">
         <h1 className="text-3xl font-semibold tracking-tight">Library</h1>
         <p className="text-fg-muted">
@@ -58,7 +88,8 @@ export function LibraryPage() {
         {files.map((file) => {
           const Icon = file.kind === "image" ? ImageIcon : FileText;
           return (
-            <li key={file.id} className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-4">
+            <li key={file.id} className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-3">
+              {file.kind === "image" ? <LibraryThumb fileId={file.id} name={file.originalName} /> : null}
               <div className="flex items-start gap-3">
                 <Icon className="mt-0.5 size-5 shrink-0 text-fg-muted" />
                 <div className="min-w-0 flex-1">
@@ -70,12 +101,13 @@ export function LibraryPage() {
                   </p>
                 </div>
               </div>
-              <div className="flex gap-2">
+              <div className="mt-auto flex items-center justify-between gap-2">
                 <button
                   type="button"
-                  className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-surface-muted"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-surface-muted"
                   onClick={() => void downloadFile(file.id, file.originalName)}
                 >
+                  <Download className="size-4" aria-hidden="true" />
                   Download
                 </button>
                 <button

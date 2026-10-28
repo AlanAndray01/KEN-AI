@@ -16,6 +16,7 @@ import {
 import type { GoogleProfile } from "./googleAuthService.js";
 import {
   createSession,
+  consumeRefreshSession,
   findActiveSessionById,
   findActiveSessionByRefreshToken,
   revokeSession,
@@ -212,7 +213,7 @@ export async function logoutUser(sessionId: string | undefined, refreshToken: st
 }
 
 export async function refreshAuth(refreshToken: string, req: Request): Promise<AuthResult> {
-  const session = await findActiveSessionByRefreshToken(refreshToken);
+  const session = await consumeRefreshSession(refreshToken);
   if (!session) {
     throw new AppError("Session has expired or been revoked", {
       statusCode: 401,
@@ -220,7 +221,6 @@ export async function refreshAuth(refreshToken: string, req: Request): Promise<A
     });
   }
 
-  await revokeSession(String(session._id));
   return issueAuth(String(session.userId), req);
 }
 

@@ -1,4 +1,4 @@
-import { isValidElement, useMemo, useState, type ReactNode } from "react";
+import { isValidElement, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Check, Copy, Eye, EyeOff } from "lucide-react";
 import { toast } from "@/stores/toastStore";
 
@@ -40,6 +40,7 @@ interface CodeBlockProps {
 export function CodeBlock({ children }: CodeBlockProps) {
   const [copied, setCopied] = useState(false);
   const [preview, setPreview] = useState(false);
+  const previewRef = useRef<HTMLIFrameElement>(null);
   const codeElement = isValidElement(children) ? children : null;
   const className = codeElement
     ? ((codeElement.props as { className?: string }).className ?? "")
@@ -51,6 +52,9 @@ export function CodeBlock({ children }: CodeBlockProps) {
     () => (canPreview ? previewDocument(language.toLowerCase(), code) : ""),
     [canPreview, code, language],
   );
+  useEffect(() => {
+    if (preview) previewRef.current?.contentWindow?.postMessage({ type: "ken-code-preview", html: srcDoc }, "*");
+  }, [preview, srcDoc]);
 
   async function onCopy(): Promise<void> {
     try {
@@ -90,9 +94,11 @@ export function CodeBlock({ children }: CodeBlockProps) {
       </div>
       {preview && canPreview ? (
         <iframe
+          ref={previewRef}
           title="Code preview"
           sandbox="allow-scripts"
-          srcDoc={srcDoc}
+          src="/code-preview.html"
+          onLoad={event => event.currentTarget.contentWindow?.postMessage({ type: "ken-code-preview", html: srcDoc }, "*")}
           className="h-64 w-full bg-white"
         />
       ) : (

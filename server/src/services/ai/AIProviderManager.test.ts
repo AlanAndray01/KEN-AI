@@ -8,14 +8,13 @@ const assertModelAvailable = vi.fn();
 const resolveCredentials = vi.fn();
 const listPublicModels = vi.fn();
 const consumePlatformChatQuota = vi.fn<(userId: string, source: string) => Promise<void>>();
-const assertUnderSpendCeiling = vi.fn<(userId: string, source: string) => Promise<void>>();
 
 vi.mock("./platformChatQuota.js", () => ({
   consumePlatformChatQuota: (userId: string, source: string) => consumePlatformChatQuota(userId, source),
 }));
 
 vi.mock("./spendCeiling.js", () => ({
-  assertUnderSpendCeiling: (userId: string, source: string) => assertUnderSpendCeiling(userId, source),
+  withSpendBudget: (adapter: AIProvider) => adapter,
 }));
 
 const fakeAdapter: AIProvider = {
@@ -1197,7 +1196,6 @@ describe("AIProviderManager per-turn platform quota", () => {
     clearModelSkips();
     fakeGenerate.mockReset();
     consumePlatformChatQuota.mockReset();
-    assertUnderSpendCeiling.mockReset();
     assertModelAvailable.mockResolvedValue({});
     listPublicModels.mockResolvedValue([
       { id: "gpt-4o-mini", providerId: "openai", name: "GPT-4o mini", capabilities: ["text"], enabled: true, available: true },
@@ -1231,7 +1229,6 @@ describe("AIProviderManager per-turn platform quota", () => {
     expect(result.content).toBe("fallback-ok");
     expect(fakeGenerate).toHaveBeenCalledTimes(2);
     expect(consumePlatformChatQuota).toHaveBeenCalledTimes(1);
-    expect(assertUnderSpendCeiling).toHaveBeenCalledTimes(1);
   });
 
   it("does not charge the platform allowance for a turn on the user's own key", async () => {

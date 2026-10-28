@@ -2,7 +2,7 @@ import { LegalPage, LegalSection } from "@/pages/LegalPage";
 
 export function PrivacyPage() {
   return (
-    <LegalPage title="Privacy Policy" updated="28 August 2026">
+    <LegalPage title="Privacy Policy" updated="12 October 2026">
       <p>
         Ken AI is a conversational assistant operated from Pakistan. This page describes what the
         service stores, who it is shared with, and how to get it deleted. It is written to match what
@@ -63,13 +63,16 @@ export function PrivacyPage() {
           Your account and conversations are kept until you delete them or close your account.
           Deleting a conversation removes it from the service. Closing your account removes your
           profile, conversations, messages, uploaded files, memories, and custom assistants.
+          If file storage is temporarily unavailable, file deletion continues through a durable
+          retry queue. Only the object location and cleanup status remain until removal succeeds.
+          Daily shared-key usage counters expire within two days of their UTC usage date.
         </p>
       </LegalSection>
 
       <LegalSection heading="Your choices">
         <p>
           You can edit or delete individual conversations at any time, update your details in
-          Settings, and delete your entire account from Settings → Account. Account deletion is
+          Settings, and delete your entire account from Settings → Data controls. Account deletion is
           permanent and is not reversible.
         </p>
         <p>

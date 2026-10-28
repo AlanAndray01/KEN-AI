@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { decodeListCursor } from "../../utils/listCursor.js";
 import mongoose from "mongoose";
 import type { ModelCapability, PublicAttachment, PublicFile } from "@Ken/shared";
 import { MAX_ATTACHMENTS_PER_MESSAGE } from "@Ken/shared";
@@ -7,13 +8,14 @@ import { Attachment } from "../../models/Attachment.js";
 import { File as StoredFile } from "../../models/File.js";
 import { AppError } from "../../utils/AppError.js";
 import type { ChatContentPart } from "../ai/AIProvider.js";
-import { storageService } from "./index.js";
+import { storageService, storageForProvider } from "./index.js";
+import { extractDocumentTextIsolated } from "./extractDocumentIsolated.js";
+import type { StorageProviderId } from "./StorageService.js";
 import { S3CompatibleStorage } from "./S3CompatibleStorage.js";
 import { providerReadsPdfNatively } from "../ai/nativeDocuments.js";
 import { formatDocumentSections, selectSections, splitIntoSections } from "../chat/documentSections.js";
 import { documentSectionsFor } from "./documentIndex.js";
 import {
-  extractTextDocument,
   isDocxMime,
   isImageMime,
   isPdfMime,
@@ -80,9 +82,12 @@ export async function uploadUserFile(input: {
   return toPublicFile(doc);
 }
 
-export async function listUserFiles(userId: string, limit = 40): Promise<PublicFile[]> {
-  const docs = await StoredFile.find({ userId })
-    .sort({ createdAt: -1 })
+export async function listUserFiles(userId: string, limit = 40, after?: string): Promise<PublicFile[]> {
+  const cursor = after ? decodeListCursor(after) : undefined;
+  const docs = await StoredFile.find({ userId, ...(cursor ? { $or: [
+    { createdAt: { $lt: cursor.date } }, { createdAt: cursor.date, _id: { $lt: cursor.id } },
+  ] } : {}) })
+    .sort({ createdAt: -1, _id: -1 })
     .limit(Math.min(Math.max(limit, 1), 100));
   return docs.map((doc) => toPublicFile(doc));
 }
@@ -100,13 +105,13 @@ export async function getOwnedFile(userId: string, fileId: string) {
 
 export async function readOwnedFile(userId: string, fileId: string): Promise<{ file: PublicFile; buffer: Buffer }> {
   const doc = await getOwnedFile(userId, fileId);
-  const buffer = await storageService.get(doc.storageKey);
+  const buffer = await storageForProvider(doc.storageProvider).get(doc.storageKey);
   return { file: toPublicFile(doc), buffer };
 }
 
 export async function deleteOwnedFile(userId: string, fileId: string): Promise<void> {
   const doc = await getOwnedFile(userId, fileId);
-  await storageService.delete(doc.storageKey);
+  await storageForProvider(doc.storageProvider).delete(doc.storageKey);
   await Attachment.deleteMany({ fileId: doc._id, userId });
   await doc.deleteOne();
 }
@@ -153,6 +158,7 @@ export async function materializeFilesForModel(
     originalName: string;
     mimeType: string;
     storageKey: string;
+    storageProvider?: StorageProviderId;
     _id?: { toString(): string };
     textSections?: string[] | null;
     textSectionsVersion?: number | null;
@@ -180,7 +186,7 @@ export async function materializeFilesForModel(
     if (readsAsText(file.mimeType)) {
       const sections = file._id
         ? await documentSectionsFor({ ...file, _id: file._id })
-        : splitIntoSections(extractTextDocument(await storageService.get(file.storageKey), file.mimeType));
+        : splitIntoSections(await extractDocumentTextIsolated(await storageForProvider(file.storageProvider).get(file.storageKey), file.mimeType));
       if (sections.length === 0) {
         notes.push(attachmentNote(file.originalName, ""));
         continue;
@@ -191,7 +197,7 @@ export async function materializeFilesForModel(
       notes.push(formatDocumentSections(file.originalName, sections, selection));
       continue;
     }
-    const buffer = await storageService.get(file.storageKey);
+    const buffer = await storageForProvider(file.storageProvider).get(file.storageKey);
     if (isPdfMime(file.mimeType) && nativeDocuments) {
       // The model reads the PDF itself, so its extracted text is not sent as
       // well — that paid for every PDF twice. If the turn falls back to a

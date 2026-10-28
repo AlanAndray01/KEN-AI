@@ -4,6 +4,7 @@ const stored = new Map<string, Buffer>();
 
 vi.mock("./index.js", () => ({
   storageService: { get: vi.fn(async (key: string) => stored.get(key) ?? Buffer.alloc(0)) },
+  storageForProvider: () => ({ get: vi.fn(async (key: string) => stored.get(key) ?? Buffer.alloc(0)) }),
 }));
 
 const { materializeFilesForModel } = await import("./fileService.js");

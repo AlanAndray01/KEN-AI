@@ -100,7 +100,7 @@ export function ChatPage() {
           >
             <Menu className="size-5" />
           </button>
-          <h1 className="truncate text-lg font-semibold">{thread.title}</h1>
+          <h1 className="truncate text-[15px] font-semibold tracking-tight">{thread.title}</h1>
           {thread.activeGpt ? (
             <p className="chat-gpt-label truncate text-xs text-fg-muted">@{thread.activeGpt.name}</p>
           ) : null}
@@ -134,7 +134,7 @@ export function ChatPage() {
             {Array.from({ length: thread.skeletonCount }, (_, index) => (
               <article key={index} className="chat-message flex gap-3" aria-hidden="true">
                 <span className="message-avatar mt-0.5 size-7 shrink-0 rounded-lg border border-border bg-surface-muted" />
-                <div className="chat-message-slot min-h-[4.5rem] flex-1 rounded-xl border border-border bg-surface/60" />
+                <div className="chat-message-slot min-h-[4.5rem] flex-1 rounded-xl bg-surface/60" />
               </article>
             ))}
           </div>

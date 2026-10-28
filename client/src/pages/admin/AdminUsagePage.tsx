@@ -11,7 +11,7 @@ export function AdminUsagePage() {
   const totals = usage?.totals;
 
   return (
-    <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col gap-6 px-6 py-16">
+    <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col gap-6 px-4 py-12 sm:px-6">
       <div className="space-y-1">
         <p className="text-sm text-fg-muted">Admin</p>
         <h1 className="text-3xl font-semibold tracking-tight">Usage</h1>

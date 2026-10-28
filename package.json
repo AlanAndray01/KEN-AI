@@ -21,14 +21,21 @@
     "agents": "npm run agents -w @Ken/multi-agents --",
     "agents:audit": "npm run agents -w @Ken/multi-agents -- run audit",
     "agents:verify": "npm run agents -w @Ken/multi-agents -- verify",
-    "test:e2e": "npm run test:e2e -w @Ken/client"
+    "test:e2e": "npm run test:e2e -w @Ken/client",
+    "test:responsive": "playwright test --config=playwright.responsive.config.ts"
   },
   "engines": {
     "node": "24.x"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^26.6.4",
     "concurrently": "^9.2.1",
     "typescript": "^5.9.2"
+  },
+  "overrides": {
+    "katex": "^0.18.4",
+    "shell-quote": "^1.11.0"
   },
   "allowScripts": {
     "argon2": true,

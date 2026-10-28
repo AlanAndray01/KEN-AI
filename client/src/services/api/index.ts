@@ -10,7 +10,7 @@ import { toolsApi } from "./tools";
 import { voiceApi } from "./voice";
 
 export { ApiError } from "./errors";
-export { onUnauthorized } from "./client";
+export { onUnauthorized, resetApiSession } from "./client";
 export type { AuthResponse, ChatStreamEvent, OkResponse, VerificationRequiredResponse } from "./types";
 
 export const api = {

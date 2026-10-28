@@ -4,13 +4,14 @@ import { DRAFT_STORAGE_KEY, draftKey, useDraftStore } from "./draftStore";
 describe("draftStore", () => {
   beforeEach(() => {
     window.localStorage.clear();
-    useDraftStore.setState({ drafts: {} });
+    useDraftStore.setState({ drafts: {}, ownerId: null });
+    useDraftStore.getState().setOwner("a");
   });
 
   it("persists unsent drafts by conversation", () => {
     useDraftStore.getState().setDraft(draftKey(), "hello from new chat");
     expect(useDraftStore.getState().drafts.new).toBe("hello from new chat");
-    expect(JSON.parse(window.localStorage.getItem(DRAFT_STORAGE_KEY) ?? "{}")).toEqual({
+    expect(JSON.parse(window.localStorage.getItem(`${DRAFT_STORAGE_KEY}:a`) ?? "{}")).toEqual({
       new: "hello from new chat",
     });
 
@@ -18,5 +19,27 @@ describe("draftStore", () => {
     useDraftStore.getState().clearDraft("new");
     expect(useDraftStore.getState().drafts.new).toBeUndefined();
     expect(useDraftStore.getState().drafts.c1).toBe("later");
+  });
+
+  it("isolates persisted drafts across logout, account switches, and reloads", () => {
+    const store = useDraftStore.getState();
+    store.setDraft("new", "private A");
+    store.setOwner(null);
+    expect(useDraftStore.getState().drafts).toEqual({});
+    store.setOwner("b");
+    expect(useDraftStore.getState().drafts).toEqual({});
+    store.setDraft("new", "private B");
+    store.setOwner("a");
+    expect(useDraftStore.getState().drafts.new).toBe("private A");
+    useDraftStore.setState({ ownerId: null, drafts: {} });
+    store.setOwner("b");
+    expect(useDraftStore.getState().drafts.new).toBe("private B");
+  });
+
+  it("does not assign unowned legacy drafts to a signed-in account", () => {
+    window.localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify({ new: "unknown owner" }));
+    useDraftStore.getState().setOwner("b");
+    expect(useDraftStore.getState().drafts).toEqual({});
+    expect(window.localStorage.getItem(DRAFT_STORAGE_KEY)).toBeNull();
   });
 });

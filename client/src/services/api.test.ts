@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError, api, onUnauthorized } from "./api";
+import { ApiError, api, onUnauthorized, resetApiSession } from "./api";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -20,12 +20,27 @@ function calledPaths(): string[] {
 
 describe("api session recovery", () => {
   beforeEach(() => {
+    resetApiSession();
     fetchMock.mockReset();
     vi.stubGlobal("fetch", fetchMock);
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("discards an old identity's late 401 without refreshing or logging out the new user", async () => {
+    let resolve!: (response: Response) => void;
+    fetchMock.mockImplementationOnce(() => new Promise<Response>((done) => { resolve = done; }));
+    const listener = vi.fn();
+    const unsubscribe = onUnauthorized(listener);
+    const pending = api.conversations.list();
+    resetApiSession();
+    resolve(unauthorized());
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(listener).not.toHaveBeenCalled();
+    unsubscribe();
   });
 
   it("refreshes an expired access token and replays the original request", async () => {

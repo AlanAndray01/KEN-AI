@@ -1,20 +1,24 @@
 import type { ChatContentPart, ChatMessage } from "../ai/AIProvider.js";
-import { extractDocumentText, isDocxMime, isExtractableDocumentMime, isPdfMime } from "../storage/extractDocument.js";
+import { isDocxMime, isExtractableDocumentMime, isPdfMime } from "../storage/extractDocument.js";
+import { extractDocumentTextIsolated } from "../storage/extractDocumentIsolated.js";
+import { AppError } from "../../utils/AppError.js";
 
 /**
  * Turns leftover PDF/DOCX/text parts into message content. Native PDF parts
  * stay as `inline` so Gemini/OpenAI can send them; every other document is
  * unzipped here so AI adapters never import storage.
  */
-export function foldInlineDocuments(
+export async function foldInlineDocuments(
   messages: ChatMessage[],
   options?: { nativeDocuments?: boolean },
-): ChatMessage[] {
+): Promise<ChatMessage[]> {
   const nativeDocuments = options?.nativeDocuments === true;
-  return messages.map((message) => foldOne(message, nativeDocuments));
+  const result: ChatMessage[] = [];
+  for (const message of messages) result.push(await foldOne(message, nativeDocuments));
+  return result;
 }
 
-function foldOne(message: ChatMessage, nativeDocuments: boolean): ChatMessage {
+async function foldOne(message: ChatMessage, nativeDocuments: boolean): Promise<ChatMessage> {
   const parts = message.parts ?? [];
   if (parts.length === 0) return message;
   const notes: string[] = [];
@@ -29,7 +33,7 @@ function foldOne(message: ChatMessage, nativeDocuments: boolean): ChatMessage {
       continue;
     }
     if (isExtractableDocumentMime(part.mimeType) || isDocxMime(part.mimeType)) {
-      notes.push(extractPartNote(part));
+      notes.push(await extractPartNote(part));
       continue;
     }
     kept.push(part);
@@ -44,12 +48,13 @@ function foldOne(message: ChatMessage, nativeDocuments: boolean): ChatMessage {
   };
 }
 
-function extractPartNote(part: ChatContentPart): string {
+async function extractPartNote(part: ChatContentPart): Promise<string> {
   const name = part.filename ?? "attachment";
   try {
-    const extracted = extractDocumentText(Buffer.from(part.data, "base64"), part.mimeType);
+    const extracted = await extractDocumentTextIsolated(Buffer.from(part.data, "base64"), part.mimeType);
     if (extracted) return `Attached file: ${name}\n${extracted}`;
-  } catch {
+  } catch (error) {
+    if (error instanceof AppError) throw error;
     // Corrupt bytes still must not 400 the turn; the filename note is enough.
   }
   return `[Attached file: ${name}]`;

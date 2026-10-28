@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import type { RefObject } from "react";
 import { hideBootLoader } from "@/utils/bootLoader";
 
@@ -20,15 +20,31 @@ import { hideBootLoader } from "@/utils/bootLoader";
  * route, so leaked frame loops and listeners would keep running over the chat UI.
  */
 export function useLandingScenes(rootRef: RefObject<HTMLElement | null>): void {
+  const [reducedMotion, setReducedMotion] = useState(() =>
+    typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const changed = () => setReducedMotion(media.matches);
+    media.addEventListener("change", changed);
+    changed();
+    return () => media.removeEventListener("change", changed);
+  }, []);
   useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
 
     const cleanups: Array<() => void> = [];
     let disposed = false;
+    const REDUCED = reducedMotion;
 
     /** Registers a rAF loop that stops itself once the page unmounts. */
     const loop = (step: () => void): void => {
+      if (REDUCED) {
+        step();
+        window.addEventListener("resize", step);
+        cleanups.push(() => window.removeEventListener("resize", step));
+        return;
+      }
       let id = 0;
       const tick = (): void => {
         if (disposed) return;
@@ -78,7 +94,6 @@ export function useLandingScenes(rootRef: RefObject<HTMLElement | null>): void {
       });
     };
 
-    const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
     const isMobile = (): boolean => window.innerWidth < 768;
     const isTablet = (): boolean => window.innerWidth >= 768 && window.innerWidth < 1200;
     const clamp = (v: number, a: number, b: number): number => Math.min(b, Math.max(a, v));
@@ -1336,6 +1351,8 @@ export function useLandingScenes(rootRef: RefObject<HTMLElement | null>): void {
       }
       const s = document.createElement("script");
       s.src = "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js";
+      s.integrity = "sha384-CI3ELBVUz9XQO+97x6nwMDPosPR5XvsxW2ua7N1Xeygeh1IxtgqtCkGfQY9WWdHu";
+      s.crossOrigin = "anonymous";
       s.async = true;
       s.onload = initGL;
       s.onerror = () => root.classList.add("no-webgl");
@@ -1350,26 +1367,11 @@ export function useLandingScenes(rootRef: RefObject<HTMLElement | null>): void {
       cleanups.push(() => globalThis.clearTimeout(timeoutHandle));
     }
 
-    /* live coordinate readout */
-    {
-      const el = $<HTMLElement>("#coord");
-      if (el) {
-        const a = 31.42;
-        const b = 73.08;
-        const id = window.setInterval(() => {
-          const x = (a + (Math.random() - 0.5) * 0.02).toFixed(2);
-          const y = (b + (Math.random() - 0.5) * 0.02).toFixed(2);
-          el.textContent = `LAT ${x} · LON ${y}`;
-        }, 2600);
-        cleanups.push(() => clearInterval(id));
-      }
-    }
-
     return () => {
       disposed = true;
       cleanups.forEach((fn) => fn());
       // Leaving before the hero was ready must not strand the boot loader.
       hideBootLoader();
     };
-  }, [rootRef]);
+  }, [rootRef, reducedMotion]);
 }

@@ -110,7 +110,7 @@ export function ComposerToolbar({
         >
           <Mic className="size-4" />
         </button>
-        <p className="composer-hint px-1 text-[11px] text-fg-muted">
+        <p className="composer-hint px-1 text-xs text-fg-muted">
           Enter to send · Shift+Enter for a new line
           {value.trim() ? ` · ~${estimatePromptTokens(value)} tokens` : ""}
         </p>
@@ -140,7 +140,12 @@ export function ComposerToolbar({
             type="submit"
             disabled={disabled || uploading || generatingImage || !canSend}
             aria-label="Send"
-            className="inline-flex size-9 items-center justify-center rounded-full bg-accent text-accent-fg disabled:opacity-40"
+            className={cn(
+              "inline-flex size-9 items-center justify-center rounded-full border transition-colors",
+              // Neon only when a press would do something; an idle send is a quiet outline.
+              "border-accent bg-accent text-accent-fg hover:brightness-110",
+              "disabled:border-border disabled:bg-transparent disabled:text-fg-muted disabled:hover:brightness-100",
+            )}
           >
             <Send className="size-4" />
           </button>

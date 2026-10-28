@@ -1,6 +1,8 @@
 import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import { APP_NAME } from "@Ken/shared";
+import { metadataForPath } from "@/seo";
+import { showLandingPage } from "@/utils/featureFlags";
 
 const SETTINGS_TITLES: Record<string, string> = {
   account: "Account",
@@ -60,6 +62,7 @@ function pageTitle(pathname: string): string | undefined {
 }
 
 export function titleForPath(pathname: string): string {
+  if (pathname === "/") return `${APP_NAME} | Intelligence Without The Noise`;
   const page = pageTitle(pathname);
   return page ? `${page} · ${APP_NAME}` : APP_NAME;
 }
@@ -80,8 +83,7 @@ const CANONICAL_PATHS = new Set(["/", "/login", "/register", "/privacy", "/terms
 function syncCanonical(pathname: string): void {
   const link = document.querySelector<HTMLLinkElement>('link[rel="canonical"]');
   if (!link) return;
-  const path = CANONICAL_PATHS.has(pathname) ? pathname : "/";
-  link.href = new URL(path, window.location.origin).toString();
+  link.href = metadataForPath(pathname).canonical;
 }
 
 /**
@@ -98,7 +100,7 @@ function syncCanonical(pathname: string): void {
 function syncRobots(pathname: string): void {
   const meta = document.querySelector<HTMLMetaElement>('meta[name="robots"]');
   if (!meta) return;
-  meta.content = CANONICAL_PATHS.has(pathname)
+  meta.content = CANONICAL_PATHS.has(pathname) && (pathname !== "/" || showLandingPage)
     ? "index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1"
     : "noindex, nofollow";
 }
@@ -109,5 +111,14 @@ export function useDocumentTitle(): void {
     document.title = titleForPath(pathname);
     syncCanonical(pathname);
     syncRobots(pathname);
+    const metadata = metadataForPath(pathname);
+    for (const [selector, content] of Object.entries({
+      'meta[name="description"]': metadata.description,
+      'meta[property="og:title"]': document.title,
+      'meta[property="og:description"]': metadata.description,
+      'meta[property="og:url"]': metadata.canonical,
+      'meta[name="twitter:title"]': document.title,
+      'meta[name="twitter:description"]': metadata.description,
+    })) document.querySelector<HTMLMetaElement>(selector)?.setAttribute("content", content);
   }, [pathname]);
 }

@@ -1,0 +1,40 @@
+{
+  "auditDate": "2026-10-12",
+  "scope": "Current working tree; source review plus bounded offline probes, fixture browser checks, registry audits and read-only public fetches",
+  "sourceChangesMade": false,
+  "checks": {
+    "typecheck": "passed",
+    "lint": {
+      "result": "passed",
+      "warnings": 1
+    },
+    "rootTests": {
+      "shared": 32,
+      "server": 723,
+      "client": 310,
+      "total": 1065
+    },
+    "build": "passed",
+    "workerTypecheck": "passed",
+    "workerTests": 48,
+    "responsive": {
+      "passed": 72,
+      "viewports": [
+        "320x568",
+        "1280x720"
+      ],
+      "layoutFailures": 0,
+      "setupRuntimeFailures": 0
+    },
+    "additionalBrowserPages": 12,
+    "offlineReproduction": "passed"
+  },
+  "limitations": [
+    "No authenticated production tests",
+    "No production database or object storage writes",
+    "No load test or resource exhaustion attempt",
+    "No paid provider calls",
+    "No measured PageSpeed or field Core Web Vitals score"
+  ],
+  "rawLogs": ".tmp/special-audit-2026-10-12/"
+}

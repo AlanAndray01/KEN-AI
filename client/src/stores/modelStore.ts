@@ -61,6 +61,13 @@ function writeSelection(selection: ModelSelection): void {
 
 let persistTimer: number | undefined;
 
+export function resetModelSelection(): void {
+  if (persistTimer) window.clearTimeout(persistTimer);
+  persistTimer = undefined;
+  writeSelection(AUTO_SELECTION);
+  useModelStore.setState({ ...AUTO_SELECTION });
+}
+
 function persistSelection(selection: ModelSelection): void {
   if (!selection.providerId || !selection.modelId) return;
   const update = api.me?.update;

@@ -1,4 +1,6 @@
 import type { Request, Response } from "express";
+import { z } from "zod";
+import { encodeListCursor } from "../utils/listCursor.js";
 import multer from "multer";
 import { env } from "../config/env.js";
 import { AppError } from "../utils/AppError.js";
@@ -6,6 +8,8 @@ import {
   deleteOwnedFile,
   listUserFiles,
   readOwnedFile,
+  getOwnedFile,
+  toPublicFile,
   uploadUserFile,
 } from "../services/storage/fileService.js";
 
@@ -36,12 +40,17 @@ export async function uploadFileHandler(req: Request, res: Response): Promise<vo
 }
 
 export async function listFilesHandler(req: Request, res: Response): Promise<void> {
-  const files = await listUserFiles(requireUserId(req));
-  res.status(200).json({ files });
+  const query = z.object({ limit: z.coerce.number().int().min(1).max(100).default(40),
+    cursor: z.string().min(1).max(512).optional() }).parse(req.query);
+  const files = await listUserFiles(requireUserId(req), query.limit, query.cursor);
+  const last = files.at(-1);
+  const nextCursor = last && files.length === query.limit
+    ? encodeListCursor({ id: last.id, date: last.createdAt }) : undefined;
+  res.status(200).json({ files, nextCursor });
 }
 
 export async function getFileHandler(req: Request, res: Response): Promise<void> {
-  const { file } = await readOwnedFile(requireUserId(req), req.params.id ?? "");
+  const file = toPublicFile(await getOwnedFile(requireUserId(req), req.params.id ?? ""));
   res.status(200).json({ file });
 }
 

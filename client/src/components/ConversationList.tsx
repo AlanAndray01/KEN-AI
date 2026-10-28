@@ -17,7 +17,9 @@ export function ConversationList({
   loadError,
   collapsed,
   filter,
+  filterOpen,
   onFilterChange,
+  onFilterClose,
   onRenameValue,
   onCommitRename,
   onCancelRename,
@@ -38,7 +40,9 @@ export function ConversationList({
   loadError: boolean;
   collapsed: boolean;
   filter: string;
+  filterOpen: boolean;
   onFilterChange: (value: string) => void;
+  onFilterClose: () => void;
   onRenameValue: (value: string) => void;
   onCommitRename: (id: string) => void;
   onCancelRename: () => void;
@@ -51,18 +55,24 @@ export function ConversationList({
 }) {
   return (
     <>
-      <div className={cn("px-3 pt-3 pb-2", collapsed && "md:hidden")}>
-        <input
-          type="search"
-          value={filter}
-          onChange={(event) => onFilterChange(event.target.value)}
-          placeholder="Filter chats"
-          aria-label="Filter chats"
-          className="w-full rounded-lg border border-border bg-canvas px-3 py-1.5 text-sm"
-        />
-      </div>
+      {filterOpen ? (
+        <div className={cn("px-3 pt-3 pb-1", collapsed && "md:hidden")}>
+          <input
+            type="search"
+            autoFocus
+            value={filter}
+            onChange={(event) => onFilterChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") onFilterClose();
+            }}
+            placeholder="Filter chats"
+            aria-label="Filter chats"
+            className="w-full rounded-lg border border-border bg-canvas px-3 py-1.5 text-sm"
+          />
+        </div>
+      ) : null}
       <nav
-        className={cn("flex-1 space-y-4 overflow-y-auto px-2 pb-4", collapsed && "md:hidden")}
+        className={cn("flex-1 space-y-4 overflow-y-auto px-2 pt-3 pb-4", collapsed && "md:hidden")}
         aria-label="Conversations"
       >
         {loading ? <p className="px-2 text-xs text-fg-muted">Loading chats…</p> : null}
@@ -72,7 +82,7 @@ export function ConversationList({
         ) : null}
         {groups.map((group) => (
           <section key={group.id} className="space-y-1">
-            <h2 className="px-2 text-[11px] font-medium tracking-wide text-fg-muted uppercase">
+            <h2 className="px-2 text-xs font-medium tracking-wide text-fg-muted uppercase">
               {group.label}
             </h2>
             {group.items.map((conversation) => {
@@ -101,8 +111,9 @@ export function ConversationList({
                     <div
                       className={cn(
                         "group flex items-center rounded-lg",
+                        // Same active treatment as the nav links above: pill + green bar.
                         active
-                          ? "bg-accent/10 shadow-[inset_2px_0_0_var(--color-accent)]"
+                          ? "bg-surface-muted shadow-[inset_2px_0_0_var(--color-accent)]"
                           : "hover:bg-surface-muted",
                       )}
                     >

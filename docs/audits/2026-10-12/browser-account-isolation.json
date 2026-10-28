@@ -1,0 +1,28 @@
+{
+  "account": "audit-B",
+  "before": {
+    "conversations": [
+      {
+        "id": "conversation-A",
+        "title": "PRIVATE ACCOUNT A",
+        "archived": false,
+        "pinned": false,
+        "createdAt": "2026-10-11T22:01:04.086Z",
+        "updatedAt": "2026-10-11T22:01:04.086Z"
+      }
+    ]
+  },
+  "after": {
+    "conversations": [
+      {
+        "id": "conversation-A",
+        "title": "PRIVATE ACCOUNT A",
+        "archived": false,
+        "pinned": false,
+        "createdAt": "2026-10-11T22:01:04.086Z",
+        "updatedAt": "2026-10-11T22:01:04.086Z"
+      }
+    ]
+  },
+  "draft": "PRIVATE DRAFT A"
+}

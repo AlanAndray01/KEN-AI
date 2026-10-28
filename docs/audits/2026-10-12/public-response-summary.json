@@ -1,0 +1,30 @@
+{
+  "home": {
+    "status": "HTTP/1.1 200 OK",
+    "title": "Ken AI | Intelligence Without The Noise",
+    "canonical": "https://ken-ai.tech/",
+    "robots": "index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1",
+    "hasCsp": false,
+    "hasXRobotsTag": false,
+    "lastModified": "Sun, 04 Oct 2026 07:16:22 GMT"
+  },
+  "privacy": {
+    "status": "HTTP/1.1 200 OK",
+    "title": "Ken AI | Intelligence Without The Noise",
+    "canonical": "https://ken-ai.tech/",
+    "robots": "index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1",
+    "hasCsp": false,
+    "hasXRobotsTag": false,
+    "lastModified": "Sun, 04 Oct 2026 03:33:58 GMT"
+  },
+  "share-audit-nonexistent": {
+    "status": "HTTP/1.1 200 OK",
+    "title": "Ken AI | Intelligence Without The Noise",
+    "canonical": "https://ken-ai.tech/",
+    "robots": "index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1",
+    "hasCsp": false,
+    "hasXRobotsTag": false,
+    "lastModified": "Sun, 04 Oct 2026 03:33:58 GMT"
+  },
+  "robots": "# Ken AI — https://ken-ai.tech\n#\n# Files in client/public/ are copied verbatim into client/dist by Vite, so this\n# is served as a real text/plain file. Vercel checks the filesystem before it\n# applies the SPA rewrite in vercel.json, which is why this must exist as a file:\n# without it, /robots.txt fell through the rewrite and returned index.html, and\n# crawlers read HTML where they expected directives.\n\nUser-agent: *\nAllow: /\n\n# Signed-in surfaces. These need a session, so a crawler only ever reaches a\n# redirect or an empty shell — indexing them spends crawl budget on nothing and\n# scatters thin pages across the brand's results.\nDisallow: /chat\nDisallow: /settings\nDisallow: /library\nDisallow: /gpts\nDisallow: /search\nDisallow: /history\nDisallow: /admin\n\n# Shared conversations are public by link but they are the user's own content,\n# not ours to publish into a search index.\nDisallow: /share/\n\n# One-time token flows. Nothing here is meaningful without the token.\nDisallow: /verify-email\nDisallow: /reset-password\nDisallow: /forgot-password\n\n# Vite fingerprints these with a content hash, so an indexed URL is stale the\n# moment the app is rebuilt.\nDisallow: /assets/\n\nSitemap: https://ken-ai.tech/sitemap.xml\n"
+}

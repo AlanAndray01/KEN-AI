@@ -1,9 +1,10 @@
 import type { ChatToolId, ExportFormat, PublicConversation, PublicMessage, PublicShare } from "@Ken/shared";
 import { downloadRequest, request, streamRequest } from "./client";
+import { collectPages } from "./pagination";
 
 export const conversationsApi = {
-  list: (archived = false) =>
-    request<{ conversations: PublicConversation[] }>(`/conversations${archived ? "?archived=true" : ""}`),
+  list: async (archived = false, q?: string) => ({ conversations: await collectPages<PublicConversation>(
+    `/conversations?${new URLSearchParams({ archived: String(archived), ...(q ? { q } : {}) })}`, "conversations") }),
   create: (body: { modelId: string; providerId: string; title?: string; customGptId?: string }) =>
     request<{ conversation: PublicConversation }>("/conversations", {
       method: "POST",

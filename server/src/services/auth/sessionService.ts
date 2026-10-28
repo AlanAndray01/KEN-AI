@@ -28,6 +28,14 @@ export async function findActiveSessionByRefreshToken(refreshToken: string) {
   });
 }
 
+/** Exactly one concurrent refresh can consume an active token. */
+export async function consumeRefreshSession(refreshToken: string) {
+  const now = new Date();
+  return Session.findOneAndUpdate({ refreshTokenHash: hashToken(refreshToken),
+    revokedAt: { $exists: false }, expiresAt: { $gt: now },
+  }, { $set: { revokedAt: now } }, { returnDocument: "before" });
+}
+
 export async function findActiveSessionById(sessionId: string) {
   return Session.findOne({
     _id: sessionId,

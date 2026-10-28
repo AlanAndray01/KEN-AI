@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { ChevronDown } from "lucide-react";
 import { CLIENT_ROUTES, GPT_CATEGORIES, type GptCategory, type PublicCustomGpt } from "@Ken/shared";
 import { api } from "@/services/api";
 
@@ -20,7 +21,7 @@ export function GptsPage() {
   const gpts = gptsQuery.data?.gpts ?? [];
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-6 py-12">
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-12 sm:px-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
           <h1 className="text-3xl font-semibold tracking-tight">GPTs</h1>
@@ -56,21 +57,29 @@ export function GptsPage() {
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Search GPTs"
           aria-label="Search GPTs"
-          className="gpts-search min-w-[12rem] flex-1 rounded-lg border border-border bg-canvas px-3 py-1.5 text-sm"
+          className="gpts-search min-w-[12rem] flex-1 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm"
         />
-        <select
-          value={category}
-          aria-label="Category"
-          onChange={(event) => setCategory(event.target.value as GptCategory | "")}
-          className="rounded-lg border border-border bg-canvas px-3 py-1.5 text-sm"
-        >
-          <option value="">All categories</option>
-          {GPT_CATEGORIES.map((item) => (
-            <option key={item} value={item}>
-              {item}
-            </option>
-          ))}
-        </select>
+        {/* Styled like the model picker's trigger, but kept a native <select> so
+            phones get their own picker and keyboards/screen readers work as-is. */}
+        <div className="relative">
+          <select
+            value={category}
+            aria-label="Category"
+            onChange={(event) => setCategory(event.target.value as GptCategory | "")}
+            className="appearance-none rounded-lg border border-border bg-surface py-1.5 pr-9 pl-3 text-sm capitalize hover:bg-surface-muted focus-visible:outline-2 focus-visible:outline-ring"
+          >
+            <option value="">All categories</option>
+            {GPT_CATEGORIES.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+          <ChevronDown
+            aria-hidden="true"
+            className="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-fg-muted"
+          />
+        </div>
       </div>
       {gptsQuery.isLoading ? <p className="text-fg-muted">Loading GPTs…</p> : null}
       {gpts.length === 0 && !gptsQuery.isLoading ? (

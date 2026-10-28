@@ -195,10 +195,11 @@ describe("robots.txt", () => {
     expect(robots).not.toMatch(/^Disallow:\s*\/\s*$/m);
   });
 
-  it("keeps session-only and user-owned surfaces out of the index", () => {
+  it("allows crawlers to observe route-level noindex directives", () => {
     for (const route of ["/chat", "/settings", "/admin", "/share/"]) {
-      expect(robots, route).toContain(`Disallow: ${route}`);
+      expect(robots, route).not.toContain(`Disallow: ${route}`);
     }
+    expect(robots).not.toContain("Disallow: /assets");
   });
 });
 

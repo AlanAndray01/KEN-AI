@@ -6,7 +6,7 @@ import express from "express";
 import { isProduction } from "../config/env.js";
 
 function clientDistDir(): string {
-  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../client/dist");
+  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../client/dist");
 }
 
 /**
@@ -25,9 +25,7 @@ export function mountClientSpa(app: Express): void {
   if (!clientSpaAvailable()) return;
 
   const dist = clientDistDir();
-  const indexHtml = path.join(dist, "index.html");
-
-  app.use(express.static(dist, { index: false }));
+  app.use(express.static(dist, { index: false, redirect: false }));
   app.use((req: Request, res: Response, next: NextFunction) => {
     if (req.method !== "GET" && req.method !== "HEAD") {
       next();
@@ -37,6 +35,11 @@ export function mountClientSpa(app: Express): void {
       next();
       return;
     }
-    res.sendFile(indexHtml);
+    const route = req.path.length > 1 ? req.path.replace(/\/+$/, "") : req.path;
+    const isPublic = ["/", "/privacy", "/terms", "/login", "/register"].includes(route);
+    const isPrivate = /^\/(chat|share|search|history|library|gpts|settings|admin|forgot-password|reset-password|verify-email)(\/|$)/.test(route);
+    if (!isPublic) res.setHeader("X-Robots-Tag", "noindex, nofollow");
+    const file = isPublic ? (route === "/" ? "index.html" : `${route.slice(1)}/index.html`) : isPrivate ? "private.html" : "404.html";
+    res.status(isPublic || isPrivate ? 200 : 404).sendFile(path.join(dist, file));
   });
 }

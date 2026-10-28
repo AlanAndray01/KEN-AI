@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConversationSidebar } from "./ConversationSidebar";
@@ -108,6 +108,8 @@ describe("ConversationSidebar", () => {
       expect(await screen.findByText("Pinned notes")).toBeInTheDocument();
       expect(screen.getByText("Today's research")).toBeInTheDocument();
       expect(screen.getByRole("navigation", { name: "Conversations" })).toBeInTheDocument();
+      expect(screen.queryByPlaceholderText("Filter chats")).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Filter chats" }));
       expect(screen.getByPlaceholderText("Filter chats")).toBeInTheDocument();
     });
   });

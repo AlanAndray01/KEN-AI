@@ -1,7 +1,9 @@
-import type { Model } from "mongoose";
+import mongoose, { type Model } from "mongoose";
 import { logger } from "../../config/logger.js";
 import {
   AIProvider,
+  AdminMembershipGuard,
+  AnalysisJob,
   Attachment,
   Conversation,
   CustomGPT,
@@ -20,7 +22,7 @@ import {
 } from "../../models/index.js";
 import { AppError } from "../../utils/AppError.js";
 import { generationRegistry } from "../chat/generationRegistry.js";
-import { storageService } from "../storage/index.js";
+import { queueStorageDeletions, processStorageDeletion, type ObjectDeletion } from "../storage/storageDeletion.js";
 import { verifyPassword } from "./crypto.js";
 
 export interface DeleteAccountInput {
@@ -38,9 +40,8 @@ export interface AccountDeletionSummary {
 /**
  * Every collection that stores rows owned by a single user, keyed by the field
  * that holds the owner id. Adding a new user-scoped collection means adding it
- * here — `accountDeletionService.test.ts` asserts this list stays in sync with
- * the registered models so a forgotten collection fails CI instead of silently
- * orphaning personal data in production.
+ * here. The account deletion integration suite checks ownership isolation,
+ * durable cleanup, and concurrent removal of the last administrators.
  */
 const OWNED_COLLECTIONS: ReadonlyArray<{
   name: string;
@@ -64,6 +65,7 @@ const OWNED_COLLECTIONS: ReadonlyArray<{
   { name: "verificationTokens", model: VerificationToken, field: "userId" },
   { name: "customGpts", model: CustomGPT, field: "creatorId" },
   { name: "aiProviders", model: AIProvider, field: "ownerUserId" },
+  { name: "analysisJobs", model: AnalysisJob, field: "userId" },
 ];
 
 /**
@@ -74,6 +76,11 @@ const OWNED_COLLECTIONS: ReadonlyArray<{
  *   field. A user's private provider row is removed above, but the shared model
  *   catalogue must survive or every other account loses its model list.
  * - `User` is deleted last, by `deleteAccount` itself, once its data is gone.
+ * - `StorageDeletion` retains only pending object cleanup information and must
+ *   survive the account purge until the object's deletion is acknowledged.
+ * - `AdminMembershipGuard` is global coordination state, without an owner.
+ * - `SpendBudget` is a daily admission counter retained only until its TTL,
+ *   so an in-flight response can reconcile its reserved cost after deletion.
  */
 
 /**
@@ -84,10 +91,8 @@ const OWNED_COLLECTIONS: ReadonlyArray<{
  * This is irreversible and there is no soft-delete tier, so the caller must
  * have re-authenticated. Ordering is deliberate:
  *   1. verify identity, 2. refuse if it would orphan the last admin,
- *   3. abort in-flight streams, 4. delete stored objects, 5. purge documents,
- *   6. delete the user row.
- * Storage runs before the document purge because the storage keys live on the
- * `File` documents; deleting those first would strand the bytes forever.
+ *   3. atomically queue storage cleanup and purge documents in a transaction,
+ *   4. abort in-flight streams, 5. attempt durable object cleanup.
  */
 export async function deleteAccount(
   userId: string,
@@ -135,18 +140,46 @@ export async function deleteAccount(
     }
   }
 
+  await AdminMembershipGuard.updateOne({ _id: "admins" }, { $setOnInsert: { version: 0 } }, { upsert: true });
+  const session = await mongoose.startSession();
+  let deletedCounts: Record<string, number> = {};
+  let objects: ObjectDeletion[] = [];
+  try {
+    await session.withTransaction(async () => {
+      // This write serializes membership checks across server processes.
+      await AdminMembershipGuard.updateOne({ _id: "admins" }, { $inc: { version: 1 } }, { session });
+      const current = await User.findById(userId).session(session);
+      if (!current) throw new AppError("Unauthorized", { statusCode: 401, code: "UNAUTHORIZED" });
+      if (current.role === "admin" && await User.countDocuments({ role: "admin" }).session(session) <= 1) {
+        throw new AppError("This is the only admin account. Promote another admin before deleting this one.",
+          { statusCode: 409, code: "LAST_ADMIN" });
+      }
+      const files = await StoredFile.find({ userId }).select("storageKey storageProvider").session(session);
+      objects = files.filter(file => file.storageKey).map(file => ({ provider: file.storageProvider, key: file.storageKey }));
+      await queueStorageDeletions(objects, session);
+      deletedCounts = {};
+      for (const collection of OWNED_COLLECTIONS) {
+        const result = await collection.model.deleteMany({ [collection.field]: userId }, { session });
+        deletedCounts[collection.name] = result.deletedCount ?? 0;
+      }
+      await current.deleteOne({ session });
+      deletedCounts.users = 1;
+    });
+  } catch (error) {
+    if ((error as { code?: number }).code === 20) throw new AppError(
+      "Account deletion requires MongoDB transactions. Configure a replica set or MongoDB Atlas and retry.",
+      { statusCode: 503, code: "ACCOUNT_DELETION_UNAVAILABLE" });
+    throw error;
+  } finally { await session.endSession(); }
+
   generationRegistry.abortUser(userId);
-
-  const { storageObjectsDeleted, storageObjectsFailed } = await purgeStoredObjects(userId);
-
-  const deletedCounts: Record<string, number> = {};
-  for (const collection of OWNED_COLLECTIONS) {
-    const result = await collection.model.deleteMany({ [collection.field]: userId });
-    deletedCounts[collection.name] = result.deletedCount ?? 0;
+  let storageObjectsDeleted = 0;
+  // Bound response latency; the background worker handles the remaining jobs.
+  for (const object of objects.slice(0, 10)) {
+    try { if (await processStorageDeletion(object) === true) storageObjectsDeleted += 1; }
+    catch (error) { logger.warn({ err: error }, "Account removed; durable file cleanup remains pending"); }
   }
-
-  await user.deleteOne();
-  deletedCounts.users = 1;
+  const storageObjectsFailed = objects.length - storageObjectsDeleted;
 
   logger.info(
     { userId, deletedCounts, storageObjectsDeleted, storageObjectsFailed },
@@ -154,36 +187,6 @@ export async function deleteAccount(
   );
 
   return { deletedCounts, storageObjectsDeleted, storageObjectsFailed };
-}
-
-/**
- * Best-effort removal of the user's uploaded bytes. A storage backend that is
- * unconfigured or temporarily unreachable must not strand the user with an
- * undeletable account, so failures are counted and logged rather than thrown —
- * the database purge still proceeds.
- */
-async function purgeStoredObjects(
-  userId: string,
-): Promise<{ storageObjectsDeleted: number; storageObjectsFailed: number }> {
-  const files = await StoredFile.find({ userId }).select("storageKey");
-  let storageObjectsDeleted = 0;
-  let storageObjectsFailed = 0;
-
-  for (const file of files) {
-    if (!file.storageKey) continue;
-    try {
-      await storageService.delete(file.storageKey);
-      storageObjectsDeleted += 1;
-    } catch (error) {
-      storageObjectsFailed += 1;
-      logger.warn(
-        { err: error, userId, storageKey: file.storageKey },
-        "Could not delete stored object during account deletion",
-      );
-    }
-  }
-
-  return { storageObjectsDeleted, storageObjectsFailed };
 }
 
 /** Exported for the sync test that guards against a missed collection. */

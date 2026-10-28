@@ -24,10 +24,11 @@ export function SidebarNavLink({
       title={label}
       className={({ isActive }) =>
         cn(
-          "flex items-center gap-2 rounded-full px-3 py-2 text-sm hover:bg-surface-muted",
+          "flex items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-surface-muted",
           collapsed && "md:justify-center md:px-2",
-          prominent && "bg-surface-muted",
-          isActive && !prominent && "bg-surface",
+          prominent && "border border-border",
+          // One active style across the sidebar: muted pill + 2px green bar.
+          isActive && !prominent && "bg-surface-muted font-medium shadow-[inset_2px_0_0_var(--color-accent)]",
         )
       }
     >

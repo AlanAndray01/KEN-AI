@@ -78,11 +78,11 @@ export function ChatImage({
 
   const imageClass =
     layout === "generated"
-      ? "max-h-80 w-full max-w-md cursor-zoom-in rounded-xl object-contain"
+      ? "block h-auto max-h-80 w-auto max-w-full cursor-zoom-in rounded-xl object-contain"
       : "h-20 w-20 cursor-zoom-in rounded-xl object-cover";
   const placeholderClass =
     layout === "generated"
-      ? "flex h-40 max-w-md items-center justify-center rounded-xl bg-surface-muted text-xs text-fg-muted"
+      ? "flex aspect-square w-80 max-w-full items-center justify-center rounded-xl bg-surface-muted text-xs text-fg-muted"
       : "flex h-20 w-20 items-center justify-center rounded-xl bg-surface-muted text-xs text-fg-muted";
 
   return (

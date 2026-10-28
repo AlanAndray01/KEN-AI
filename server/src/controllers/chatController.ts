@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { encodeListCursor } from "../utils/listCursor.js";
 import type { Request, Response } from "express";
 import {
   abortGenerationSchema,
@@ -66,8 +67,13 @@ export async function listConversationsHandler(req: Request, res: Response): Pro
   const conversations = await listConversations(requireUserId(req), {
     archived: query.archived,
     ...(query.limit !== undefined ? { limit: query.limit } : {}),
+    ...(query.cursor ? { cursor: query.cursor } : {}),
+    ...(query.q ? { q: query.q } : {}),
   });
-  res.status(200).json({ conversations });
+  const last = conversations.at(-1);
+  const nextCursor = last && conversations.length === (query.limit ?? 40)
+    ? encodeListCursor({ id: last.id, date: last.updatedAt, pinned: last.pinned }) : undefined;
+  res.status(200).json({ conversations, nextCursor });
 }
 
 export async function createConversationHandler(req: Request, res: Response): Promise<void> {

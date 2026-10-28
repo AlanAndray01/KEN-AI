@@ -1,9 +1,17 @@
 import { deflateRawSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { DOCX_MIME_TYPE } from "@Ken/shared";
-import { extractDocxText, extractDocumentText, extractPdfText } from "./extractDocument.js";
+import { extractDocxText, extractDocumentText, extractPdfText, MAX_EXPANDED_DOCUMENT_BYTES } from "./extractDocument.js";
 
 describe("extractPdfText", () => {
+  it("rejects excessive expansion and a cumulative budget across streams", () => {
+    const stream = (bytes: number) => {
+      const compressed = deflateRawSync(Buffer.alloc(bytes, 65));
+      return Buffer.concat([Buffer.from(`<< /Length ${compressed.length} /Filter /FlateDecode >>stream\n`), compressed, Buffer.from("\nendstream\n")]);
+    };
+    expect(() => extractPdfText(stream(MAX_EXPANDED_DOCUMENT_BYTES + 1))).toThrow(/processing limit/);
+    expect(() => extractPdfText(Buffer.concat([stream(3 * 1024 * 1024), stream(3 * 1024 * 1024)]))).toThrow(/processing limit/);
+  });
   it("reads literal strings from an uncompressed content stream", () => {
     const pdf = Buffer.from(
       `%PDF-1.1
@@ -30,6 +38,17 @@ endobj
 });
 
 describe("extractDocxText", () => {
+  it("rejects expansion even when an archive understates its uncompressed size", () => {
+    const data = deflateRawSync(Buffer.alloc(MAX_EXPANDED_DOCUMENT_BYTES + 1, 65));
+    const name = Buffer.from("word/document.xml");
+    const header = Buffer.alloc(30);
+    header.writeUInt32LE(0x04034b50, 0);
+    header.writeUInt16LE(8, 8);
+    header.writeUInt32LE(data.length, 18);
+    header.writeUInt32LE(1, 22);
+    header.writeUInt16LE(name.length, 26);
+    expect(() => extractDocxText(Buffer.concat([header, name, data]))).toThrow(/processing limit/);
+  });
   it("reads w:t runs from word/document.xml inside a stored zip", () => {
     const xml =
       '<?xml version="1.0"?><w:document><w:body><w:p><w:r><w:t>Hello from Word</w:t></w:r></w:p></w:body></w:document>';

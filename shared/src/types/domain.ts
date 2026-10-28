@@ -177,6 +177,7 @@ export interface PublicAnalysisJob {
   language: "python";
   createdAt: string;
   message: string;
+  output?: string;
 }
 
 export interface PublicMessage {

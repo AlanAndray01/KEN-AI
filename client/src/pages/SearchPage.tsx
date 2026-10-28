@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { CLIENT_ROUTES, type PublicConversation } from "@Ken/shared";
@@ -10,11 +10,13 @@ import { groupConversations } from "@/utils/groupConversations";
 const EMPTY_CONVERSATIONS: PublicConversation[] = [];
 
 export function SearchPage() {
+  const [archived, setArchived] = useState(false);
   const filter = useUiStore((state) => state.chatFilter);
+  const search = useDeferredValue(filter);
   const setChatFilter = useUiStore((state) => state.setChatFilter);
   const conversationsQuery = useQuery({
-    queryKey: ["conversations"],
-    queryFn: () => api.conversations.list(),
+    queryKey: ["conversations", "search", archived, search],
+    queryFn: () => api.conversations.list(archived, search),
     staleTime: CONVERSATION_STALE_MS,
   });
   const conversations = conversationsQuery.data?.conversations ?? EMPTY_CONVERSATIONS;
@@ -26,7 +28,7 @@ export function SearchPage() {
   const groups = useMemo(() => groupConversations(filtered), [filtered]);
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-6 py-12">
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-12 sm:px-6">
       <div className="space-y-2">
         <h1 className="text-3xl font-semibold tracking-tight">History</h1>
         <p className="text-fg-muted">
@@ -35,6 +37,7 @@ export function SearchPage() {
       </div>
       <input
         type="search"
+        maxLength={200}
         value={filter}
         autoFocus
         onChange={(event) => setChatFilter(event.target.value)}
@@ -42,6 +45,10 @@ export function SearchPage() {
         aria-label="Search chats"
         className="w-full rounded-xl border border-border bg-canvas px-4 py-2.5 text-sm"
       />
+      <label className="flex items-center gap-2 text-sm text-fg-muted">
+        <input type="checkbox" checked={archived} onChange={event => setArchived(event.target.checked)} />
+        Search archived chats
+      </label>
       {conversationsQuery.isLoading ? <p className="text-sm text-fg-muted">Loading chats…</p> : null}
       {conversationsQuery.isError ? <p className="text-sm text-danger">Unable to load chats.</p> : null}
       {!conversationsQuery.isLoading && groups.length === 0 ? (
@@ -52,7 +59,7 @@ export function SearchPage() {
       <div className="space-y-6">
         {groups.map((group) => (
           <section key={group.id} className="space-y-1">
-            <h2 className="text-[11px] font-medium tracking-wide text-fg-muted uppercase">{group.label}</h2>
+            <h2 className="text-xs font-medium tracking-wide text-fg-muted uppercase">{group.label}</h2>
             <ul>
               {group.items.map((conversation) => (
                 <li key={conversation.id}>

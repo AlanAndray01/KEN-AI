@@ -256,20 +256,22 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <!--
       Non-blocking font CSS: `media=print` keeps this out of the render-blocking
-      set, then `onload` flips it to `all`. `display=optional` lets the first
-      paint use the system stack instead of waiting on Lexend (LCP). One
+      set, then `onload` flips it to `all`. `display=swap` paints the system
+      stack first (no LCP wait) and then always lands on Lexend; `optional`
+      left first-time visitors on Segoe UI for the whole visit. One
       variable file covers landing's 200–800 range without five static weights.
     -->
     <link
       rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Lexend:wght@200..800&family=JetBrains+Mono:wght@400;500&display=optional"
+      href="https://fonts.googleapis.com/css2?family=Lexend:wght@200..800&family=JetBrains+Mono:wght@400;500&display=swap"
       media="print"
-      onload="this.media='all'"
+      id="site-fonts"
     />
+    <script>document.getElementById('site-fonts').addEventListener('load',function(){this.media='all'});</script>
     <noscript>
       <link
         rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Lexend:wght@200..800&family=JetBrains+Mono:wght@400;500&display=optional"
+        href="https://fonts.googleapis.com/css2?family=Lexend:wght@200..800&family=JetBrains+Mono:wght@400;500&display=swap"
       />
     </noscript>
 

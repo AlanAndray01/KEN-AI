@@ -1,6 +1,6 @@
 import request from "supertest";
 import type { Express } from "express";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearDatabase,
   explainSkip,
@@ -21,7 +21,11 @@ import {
   UsageRecord,
   User,
   UserProviderCredential,
+  File as StoredFile,
+  StorageDeletion,
 } from "../models/index.js";
+import { storageService } from "../services/storage/index.js";
+import { processStorageDeletion } from "../services/storage/storageDeletion.js";
 
 const mongo = await tryStartInMemoryMongo();
 explainSkip(mongo, "account deletion (real MongoDB)");
@@ -84,6 +88,7 @@ async function countUserData(userId: string): Promise<number> {
 }
 
 describe.skipIf(!mongo.ok)("account deletion (real MongoDB)", () => {
+  afterEach(() => vi.restoreAllMocks());
   beforeAll(async () => {
     app = await loadApp();
   });
@@ -102,6 +107,38 @@ describe.skipIf(!mongo.ok)("account deletion (real MongoDB)", () => {
       .send({ confirmEmail: credentials.email, password: credentials.password });
 
     expect(response.status).toBe(401);
+  });
+
+  it("keeps failed object cleanup durable after deleting the account and retries it later", async () => {
+    const { cookies, userId } = await registerVerified(app, credentials);
+    await StoredFile.create({ userId, originalName: "private.txt", mimeType: "text/plain", size: 5,
+      storageProvider: "local", storageKey: `${userId}/fake-cleanup-key` });
+    const remove = vi.spyOn(storageService, "delete").mockRejectedValue(new Error("Storage unavailable"));
+    const response = await request(app).delete("/api/me").set("Cookie", cookies)
+      .send({ confirmEmail: credentials.email, password: credentials.password });
+    expect(response.status).toBe(200);
+    expect(response.body.uploadsPendingDeletion).toBe(1);
+    expect(await User.findById(userId)).toBeNull();
+    expect(await StoredFile.countDocuments({ userId })).toBe(0);
+    expect(await StorageDeletion.findOne()).toMatchObject({ provider: "local", attempts: 1 });
+    // A fresh processor invocation recovers solely from durable state.
+    remove.mockResolvedValue(undefined);
+    await StorageDeletion.updateMany({}, { $set: { nextAttemptAt: new Date(0) } });
+    expect(await processStorageDeletion()).toBe(true);
+    expect(await StorageDeletion.countDocuments()).toBe(0);
+    expect(remove).toHaveBeenLastCalledWith(`${userId}/fake-cleanup-key`);
+  });
+
+  it("does not purge ownership rows when cleanup cannot be durably queued", async () => {
+    const { cookies, userId } = await registerVerified(app, credentials);
+    await StoredFile.create({ userId, originalName: "private.txt", mimeType: "text/plain", size: 5,
+      storageProvider: "local", storageKey: `${userId}/fake-unqueued-key` });
+    vi.spyOn(StorageDeletion, "bulkWrite").mockRejectedValue(new Error("Queue unavailable"));
+    const response = await request(app).delete("/api/me").set("Cookie", cookies)
+      .send({ confirmEmail: credentials.email, password: credentials.password });
+    expect(response.status).toBe(500);
+    expect(await User.countDocuments({ _id: userId })).toBe(1);
+    expect(await StoredFile.countDocuments({ userId })).toBe(1);
   });
 
   it("rejects a confirmation email that does not match the account", async () => {
@@ -246,5 +283,17 @@ describe.skipIf(!mongo.ok)("account deletion (real MongoDB)", () => {
     expect(response.status).toBe(200);
     expect(await User.countDocuments({ _id: ada.userId })).toBe(0);
     expect(await User.countDocuments({ _id: grace.userId })).toBe(1);
+  });
+
+  it("preserves one admin when both remaining admins delete concurrently", async () => {
+    const ada = await registerVerified(app, credentials);
+    const grace = await registerVerified(app, other);
+    await User.updateMany({ _id: { $in: [ada.userId, grace.userId] } }, { $set: { role: "admin" } });
+    const responses = await Promise.all([
+      request(app).delete("/api/me").set("Cookie", ada.cookies).send({ confirmEmail: credentials.email, password: credentials.password }),
+      request(app).delete("/api/me").set("Cookie", grace.cookies).send({ confirmEmail: other.email, password: other.password }),
+    ]);
+    expect(responses.map(response => response.status).sort()).toEqual([200, 409]);
+    expect(await User.countDocuments({ role: "admin" })).toBe(1);
   });
 });

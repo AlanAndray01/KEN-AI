@@ -3,7 +3,7 @@ import { DOCX_MIME_TYPE } from "@Ken/shared";
 import { foldInlineDocuments } from "./documentParts.js";
 
 describe("foldInlineDocuments", () => {
-  it("extracts PDF bytes into content and drops the part when native documents are off", () => {
+  it("extracts PDF bytes into content and drops the part when native documents are off", async () => {
     const pdf = Buffer.from(
       `%PDF-1.1
 1 0 obj<< /Length 40 >>stream
@@ -13,7 +13,7 @@ endobj
 %%EOF`,
       "latin1",
     );
-    const [folded] = foldInlineDocuments(
+    const [folded] = await foldInlineDocuments(
       [
         {
           role: "user",
@@ -35,8 +35,8 @@ endobj
     expect(folded?.parts).toBeUndefined();
   });
 
-  it("keeps native PDF parts for Gemini/OpenAI and still extracts a text note when missing", () => {
-    const [folded] = foldInlineDocuments(
+  it("keeps native PDF parts for Gemini/OpenAI and still extracts a text note when missing", async () => {
+    const [folded] = await foldInlineDocuments(
       [
         {
           role: "user",
@@ -51,8 +51,8 @@ endobj
     ]);
   });
 
-  it("extracts Word bytes instead of leaving a zip on the message", () => {
-    const [folded] = foldInlineDocuments([
+  it("extracts Word bytes instead of leaving a zip on the message", async () => {
+    const [folded] = await foldInlineDocuments([
       {
         role: "user",
         content: "Summarise this",
@@ -71,8 +71,8 @@ endobj
     expect(folded?.parts).toBeUndefined();
   });
 
-  it("leaves images as inline parts", () => {
-    const [folded] = foldInlineDocuments([
+  it("leaves images as inline parts", async () => {
+    const [folded] = await foldInlineDocuments([
       {
         role: "user",
         content: "What is this?",

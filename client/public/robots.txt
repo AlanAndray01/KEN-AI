@@ -9,28 +9,11 @@
 User-agent: *
 Allow: /
 
-# Signed-in surfaces. These need a session, so a crawler only ever reaches a
-# redirect or an empty shell — indexing them spends crawl budget on nothing and
-# scatters thin pages across the brand's results.
-Disallow: /chat
-Disallow: /settings
-Disallow: /library
-Disallow: /gpts
-Disallow: /search
-Disallow: /history
-Disallow: /admin
-
-# Shared conversations are public by link but they are the user's own content,
-# not ours to publish into a search index.
-Disallow: /share/
-
-# One-time token flows. Nothing here is meaningful without the token.
-Disallow: /verify-email
-Disallow: /reset-password
-Disallow: /forgot-password
-
-# Vite fingerprints these with a content hash, so an indexed URL is stale the
-# moment the app is rebuilt.
-Disallow: /assets/
+# Allow crawlers to observe the initial noindex directive on workspace, share,
+# token and unknown routes. A robots disallow would hide that directive and can
+# leave externally linked URLs indexed without a snippet. Authentication and
+# share tokens enforce access; noindex is only the search policy. Private URLs
+# are excluded from the sitemap, and their shells use nofollow.
+# Rendering assets also remain crawlable for JavaScript search rendering.
 
 Sitemap: https://ken-ai.tech/sitemap.xml

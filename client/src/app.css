@@ -102,7 +102,7 @@ html.dark .auth-glass {
   min-width: 0;
   text-align: center;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   overflow: visible;
@@ -710,6 +710,22 @@ html.dark .hljs-type {
   height: 1.75rem;
 }
 
+/* Reply actions are quiet until wanted. With a mouse they reveal on hover or
+   keyboard focus, except on the latest reply where they stay in reach. Touch
+   screens have no hover, so they always show there. */
+@media (hover: hover) and (pointer: fine) {
+  .chat-message .assistant-actions {
+    opacity: 0;
+    transition: opacity 120ms ease;
+  }
+
+  .chat-message:hover .assistant-actions,
+  .chat-message:focus-within .assistant-actions,
+  .chat-message:last-of-type .assistant-actions {
+    opacity: 1;
+  }
+}
+
 .model-selector-trigger {
   min-height: 2.25rem;
 }
@@ -745,7 +761,7 @@ html.dark .hljs-type {
   }
 
   .auth-mode-nav a {
-    font-size: 10px;
+    font-size: 0.75rem;
     letter-spacing: 0.04em;
     text-transform: none;
     padding-left: 0.35rem;
@@ -819,7 +835,7 @@ html.dark .hljs-type {
   }
 
   .auth-mode-nav a {
-    font-size: 0.6875rem;
+    font-size: 0.75rem;
     letter-spacing: 0.02em;
     line-height: 1.2;
     padding-left: 0.25rem;
@@ -882,15 +898,6 @@ html.dark .hljs-type {
      gap collapse instead of leaving a dead space where the chip used to sit. */
   .message-avatar {
     display: none;
-  }
-
-  /* Bubble chrome at roughly 3/4 of its desktop size: the base is rounded-xl
-     (0.75rem radius) with px-4 py-3 (1rem / 0.75rem) padding, so each figure
-     below is that value × 0.75. Message text is deliberately NOT scaled down
-     here — only the bubble shrinks; the words inside stay full size. */
-  .assistant-turn {
-    padding: 0.5625rem 0.75rem;
-    border-radius: 0.5625rem;
   }
 
   .user-message {
@@ -1056,7 +1063,7 @@ html.dark .hljs-type {
     margin-top: 0.4rem;
     padding-left: 0.35rem;
     padding-right: 0.35rem;
-    font-size: 0.625rem;
+    font-size: 0.75rem;
     line-height: 1.4;
   }
 
@@ -1180,7 +1187,7 @@ html.dark .hljs-type {
   }
 
   .auth-mode-nav a {
-    font-size: 0.6875rem;
+    font-size: 0.75rem;
     line-height: 1.2;
     letter-spacing: 0;
     text-transform: none;
