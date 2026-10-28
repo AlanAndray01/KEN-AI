@@ -71,7 +71,6 @@ export const ChatTurn = memo(function ChatTurn({
             <MessageAttachments attachments={message.attachments} />
           ) : null}
         </UserMessageBubble>
-        <MessageAvatar role="user" />
       </article>
     );
   }
@@ -82,12 +81,23 @@ export const ChatTurn = memo(function ChatTurn({
   // partial answer - both read as "the reply is missing".
   const live = streaming && message.status === "streaming";
   const interrupted = !streaming && message.status === "streaming";
+  const imageOnly =
+    Boolean(message.attachments?.length) && !message.content && !live && !interrupted && message.status !== "error";
 
   return (
     <article className="chat-message flex gap-3">
-      <MessageAvatar role="assistant" />
+      <MessageAvatar />
       <div className="min-w-0 flex-1">
-        <div className="assistant-turn rounded-xl border border-border bg-surface/60 px-4 py-3 text-fg">
+        <div
+          className={cn(
+            "assistant-turn text-fg",
+            // Text replies sit on the canvas like a document; only an image-only
+            // reply gets a frame, and that frame hugs the image.
+            imageOnly
+              ? "assistant-card w-fit max-w-full rounded-xl border border-border bg-surface/60 p-2"
+              : "pt-0.5",
+          )}
+        >
           {message.attachments?.length ? (
             <div className={message.content || live || interrupted || message.status === "error" ? "mb-3" : undefined}>
               <MessageAttachments
@@ -172,7 +182,7 @@ export const ChatTurn = memo(function ChatTurn({
           )}
         </div>
         {message.model ? (
-          <p className="mt-1 text-[11px] text-fg-muted" data-active-model={message.model}>
+          <p className="mt-1 text-xs text-fg-muted" data-active-model={message.model}>
             {modelCaption ?? message.model}
           </p>
         ) : null}

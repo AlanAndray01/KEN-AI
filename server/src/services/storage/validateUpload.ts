@@ -66,7 +66,7 @@ export function validateUploadBuffer(input: {
 
   if (IMAGE_MIMES.has(sniffed) || isPdfMime(sniffed) || isDocxMime(sniffed)) {
     const magicMime = sniffMime(input.buffer, input.originalName);
-    if (magicMime && magicMime !== sniffed) {
+    if (!magicMime || magicMime !== sniffed) {
       throw new AppError("File type does not match contents", { statusCode: 400, code: "FILE_TYPE_MISMATCH" });
     }
   }
@@ -91,7 +91,7 @@ function normalizeMime(mimeType: string, originalName: string): string {
 }
 
 function sniffMime(buffer: Buffer, originalName: string): string | undefined {
-  if (buffer.length >= 8 && buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) {
+  if (buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
     return "image/png";
   }
   if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
@@ -113,7 +113,7 @@ function sniffMime(buffer: Buffer, originalName: string): string | undefined {
     const ext = path.extname(originalName).toLowerCase();
     if (ext === ".docx") return DOCX_MIME_TYPE;
   }
-  return EXTENSION_MIME[path.extname(originalName).toLowerCase()];
+  return undefined;
 }
 
 function containsNul(buffer: Buffer): boolean {

@@ -28,6 +28,9 @@ export function ConversationSidebar() {
   const toggleCollapsed = useUiStore((state) => state.toggleCollapsed);
   const setShortcutsOpen = useUiStore((state) => state.setShortcutsOpen);
   const filter = useUiStore((state) => state.chatFilter);
+  // The header's search icon opens the inline filter; one entry point instead
+  // of an icon and an always-on box that both meant "find a chat".
+  const [filterOpen, setFilterOpen] = useState(false);
   const setFilter = useUiStore((state) => state.setChatFilter);
   const [menuId, setMenuId] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -187,16 +190,24 @@ export function ConversationSidebar() {
               wordmarkClassName={cn(narrow && "md:hidden")}
             />
           </Link>
-          {!narrow ? (
-            <button
-              type="button"
-              className="rounded-lg p-2 text-fg-muted hover:bg-surface-muted hover:text-fg"
-              aria-label="Search chats"
-              onClick={() => void navigate(CLIENT_ROUTES.search)}
-            >
-              <Search className="size-4" />
-            </button>
-          ) : null}
+          {/* Hidden only on the collapsed desktop rail; the mobile drawer always
+              shows its list, so it always needs the filter. */}
+          <button
+            type="button"
+            className={cn("rounded-lg p-2 text-fg-muted hover:bg-surface-muted hover:text-fg", narrow && "md:hidden")}
+            aria-label="Filter chats"
+            aria-pressed={filterOpen || Boolean(filter)}
+            onClick={() => {
+              if (filterOpen || filter) {
+                setFilter("");
+                setFilterOpen(false);
+              } else {
+                setFilterOpen(true);
+              }
+            }}
+          >
+            <Search className="size-4" />
+          </button>
           <button
             type="button"
             className="hidden rounded-lg p-2 text-fg-muted hover:bg-surface-muted hover:text-fg md:inline-flex"
@@ -244,7 +255,12 @@ export function ConversationSidebar() {
             loadError={conversationsQuery.isError}
             collapsed={narrow}
             filter={filter}
+            filterOpen={filterOpen || Boolean(filter)}
             onFilterChange={setFilter}
+            onFilterClose={() => {
+              setFilter("");
+              setFilterOpen(false);
+            }}
             onRenameValue={setRenameValue}
             onCommitRename={commitRename}
             onCancelRename={() => setRenamingId(null)}

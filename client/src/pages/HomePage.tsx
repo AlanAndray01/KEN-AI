@@ -108,7 +108,7 @@ export function HomePage() {
         </div>
       </div>
 
-      <main>
+      <main id="main-content" tabIndex={-1} className="outline-none">
         {/* HERO */}
         <section id="hero">
           <div className="hero-fallback" aria-hidden="true" />
@@ -136,8 +136,8 @@ export function HomePage() {
 
             <p className="hero-tag hero-reveal">Intelligence without the noise.</p>
             <p className="hero-sub hero-reveal">
-              Think, create, code, research, and explore with Ken AI — a private AI assistant at
-              ken-ai.tech, built for the way you work.
+              Think, create, code, research, and explore with Ken AI — a private AI assistant at{" "}
+              <span className="nowrap">ken-ai.tech</span>, built for the way you work.
             </p>
             <div className="hero-cta hero-reveal">
               <Link to={startHref} className="btn btn-primary">
@@ -149,14 +149,6 @@ export function HomePage() {
             </div>
           </div>
 
-          <div className="hero-meta">
-            <div className="status">
-              <span className="dot" /> All systems nominal
-            </div>
-            <div className="status" id="coord">
-              LAT 31.42 · LON 73.08
-            </div>
-          </div>
         </section>
 
         {/* S2 — INTRODUCING KEN */}
@@ -1032,16 +1024,13 @@ export function HomePage() {
             <h5>Resources</h5>
             <ul>
               <li>
-                <a href="#api">Documentation</a>
+                <a href="#api">API overview</a>
               </li>
               <li>
-                <a href="#api">Developers</a>
+                <a href="#api">API examples</a>
               </li>
               <li>
                 <a href="#faq">Help center</a>
-              </li>
-              <li>
-                <a href="#features">Blog</a>
               </li>
             </ul>
           </div>
@@ -1052,10 +1041,7 @@ export function HomePage() {
                 <a href="#product">About</a>
               </li>
               <li>
-                <a href="#product">Careers</a>
-              </li>
-              <li>
-                <a href="#final">Contact</a>
+                <a href="mailto:support@ken-ai.tech">Contact</a>
               </li>
             </ul>
           </div>
@@ -1069,35 +1055,13 @@ export function HomePage() {
                 <Link to={CLIENT_ROUTES.terms}>Terms</Link>
               </li>
               <li>
-                <a href="#security">Security</a>
+                <Link to={CLIENT_ROUTES.privacy}>Data privacy &amp; security</Link>
               </li>
             </ul>
           </div>
         </div>
         <div className="foot-bottom">
           <span>© KEN AI</span>
-          <div className="socials">
-            <a href="#hero" aria-label="X">
-              <svg viewBox="0 0 24 24" fill="currentColor">
-                <path d="M18.2 2H21l-6.6 7.5L22.2 22h-6l-4.7-6.2L6.1 22H3.3l7-8L2.1 2h6.2l4.3 5.7zm-1 18h1.6L7.9 3.7H6.2z" />
-              </svg>
-            </a>
-            <a href="#hero" aria-label="GitHub">
-              <svg viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.7c-2.8.6-3.4-1.3-3.4-1.3-.5-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.5 2.4 1.1 3 .8.1-.7.4-1.1.7-1.4-2.2-.2-4.6-1.1-4.6-4.9 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.6 0 0 .8-.3 2.7 1a9.4 9.4 0 0 1 5 0c1.9-1.3 2.7-1 2.7-1 .5 1.3.2 2.3.1 2.6.6.7 1 1.6 1 2.7 0 3.8-2.4 4.7-4.6 4.9.4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10 10 0 0 0 12 2z" />
-              </svg>
-            </a>
-            <a href="#hero" aria-label="LinkedIn">
-              <svg viewBox="0 0 24 24" fill="currentColor">
-                <path d="M4.98 3.5A2.5 2.5 0 1 1 0 3.5a2.5 2.5 0 0 1 4.98 0zM.2 8.4h4.6V24H.2zM8.4 8.4h4.4v2.1h.1c.6-1.1 2.1-2.3 4.3-2.3 4.6 0 5.4 3 5.4 6.9V24h-4.6v-7.9c0-1.9 0-4.3-2.6-4.3s-3 2-3 4.1V24H8.4z" />
-              </svg>
-            </a>
-            <a href="#hero" aria-label="YouTube">
-              <svg viewBox="0 0 24 24" fill="currentColor">
-                <path d="M23 12s0-3.8-.5-5.6a2.9 2.9 0 0 0-2-2C18.7 4 12 4 12 4s-6.7 0-8.5.4a2.9 2.9 0 0 0-2 2C1 8.2 1 12 1 12s0 3.8.5 5.6a2.9 2.9 0 0 0 2 2C5.3 20 12 20 12 20s6.7 0 8.5-.4a2.9 2.9 0 0 0 2-2C23 15.8 23 12 23 12zM9.8 15.5v-7l6 3.5z" />
-              </svg>
-            </a>
-          </div>
           <span>Intelligence without the noise.</span>
         </div>
       </footer>

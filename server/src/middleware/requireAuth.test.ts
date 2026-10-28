@@ -4,6 +4,13 @@ import { AppError } from "../utils/AppError.js";
 import { requireAdmin } from "../middleware/requireAuth.js";
 
 describe("requireAdmin", () => {
+  it("rejects an old admin claim after the current account is demoted", () => {
+    const req = { auth: { userId: "u1", sessionId: "s1", role: "admin",
+      user: { id: "u1", role: "user" } } } as Request;
+    const next = vi.fn();
+    requireAdmin(req, {} as Response, next);
+    expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 403 }));
+  });
   it("rejects authenticated non-admin users with 403", () => {
     const req = {
       auth: {

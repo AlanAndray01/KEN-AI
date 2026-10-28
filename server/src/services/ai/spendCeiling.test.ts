@@ -1,36 +1,34 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { AppError } from "../../utils/AppError.js";
-import { assertUnderSpendCeilingForTest, recordSpend, resetSpendCeilingForTest } from "./spendCeiling.js";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { clearDatabase, explainSkip, stopInMemoryMongo, tryStartInMemoryMongo } from "../../test/mongoHarness.js";
+import { SpendBudget } from "../../models/SpendBudget.js";
+import { reserveSpend, reconcileSpend, withSpendBudget } from "./spendCeiling.js";
+import type { AIProvider } from "./AIProvider.js";
 
-describe("spend ceiling", () => {
-  afterEach(() => {
-    resetSpendCeilingForTest();
+const mongo = await tryStartInMemoryMongo();
+explainSkip(mongo, "atomic spend reservations");
+describe.skipIf(!mongo.ok)("atomic spend reservations", () => {
+  beforeEach(clearDatabase);
+  afterAll(stopInMemoryMongo);
+  it("admits only one of two concurrent requests that would exceed the budget", async () => {
+    const results = await Promise.allSettled([reserveSpend("a", "environment", 150_000), reserveSpend("a", "database", 150_000)]);
+    expect(results.filter(result => result.status === "fulfilled")).toHaveLength(1);
+    expect(await SpendBudget.findOne()).toMatchObject({ tokens: 150_000 });
   });
-
-  it("never blocks a bring-your-own-key generation", async () => {
-    await recordSpend("user-1", "user", 10_000_000);
-    await assertUnderSpendCeilingForTest("user-1", "user");
+  it("reconciles known usage and retains uncertain costs", async () => {
+    const reservation = await reserveSpend("a", "environment", 100_000);
+    await reconcileSpend(reservation, { inputTokens: 100, outputTokens: 200 });
+    expect(await SpendBudget.findOne()).toMatchObject({ tokens: 300 });
+    const uncertain = await reserveSpend("a", "environment", 100_000);
+    await reconcileSpend(uncertain);
+    expect(await SpendBudget.findOne()).toMatchObject({ tokens: 100_300 });
+    expect(await reserveSpend("a", "user", 1_000_000)).toBeNull();
   });
-
-  it("allows a platform-key generation under the ceiling", async () => {
-    await recordSpend("user-2", "environment", 1_000);
-    await assertUnderSpendCeilingForTest("user-2", "environment");
-  });
-
-  it("blocks a platform-key generation once today's total reaches the ceiling", async () => {
-    await recordSpend("user-3", "environment", 250_000);
-
-    await expect(assertUnderSpendCeilingForTest("user-3", "environment")).rejects.toMatchObject({
-      code: "SPEND_CEILING_REACHED",
-    });
-  });
-
-  it("keeps a running total across multiple recorded generations", async () => {
-    await recordSpend("user-4", "database", 150_000);
-    await assertUnderSpendCeilingForTest("user-4", "database");
-
-    await recordSpend("user-4", "database", 150_000);
-
-    await expect(assertUnderSpendCeilingForTest("user-4", "database")).rejects.toBeInstanceOf(AppError);
+  it("does not dispatch when authoritative accounting fails", async () => {
+    const generate = vi.fn();
+    const adapter = withSpendBudget({ generate } as unknown as AIProvider, "a", "environment", true);
+    const update = vi.spyOn(SpendBudget, "updateOne").mockRejectedValueOnce(new Error("database unavailable"));
+    await expect(adapter.generate({ providerId: "groq", modelId: "m", messages: [] })).rejects.toMatchObject({ code: "SPEND_ACCOUNTING_UNAVAILABLE" });
+    expect(generate).not.toHaveBeenCalled();
+    update.mockRestore();
   });
 });

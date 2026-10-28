@@ -37,7 +37,7 @@ export function AuthField({ label, error, tone, type = "text", className, ...inp
         />
         <label
           htmlFor={id}
-          className="pointer-events-none absolute top-1.5 left-3.5 text-[11px] text-fg-muted transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[11px]"
+          className="pointer-events-none absolute top-1.5 left-3.5 text-xs text-fg-muted transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-xs"
         >
           {label}
         </label>

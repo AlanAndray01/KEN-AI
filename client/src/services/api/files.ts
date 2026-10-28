@@ -1,8 +1,9 @@
 import type { PublicFile } from "@Ken/shared";
 import { authedFetch, failIfNotOk, request } from "./client";
+import { collectPages } from "./pagination";
 
 export const filesApi = {
-  list: () => request<{ files: PublicFile[] }>("/files"),
+  list: async () => ({ files: await collectPages<PublicFile>("/files", "files") }),
   upload: async (file: File) => {
     const body = new FormData();
     body.append("file", file);

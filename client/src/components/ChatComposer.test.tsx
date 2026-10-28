@@ -106,7 +106,7 @@ describe("ChatComposer", () => {
     };
   }
 
-  function pasteInto(onAddFiles: ReturnType<typeof vi.fn>, payload: { clipboardData: unknown }, streaming = false) {
+  function pasteInto(onAddFiles: (files: File[]) => void, payload: { clipboardData: unknown }, streaming = false) {
     render(
       <ChatComposer
         value=""

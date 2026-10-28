@@ -1,0 +1,270 @@
+{
+  "npm-audit": {
+    "counts": {
+      "info": 0,
+      "low": 4,
+      "moderate": 3,
+      "high": 2,
+      "critical": 5,
+      "total": 14
+    },
+    "packages": {
+      "@modelcontextprotocol/sdk": {
+        "severity": "high",
+        "nodes": [
+          "node_modules/@modelcontextprotocol/sdk"
+        ],
+        "advisories": [
+          {
+            "title": "MCP TypeScript SDK: OAuth client could send credentials to an authorization server chosen by the MCP server",
+            "url": "https://github.com/advisories/GHSA-6qxp-vccf-f47h",
+            "range": ">=1.12.0 <1.31.0"
+          }
+        ],
+        "fixAvailable": true
+      },
+      "@vitest/mocker": {
+        "severity": "moderate",
+        "nodes": [
+          "node_modules/@vitest/mocker"
+        ],
+        "advisories": [
+          {
+            "title": "Vitest: Path Traversal / Arbitrary File Read via @vitest/mocker Redirect Mock",
+            "url": "https://github.com/advisories/GHSA-82fw-gwwq-j7x9",
+            "range": ">=2.1.0 <4.1.11"
+          }
+        ],
+        "fixAvailable": {
+          "name": "vitest",
+          "version": "5.0.3",
+          "isSemVerMajor": true
+        }
+      },
+      "concurrently": {
+        "severity": "critical",
+        "nodes": [
+          "node_modules/concurrently"
+        ],
+        "advisories": [],
+        "fixAvailable": true
+      },
+      "fast-copy": {
+        "severity": "moderate",
+        "nodes": [
+          "node_modules/fast-copy"
+        ],
+        "advisories": [
+          {
+            "title": "fast-copy: Stack exhaustion in fast-copy when copying deeply-nested values",
+            "url": "https://github.com/advisories/GHSA-jggr-w7fw-pc2j",
+            "range": ">=4.0.0 <4.1.0"
+          }
+        ],
+        "fixAvailable": true
+      },
+      "hono": {
+        "severity": "moderate",
+        "nodes": [
+          "node_modules/hono"
+        ],
+        "advisories": [
+          {
+            "title": "hono/jsx renders plain strings unescaped in boundary components, leading to XSS",
+            "url": "https://github.com/advisories/GHSA-hxh3-vqpv-xpqv",
+            "range": "<4.13.7"
+          }
+        ],
+        "fixAvailable": true
+      },
+      "katex": {
+        "severity": "low",
+        "nodes": [
+          "node_modules/micromark-extension-math/node_modules/katex",
+          "node_modules/rehype-katex/node_modules/katex"
+        ],
+        "advisories": [
+          {
+            "title": "KaTeX: Existing prototype pollution can bypass trust restrictions",
+            "url": "https://github.com/advisories/GHSA-238p-pmpm-9mq7",
+            "range": ">=0.11.0 <0.18.2"
+          }
+        ],
+        "fixAvailable": {
+          "name": "rehype-katex",
+          "version": "1.2.0",
+          "isSemVerMajor": true
+        }
+      },
+      "micromark-extension-math": {
+        "severity": "low",
+        "nodes": [
+          "node_modules/micromark-extension-math"
+        ],
+        "advisories": [],
+        "fixAvailable": {
+          "name": "remark-math",
+          "version": "3.0.1",
+          "isSemVerMajor": true
+        }
+      },
+      "proxy-addr": {
+        "severity": "critical",
+        "nodes": [
+          "node_modules/proxy-addr"
+        ],
+        "advisories": [
+          {
+            "title": "proxy-addr vulnerable to IP spoofing via IPv4-mapped IPv6 trust subnet",
+            "url": "https://github.com/advisories/GHSA-jqcg-44mw-7w3h",
+            "range": ">=1.1.0 <2.0.8"
+          }
+        ],
+        "fixAvailable": true
+      },
+      "rehype-katex": {
+        "severity": "low",
+        "nodes": [
+          "node_modules/rehype-katex"
+        ],
+        "advisories": [],
+        "fixAvailable": {
+          "name": "rehype-katex",
+          "version": "1.2.0",
+          "isSemVerMajor": true
+        }
+      },
+      "remark-math": {
+        "severity": "low",
+        "nodes": [
+          "node_modules/remark-math"
+        ],
+        "advisories": [],
+        "fixAvailable": {
+          "name": "remark-math",
+          "version": "3.0.1",
+          "isSemVerMajor": true
+        }
+      },
+      "shell-quote": {
+        "severity": "critical",
+        "nodes": [
+          "node_modules/shell-quote"
+        ],
+        "advisories": [
+          {
+            "title": "shell-quote: `quote()` command injection via a line terminator in a token after a `{ comment }` token",
+            "url": "https://github.com/advisories/GHSA-pqg4-j6r4-53mv",
+            "range": ">=1.8.4 <1.11.0"
+          }
+        ],
+        "fixAvailable": true
+      },
+      "source-map-js": {
+        "severity": "high",
+        "nodes": [
+          "node_modules/source-map-js"
+        ],
+        "advisories": [
+          {
+            "title": "source-map-js allows event-loop denial of service through indexed source-map section offsets",
+            "url": "https://github.com/advisories/GHSA-68fv-2mgg-jv7q",
+            "range": ">=1.0.0 <1.2.2"
+          }
+        ],
+        "fixAvailable": true
+      },
+      "tinypool": {
+        "severity": "critical",
+        "nodes": [
+          "node_modules/tinypool"
+        ],
+        "advisories": [
+          {
+            "title": "Tinypool: Prototype Pollution gadget in worker options leads to Remote Code Execution",
+            "url": "https://github.com/advisories/GHSA-5gmw-xhrv-c9v3",
+            "range": "<=2.1.0"
+          },
+          {
+            "title": "Tinypool: Prototype Pollution Gadget to RCE in run() options",
+            "url": "https://github.com/advisories/GHSA-85c8-ppgw-ccpr",
+            "range": "<2.1.2"
+          }
+        ],
+        "fixAvailable": {
+          "name": "vitest",
+          "version": "5.0.3",
+          "isSemVerMajor": true
+        }
+      },
+      "vitest": {
+        "severity": "critical",
+        "nodes": [
+          "node_modules/vitest"
+        ],
+        "advisories": [
+          {
+            "title": "Vitest: Path Traversal / Arbitrary File Read via @vitest/mocker Redirect Mock",
+            "url": "https://github.com/advisories/GHSA-82fw-gwwq-j7x9",
+            "range": ">=2.1.0 <4.1.11"
+          }
+        ],
+        "fixAvailable": {
+          "name": "vitest",
+          "version": "5.0.3",
+          "isSemVerMajor": true
+        }
+      }
+    }
+  },
+  "worker-npm-audit": {
+    "counts": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 4,
+      "critical": 0,
+      "total": 4
+    },
+    "packages": {
+      "@cloudflare/vitest-plugin": {
+        "severity": "high",
+        "nodes": [
+          "node_modules/@cloudflare/vitest-plugin"
+        ],
+        "advisories": [],
+        "fixAvailable": true
+      },
+      "miniflare": {
+        "severity": "high",
+        "nodes": [
+          "node_modules/miniflare"
+        ],
+        "advisories": [],
+        "fixAvailable": true
+      },
+      "sharp": {
+        "severity": "high",
+        "nodes": [
+          "node_modules/sharp"
+        ],
+        "advisories": [
+          {
+            "title": "sharp : Vulnerability in librsvg dependency CVE-2026-96889",
+            "url": "https://github.com/advisories/GHSA-wq5f-xc86-pv6w",
+            "range": "<0.35.5"
+          }
+        ],
+        "fixAvailable": true
+      },
+      "wrangler": {
+        "severity": "high",
+        "nodes": [
+          "node_modules/wrangler"
+        ],
+        "advisories": [],
+        "fixAvailable": true
+      }
+    }
+  }
+}

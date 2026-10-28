@@ -8,6 +8,7 @@ type CachedImage = {
 
 const cache = new Map<string, CachedImage>();
 const inflight = new Map<string, Promise<Blob>>();
+let generation = 0;
 
 /** Idle decoded JPEGs kept around so scrolling a long thread does not refetch. */
 const MAX_IDLE = 24;
@@ -41,13 +42,14 @@ async function loadBlob(fileId: string): Promise<Blob> {
   const pending = inflight.get(fileId);
   if (pending) return pending;
   const request = api.files.content(fileId).finally(() => {
-    inflight.delete(fileId);
+    if (inflight.get(fileId) === request) inflight.delete(fileId);
   });
   inflight.set(fileId, request);
   return request;
 }
 
 export function retainChatImage(fileId: string, onReady: (entry: { blob: Blob; url: string }) => void): () => void {
+  const startedIn = generation;
   let released = false;
   const cached = cache.get(fileId);
   if (cached) {
@@ -59,6 +61,7 @@ export function retainChatImage(fileId: string, onReady: (entry: { blob: Blob; u
 
   void loadBlob(fileId)
     .then((blob) => {
+      if (startedIn !== generation) return;
       const entry = remember(fileId, blob);
       if (released) return;
       if (!cached) entry.refs += 1;
@@ -76,8 +79,9 @@ export function retainChatImage(fileId: string, onReady: (entry: { blob: Blob; u
   };
 }
 
-/** Test helper: drop every object URL so cases do not leak across files. */
+/** Drop private blobs on identity changes; late responses cannot restore them. */
 export function resetChatImageCache(): void {
+  generation += 1;
   for (const entry of cache.values()) {
     URL.revokeObjectURL(entry.url);
   }

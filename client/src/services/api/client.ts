@@ -134,7 +134,17 @@ const SESSION_ENDPOINTS = new Set([
 ]);
 
 let refreshInFlight: Promise<boolean> | null = null;
+let sessionController = new AbortController();
+let sessionGeneration = 0;
 const unauthorizedListeners = new Set<() => void>();
+
+/** End requests belonging to the previous identity, including streaming bodies. */
+export function resetApiSession(): void {
+  sessionGeneration += 1;
+  sessionController.abort();
+  sessionController = new AbortController();
+  refreshInFlight = null;
+}
 
 /** Notified when the session cannot be recovered and the user must sign in again. */
 export function onUnauthorized(listener: () => void): () => void {
@@ -149,6 +159,7 @@ async function performRefresh(): Promise<boolean> {
     const response = await fetch(apiUrl("/auth/refresh"), {
       method: "POST",
       credentials: "include",
+      signal: sessionController.signal,
       headers: { Accept: "application/json" },
     });
     return response.ok;
@@ -160,9 +171,10 @@ async function performRefresh(): Promise<boolean> {
 /** Concurrent 401s share one refresh so the refresh token rotates only once. */
 function refreshSession(): Promise<boolean> {
   if (!refreshInFlight) {
-    refreshInFlight = performRefresh().finally(() => {
-      refreshInFlight = null;
+    const pending = performRefresh().finally(() => {
+      if (refreshInFlight === pending) refreshInFlight = null;
     });
+    refreshInFlight = pending;
   }
   return refreshInFlight;
 }
@@ -173,14 +185,27 @@ function refreshSession(): Promise<boolean> {
  * token never surfaces to the user as a failed action.
  */
 export async function authedFetch(path: string, init: RequestInit = {}): Promise<Response> {
-  const requestInit: RequestInit = { ...init, credentials: "include" };
+  const generation = sessionGeneration;
+  const sessionEndpoint = SESSION_ENDPOINTS.has(path);
+  const requestInit: RequestInit = { ...init, credentials: "include",
+    ...(!sessionEndpoint ? { signal: init.signal
+      ? AbortSignal.any([init.signal, sessionController.signal]) : sessionController.signal } : {}),
+  };
   const response = await fetch(apiUrl(path), requestInit);
+  const assertCurrentSession = (): void => {
+    if (!sessionEndpoint && generation !== sessionGeneration) {
+      throw new DOMException("Session changed", "AbortError");
+    }
+  };
+  assertCurrentSession();
 
   if (response.status !== 401 || SESSION_ENDPOINTS.has(path)) {
     return response;
   }
 
-  if (!(await refreshSession())) {
+  const refreshed = await refreshSession();
+  assertCurrentSession();
+  if (!refreshed) {
     for (const listener of unauthorizedListeners) listener();
     return response;
   }

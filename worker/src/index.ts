@@ -147,11 +147,33 @@ function numberOrUndefined(value: unknown): number | undefined {
 	return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
-async function readJson(request: Request, maxBytes = MAX_BODY_BYTES): Promise<Record<string, unknown>> {
+async function readBody(request: Request, maxBytes = MAX_BODY_BYTES): Promise<Uint8Array> {
 	const declared = Number(request.headers.get("Content-Length") ?? 0);
 	if (declared > maxBytes) throw new HttpError(413, "too_large", "Request body is too large.");
-	const text = await request.text();
-	if (new TextEncoder().encode(text).byteLength > maxBytes) throw new HttpError(413, "too_large", "Request body is too large.");
+	const reader = request.body?.getReader();
+	if (!reader) return new Uint8Array();
+	const chunks: Uint8Array[] = [];
+	let size = 0;
+	try {
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			size += value.byteLength;
+			if (size > maxBytes) {
+				await reader.cancel().catch(() => undefined);
+				throw new HttpError(413, "too_large", "Request body is too large.");
+			}
+			chunks.push(value);
+		}
+	} finally { reader.releaseLock(); }
+	const bytes = new Uint8Array(size);
+	let offset = 0;
+	for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+	return bytes;
+}
+
+async function readJson(request: Request, maxBytes = MAX_BODY_BYTES): Promise<Record<string, unknown>> {
+	const text = new TextDecoder().decode(await readBody(request, maxBytes));
 	try {
 		const parsed: unknown = JSON.parse(text);
 		if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
@@ -499,8 +521,7 @@ export default {
 					throw new HttpError(400, "unknown_model", "That image model is not available.");
 				}
 				const contentType = request.headers.get("Content-Type") ?? "";
-				const bytes = await request.arrayBuffer();
-				if (bytes.byteLength > MAX_BODY_BYTES) throw new HttpError(413, "too_large", "Request body is too large.");
+				const bytes = await readBody(request);
 				const input = contentType.startsWith("multipart/form-data")
 					? { multipart: { body: bytes, contentType } }
 					: await readJson(new Request(request.url, { method: "POST", body: bytes }));

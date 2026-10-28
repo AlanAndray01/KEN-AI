@@ -9,8 +9,8 @@ interface S3CompatibleOptions {
   accessKey: string;
   secretKey: string;
   region: string;
-  endpoint?: string;
-  publicUrl?: string;
+  endpoint?: string | undefined;
+  publicUrl?: string | undefined;
 }
 
 export class S3CompatibleStorage implements StorageService {
@@ -47,7 +47,11 @@ export class S3CompatibleStorage implements StorageService {
   }
 
   async delete(key: string): Promise<void> {
-    await this.request("DELETE", key);
+    const response = await this.request("DELETE", key);
+    if (response.ok) return;
+    if (response.status === 404 && /<Code>NoSuchKey<\/Code>/.test(await response.clone().text())) return;
+    await this.logFailure("DELETE", response);
+    throw new AppError("Object storage deletion failed.", { statusCode: 502, code: "STORAGE_ERROR" });
   }
 
   async exists(key: string): Promise<boolean> {
@@ -79,8 +83,9 @@ export class S3CompatibleStorage implements StorageService {
     const now = new Date();
     const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
     const dateStamp = amzDate.slice(0, 8);
-    const host = this.host();
-    const canonicalUri = `/${this.options.bucket}/${key.split("/").map(encodeURIComponent).join("/")}`;
+    const url = new URL(`${this.baseUrl()}/${encodeURIComponent(this.options.bucket)}/${key.split("/").map(encodeURIComponent).join("/")}`);
+    const host = url.host;
+    const canonicalUri = url.pathname;
     const payloadHash = createHash("sha256").update(body ?? "").digest("hex");
     const headers: Record<string, string> = {
       host,
@@ -114,19 +119,12 @@ export class S3CompatibleStorage implements StorageService {
     const signature = createHmac("sha256", signingKey).update(stringToSign).digest("hex");
     headers.authorization = `AWS4-HMAC-SHA256 Credential=${this.options.accessKey}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
 
-    const url = `${this.baseUrl()}${canonicalUri}`;
-    return fetch(url, {
+    return fetch(url.toString(), {
       method,
       headers,
+      signal: AbortSignal.timeout(30_000),
       ...(body ? { body } : {}),
     });
-  }
-
-  private host(): string {
-    if (this.options.endpoint) {
-      return new URL(this.options.endpoint).host;
-    }
-    return `${this.options.bucket}.s3.${this.options.region}.amazonaws.com`;
   }
 
   private baseUrl(): string {

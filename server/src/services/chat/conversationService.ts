@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { decodeListCursor } from "../../utils/listCursor.js";
 import type { z } from "zod";
 import {
   CONVERSATION_TTL_SECONDS,
@@ -49,13 +50,21 @@ export async function capStoredTurns(conversationId: string, userId: string): Pr
 
 export async function listConversations(
   userId: string,
-  options: { archived?: boolean; limit?: number } = {},
+  options: { archived?: boolean; limit?: number; cursor?: string; q?: string } = {},
 ) {
   const limit = Math.min(Math.max(options.limit ?? 40, 1), 100);
   const archived = options.archived ?? false;
-  const docs = await Conversation.find({ userId, archived })
+  const cursor = options.cursor ? decodeListCursor(options.cursor) : undefined;
+  const docs = await Conversation.find({ userId, archived,
+    ...(options.q ? { title: { $regex: options.q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), $options: "i" } } : {}),
+    ...(cursor ? { $or: [
+      { pinned: { $lt: cursor.pinned } },
+      { pinned: cursor.pinned, updatedAt: { $lt: cursor.date } },
+      { pinned: cursor.pinned, updatedAt: cursor.date, _id: { $lt: cursor.id } },
+    ] } : {}),
+  })
     .select("title modelId providerId archived pinned lastMessageAt lastMessagePreview messageCount customGptId createdAt updatedAt")
-    .sort({ pinned: -1, updatedAt: -1 })
+    .sort({ pinned: -1, updatedAt: -1, _id: -1 })
     .limit(limit);
   return docs.map((doc) => toPublicConversation(doc));
 }

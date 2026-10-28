@@ -1,0 +1,14 @@
+﻿{
+    "isolation":  {
+                      "account":  "audit-B",
+                      "draft":  null,
+                      "cacheLeaksA":  false
+                  },
+    "reducedFrames":  0,
+    "normalFrames":  65,
+    "stoppedFrames":  0,
+    "brokenAnchors":  [
+
+                      ],
+    "title":  "Ken AI | Intelligence Without The Noise"
+}

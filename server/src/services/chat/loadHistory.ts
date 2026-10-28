@@ -78,7 +78,7 @@ export async function currentUserTurn(
     question: userMessage.content,
     ...(providerId ? { charBudget: documentCharBudget(providerId) } : {}),
   });
-  const [folded] = foldInlineDocuments(
+  const [folded] = await foldInlineDocuments(
     [
       {
         role: "user",

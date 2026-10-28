@@ -47,6 +47,6 @@ describe("SearchPage", () => {
 
     fireEvent.change(screen.getByRole("searchbox", { name: "Search chats" }), { target: { value: "nope" } });
     expect(screen.queryByRole("link", { name: "Hello?" })).not.toBeInTheDocument();
-    expect(screen.getByText("No chats match that title.")).toBeInTheDocument();
+    expect(await screen.findByText("No chats match that title.")).toBeInTheDocument();
   });
 });

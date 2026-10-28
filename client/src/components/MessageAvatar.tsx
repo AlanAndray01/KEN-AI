@@ -1,24 +1,19 @@
-import { cn } from "@/utils/cn";
+import { KenMark } from "@/components/KenMark";
 
 /**
- * The YOU / KEN chip that sits beside a turn, carried over from the landing
- * page's interface panel so the real chat reads the same as the marketing shot.
+ * The K mark beside an assistant turn. User turns carry no avatar: the bubble's
+ * side and tint already say who wrote it, and a "YOU" chip only ate width.
  *
  * It is decorative: the turn's author is already conveyed by the message's own
- * markup, so screen readers skip the chip rather than hearing "you" twice.
+ * markup, so screen readers skip it rather than hearing the author twice.
  */
-export function MessageAvatar({ role }: { role: "user" | "assistant" }) {
+export function MessageAvatar() {
   return (
     <span
       aria-hidden="true"
-      className={cn(
-        "message-avatar mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg border font-mono text-[10px] tracking-wider",
-        role === "assistant"
-          ? "border-accent/35 bg-accent/10 text-accent"
-          : "border-border text-fg-muted",
-      )}
+      className="message-avatar mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg border border-border bg-surface"
     >
-      {role === "assistant" ? "KEN" : "YOU"}
+      <KenMark className="size-4" />
     </span>
   );
 }

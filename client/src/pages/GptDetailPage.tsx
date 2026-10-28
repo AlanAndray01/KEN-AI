@@ -70,7 +70,7 @@ export function GptDetailPage() {
 
   if (gptQuery.isLoading) {
     return (
-      <div className="mx-auto max-w-3xl px-6 py-12">
+      <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6">
         <p className="text-fg-muted">Loading GPT…</p>
       </div>
     );
@@ -78,7 +78,7 @@ export function GptDetailPage() {
 
   if (!gpt) {
     return (
-      <div className="mx-auto max-w-3xl px-6 py-12">
+      <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6">
         <h1 className="text-3xl font-semibold tracking-tight">GPT not found</h1>
         <Link to={CLIENT_ROUTES.gpts} className="mt-4 inline-block text-sm text-accent">
           Back to GPTs
@@ -88,7 +88,7 @@ export function GptDetailPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-6 py-12">
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-12 sm:px-6">
       <div className="space-y-1">
         <p className="text-sm text-fg-muted">GPTs</p>
         <h1 className="text-3xl font-semibold tracking-tight">{gpt.name}</h1>

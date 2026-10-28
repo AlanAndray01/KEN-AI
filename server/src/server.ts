@@ -9,6 +9,7 @@ import { app } from "./app.js";
 import { bootstrapProviders } from "./services/ai/bootstrap.js";
 import { GENERATION_TIMEOUT_MS } from "./services/chat/generationRegistry.js";
 import { toSafeError } from "./utils/redact.js";
+import { startStorageDeletionWorker } from "./services/storage/storageDeletion.js";
 
 installProviderHttpKeepAlive();
 
@@ -54,6 +55,7 @@ async function start(): Promise<void> {
     process.exit(1);
   }
 
+  const stopStorageDeletionWorker = startStorageDeletionWorker();
   const server = app.listen(env.PORT, () => {
     logger.info(
       {
@@ -80,6 +82,7 @@ async function start(): Promise<void> {
   server.keepAliveTimeout = 75_000;
 
   const shutdown = (signal: string): void => {
+    stopStorageDeletionWorker();
     logger.info({ signal }, "Shutting down");
     server.close(() => {
       void disconnectDatabase()

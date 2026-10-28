@@ -13,11 +13,13 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
 
     const payload = await verifyAccessToken(token);
     await assertSessionActive(payload.sid);
+    const user = await getUserById(payload.sub);
     req.auth = {
       userId: payload.sub,
       sessionId: payload.sid,
-      role: payload.role,
-      user: await getUserById(payload.sub),
+      // Sensitive authorization follows current membership, not a stale JWT claim.
+      role: user.role,
+      user,
     };
     next();
   } catch (error) {
@@ -31,7 +33,7 @@ export function requireAdmin(req: Request, _res: Response, next: NextFunction): 
     return;
   }
 
-  if (req.auth.role !== "admin") {
+  if (req.auth.user.role !== "admin") {
     next(new AppError("Administrator access required", { statusCode: 403, code: "FORBIDDEN" }));
     return;
   }

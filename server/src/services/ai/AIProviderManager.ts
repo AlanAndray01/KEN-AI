@@ -23,7 +23,7 @@ import { runtimeCredentials } from "./endpointPolicy.js";
 import { providerReadsPdfNatively } from "./nativeDocuments.js";
 import { foldInlineDocuments } from "../chat/documentParts.js";
 import { consumePlatformChatQuota } from "./platformChatQuota.js";
-import { assertUnderSpendCeiling } from "./spendCeiling.js";
+import { withSpendBudget } from "./spendCeiling.js";
 import { isProviderLeaveError, isProviderQuotaError, isRetryableProviderError } from "./fallback.js";
 import {
   formatFallbackReason,
@@ -365,7 +365,7 @@ export class AIProviderManager {
   }
 
   private async generateOnce(request: GenerateRequest): Promise<AIResponse> {
-    const resolved = this.prepareRequest(await this.withAttachmentRoute(request));
+    const resolved = await this.prepareRequest(await this.withAttachmentRoute(request));
     const adapter = await this.getAdapter(resolved.providerId, resolved.userId, resolved.skipQuota);
     if (!resolved.skipAvailabilityCheck) {
       await modelRegistry.assertModelAvailable(resolved.providerId, resolved.modelId, resolved.userId);
@@ -384,7 +384,7 @@ export class AIProviderManager {
         fallbackReason: "ATTACHMENT_ROUTE",
       };
     }
-    const resolved = this.prepareRequest(routed);
+    const resolved = await this.prepareRequest(routed);
     const adapter = await this.getAdapter(resolved.providerId, resolved.userId, resolved.skipQuota);
     if (!resolved.skipAvailabilityCheck) {
       await modelRegistry.assertModelAvailable(resolved.providerId, resolved.modelId, resolved.userId);
@@ -432,9 +432,9 @@ export class AIProviderManager {
    * this is the one place that can guarantee the assistant knows it is Ken AI
    * no matter which route built the prompt.
    */
-  private prepareRequest(request: GenerateRequest): GenerateRequest {
+  private async prepareRequest(request: GenerateRequest): Promise<GenerateRequest> {
     const aliased = this.withAliasedModel(request);
-    const resolved = this.withReadablePdfs(this.withVisionModel(aliased));
+    const resolved = await this.withReadablePdfs(this.withVisionModel(aliased));
     const fitted = this.withProviderContextFit(resolved);
     const messages = withKenIdentity(fitted.messages, describeSelectedModel(fitted.modelId));
     return messages === fitted.messages ? fitted : { ...fitted, messages };
@@ -462,13 +462,13 @@ export class AIProviderManager {
    * the file would reach the model as a bare filename, so its text is
    * extracted here, for exactly the hop that needs it.
    */
-  private withReadablePdfs(request: GenerateRequest): GenerateRequest {
+  private async withReadablePdfs(request: GenerateRequest): Promise<GenerateRequest> {
     if (providerReadsPdfNatively(request.providerId)) return request;
     const hasPdf = request.messages.some((message) =>
       message.parts?.some((part) => part.mimeType === "application/pdf"),
     );
     if (!hasPdf) return request;
-    return { ...request, messages: foldInlineDocuments(request.messages, { nativeDocuments: false }) };
+    return { ...request, messages: await foldInlineDocuments(request.messages, { nativeDocuments: false }) };
   }
 
   private withProviderContextFit(request: GenerateRequest): GenerateRequest {
@@ -524,7 +524,6 @@ export class AIProviderManager {
     }
     if (source === "user") return request;
     await consumePlatformChatQuota(request.userId, source);
-    await assertUnderSpendCeiling(request.userId, source);
     return { ...request, skipQuota: true };
   }
 
@@ -532,9 +531,8 @@ export class AIProviderManager {
     const resolved = requireConfigured(await resolveCredentials(providerId, userId));
     if (userId && !skipQuota) {
       await consumePlatformChatQuota(userId, resolved.source);
-      await assertUnderSpendCeiling(userId, resolved.source);
     }
-    return createProviderAdapter({
+    return withSpendBudget(createProviderAdapter({
       id: resolved.providerId,
       name: resolved.name,
       type: resolved.type,
@@ -542,7 +540,7 @@ export class AIProviderManager {
         ...(resolved.apiKey ? { apiKey: resolved.apiKey } : {}),
         ...(resolved.baseUrl ? { baseUrl: resolved.baseUrl } : {}),
       }),
-    });
+    }), userId, resolved.source);
   }
 
   async listConfiguredProviderIds(userId?: string): Promise<string[]> {

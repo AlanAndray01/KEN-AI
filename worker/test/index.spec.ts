@@ -26,6 +26,23 @@ function call(env: Env, path: string, init: RequestInit & { key?: string | null 
 const chat = (body: unknown, key?: string | null) =>
 	({ method: "POST", body: JSON.stringify(body), ...(key !== undefined ? { key } : {}) }) satisfies RequestInit;
 
+describe("streaming body limits", () => {
+	it.each([undefined, "1"])("cancels an oversized stream with Content-Length=%s before inference", async length => {
+		const { env, ai } = makeEnv();
+		const cancel = vi.fn();
+		const body = new ReadableStream<Uint8Array>({
+			pull(controller) { controller.enqueue(new Uint8Array(600_000)); }, cancel,
+		});
+		const response = await worker.fetch(new Request("https://worker.test/v1/chat/completions", {
+			method: "POST", body, headers: { Authorization: `Bearer ${KEY}`, "Content-Type": "application/json",
+				...(length ? { "Content-Length": length } : {}) }, duplex: "half",
+		} as RequestInit) as never, env, {} as never);
+		expect(response.status).toBe(413);
+		expect(cancel).toHaveBeenCalled();
+		expect(ai.run).not.toHaveBeenCalled();
+	});
+});
+
 function sse(lines: string[]): ReadableStream<Uint8Array> {
 	const encoder = new TextEncoder();
 	return new ReadableStream({

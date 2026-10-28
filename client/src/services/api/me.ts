@@ -26,7 +26,7 @@ export const meApi = {
   exportChats: (format: ExportFormat) => downloadRequest(`/me/export?format=${format}`, `Ken-chats.${format}`),
   /** Irreversible. The server clears auth cookies as part of the response. */
   deleteAccount: (body: { confirmEmail: string; password?: string }) =>
-    request<OkResponse>("/me", { method: "DELETE", body: JSON.stringify(body) }),
+    request<OkResponse & { uploadsPendingDeletion?: number }>("/me", { method: "DELETE", body: JSON.stringify(body) }),
   credentials: {
     list: () => request<{ credentials: PublicUserCredential[] }>("/me/provider-credentials"),
     upsert: (providerId: string, body: { apiKey: string; baseUrl?: string; enabled?: boolean }) =>

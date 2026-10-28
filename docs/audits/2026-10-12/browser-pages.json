@@ -1,0 +1,164 @@
+[
+  {
+    "width": 320,
+    "path": "/",
+    "title": "Ken AI",
+    "canonical": "http://127.0.0.1:5188/",
+    "robots": "index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1",
+    "h1": [
+      "Ken AIKENAI"
+    ],
+    "overflow": false,
+    "missingAlt": 0,
+    "brokenAnchors": [
+      "#main-content",
+      "#security"
+    ]
+  },
+  {
+    "width": 320,
+    "path": "/login",
+    "title": "Sign in · Ken AI",
+    "canonical": "http://127.0.0.1:5188/login",
+    "robots": "index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1",
+    "h1": [
+      "Welcome back"
+    ],
+    "overflow": false,
+    "missingAlt": 0,
+    "brokenAnchors": []
+  },
+  {
+    "width": 320,
+    "path": "/register",
+    "title": "Create account · Ken AI",
+    "canonical": "http://127.0.0.1:5188/register",
+    "robots": "index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1",
+    "h1": [
+      "Create your account"
+    ],
+    "overflow": false,
+    "missingAlt": 0,
+    "brokenAnchors": []
+  },
+  {
+    "width": 320,
+    "path": "/privacy",
+    "title": "Privacy policy · Ken AI",
+    "canonical": "http://127.0.0.1:5188/privacy",
+    "robots": "index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1",
+    "h1": [
+      "Privacy Policy"
+    ],
+    "overflow": false,
+    "missingAlt": 0,
+    "brokenAnchors": []
+  },
+  {
+    "width": 320,
+    "path": "/terms",
+    "title": "Terms of service · Ken AI",
+    "canonical": "http://127.0.0.1:5188/terms",
+    "robots": "index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1",
+    "h1": [
+      "Terms of Service"
+    ],
+    "overflow": false,
+    "missingAlt": 0,
+    "brokenAnchors": []
+  },
+  {
+    "width": 320,
+    "path": "/not-a-real-page",
+    "title": "Page not found · Ken AI",
+    "canonical": "http://127.0.0.1:5188/",
+    "robots": "noindex, nofollow",
+    "h1": [
+      "Page not found"
+    ],
+    "overflow": false,
+    "missingAlt": 0,
+    "brokenAnchors": []
+  },
+  {
+    "width": 1280,
+    "path": "/",
+    "title": "Ken AI",
+    "canonical": "http://127.0.0.1:5188/",
+    "robots": "index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1",
+    "h1": [
+      "Ken AIKENAI"
+    ],
+    "overflow": false,
+    "missingAlt": 0,
+    "brokenAnchors": [
+      "#main-content",
+      "#security"
+    ]
+  },
+  {
+    "width": 1280,
+    "path": "/login",
+    "title": "Sign in · Ken AI",
+    "canonical": "http://127.0.0.1:5188/login",
+    "robots": "index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1",
+    "h1": [
+      "Welcome back"
+    ],
+    "overflow": false,
+    "missingAlt": 0,
+    "brokenAnchors": []
+  },
+  {
+    "width": 1280,
+    "path": "/register",
+    "title": "Create account · Ken AI",
+    "canonical": "http://127.0.0.1:5188/register",
+    "robots": "index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1",
+    "h1": [
+      "Create your account"
+    ],
+    "overflow": false,
+    "missingAlt": 0,
+    "brokenAnchors": []
+  },
+  {
+    "width": 1280,
+    "path": "/privacy",
+    "title": "Privacy policy · Ken AI",
+    "canonical": "http://127.0.0.1:5188/privacy",
+    "robots": "index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1",
+    "h1": [
+      "Privacy Policy"
+    ],
+    "overflow": false,
+    "missingAlt": 0,
+    "brokenAnchors": []
+  },
+  {
+    "width": 1280,
+    "path": "/terms",
+    "title": "Terms of service · Ken AI",
+    "canonical": "http://127.0.0.1:5188/terms",
+    "robots": "index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1",
+    "h1": [
+      "Terms of Service"
+    ],
+    "overflow": false,
+    "missingAlt": 0,
+    "brokenAnchors": []
+  },
+  {
+    "width": 1280,
+    "path": "/not-a-real-page",
+    "title": "Page not found · Ken AI",
+    "canonical": "http://127.0.0.1:5188/",
+    "robots": "noindex, nofollow",
+    "h1": [
+      "Page not found"
+    ],
+    "overflow": false,
+    "missingAlt": 0,
+    "brokenAnchors": []
+  }
+]

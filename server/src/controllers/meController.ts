@@ -54,10 +54,10 @@ export async function deleteMeHandler(req: Request, res: Response): Promise<void
     throw new AppError("Authentication required", { statusCode: 401, code: "UNAUTHORIZED" });
   }
   const body = deleteAccountSchema.parse(req.body);
-  await deleteAccount(req.auth.userId, {
+  const summary = await deleteAccount(req.auth.userId, {
     confirmEmail: body.confirmEmail,
     password: body.password,
   });
   clearAuthCookies(res);
-  res.status(200).json({ ok: true });
+  res.status(200).json({ ok: true, uploadsPendingDeletion: summary.storageObjectsFailed });
 }

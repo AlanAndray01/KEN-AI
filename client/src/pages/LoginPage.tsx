@@ -66,7 +66,7 @@ export function LoginPage() {
         <GoogleMark />
         Continue with Google
       </a>
-      <div className="auth-or flex items-center gap-3 text-[11px] tracking-wide text-fg-muted uppercase">
+      <div className="auth-or flex items-center gap-3 text-xs tracking-wide text-fg-muted uppercase">
         <span className="h-px flex-1" />
         or
         <span className="h-px flex-1" />

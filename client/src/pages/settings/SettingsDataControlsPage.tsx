@@ -40,7 +40,7 @@ export function SettingsDataControlsPage() {
   const totals = usageQuery.data?.usage.totals;
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-6 py-12">
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-12 sm:px-6">
       <div className="space-y-1">
         <p className="text-sm text-fg-muted">Settings</p>
         <h1 className="text-3xl font-semibold tracking-tight">Data controls</h1>
@@ -113,13 +113,15 @@ function DeleteAccountSection() {
     setDeleting(true);
     setError(null);
     try {
-      await api.me.deleteAccount({
+      const result = await api.me.deleteAccount({
         confirmEmail: confirmEmail.trim(),
         ...(password ? { password } : {}),
       });
       // The account is gone; clear local auth state before leaving the app.
       await logout();
-      toast("Your account and all its data have been deleted", "success");
+      toast(result.uploadsPendingDeletion
+        ? "Your account is deleted. Uploaded files are still being removed."
+        : "Your account and all its data have been deleted", "success");
       navigate(CLIENT_ROUTES.home, { replace: true });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to delete your account");

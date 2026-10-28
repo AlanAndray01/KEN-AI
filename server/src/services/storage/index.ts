@@ -1,10 +1,12 @@
 import path from "node:path";
+import { z } from "zod";
 import { fileURLToPath } from "node:url";
 import { env } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
 import { LocalDiskStorage } from "./LocalDiskStorage.js";
 import { S3CompatibleStorage } from "./S3CompatibleStorage.js";
-import type { StorageService } from "./StorageService.js";
+import type { StorageService, StorageProviderId } from "./StorageService.js";
+import { AppError } from "../../utils/AppError.js";
 import { UnconfiguredStorage } from "./UnconfiguredStorage.js";
 
 const serverDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -39,12 +41,14 @@ export function missingStorageSettings(settings: {
   STORAGE_ACCESS_KEY?: string | undefined;
   STORAGE_SECRET_KEY?: string | undefined;
   STORAGE_ENDPOINT?: string | undefined;
+  STORAGE_REGION?: string | undefined;
 }): string[] {
   if (settings.STORAGE_PROVIDER !== "s3" && settings.STORAGE_PROVIDER !== "r2") return [];
   const required = ["STORAGE_BUCKET", "STORAGE_ACCESS_KEY", "STORAGE_SECRET_KEY"] as const;
   const missing: string[] = required.filter((name) => !settings[name]);
   // R2 has no default host: without the account endpoint requests would go to AWS.
   if (settings.STORAGE_PROVIDER === "r2" && !settings.STORAGE_ENDPOINT) missing.push("STORAGE_ENDPOINT");
+  if (settings.STORAGE_PROVIDER === "s3" && (!settings.STORAGE_REGION || settings.STORAGE_REGION === "auto")) missing.push("STORAGE_REGION");
   return missing;
 }
 
@@ -79,3 +83,39 @@ export function createStorageService(): StorageService {
 }
 
 export const storageService: StorageService = createStorageService();
+
+const secondary = new Map<StorageProviderId, StorageService>();
+const backendSchema = z.object({ bucket: z.string().min(1), accessKey: z.string().min(1),
+  secretKey: z.string().min(1), region: z.string().min(1), endpoint: z.string().url().optional(),
+  publicUrl: z.string().url().optional(),
+}).strict();
+
+/** Resolve recorded providers; never silently read or delete through another store. */
+export function storageForProvider(provider: StorageProviderId = storageService.provider): StorageService {
+  if (provider === storageService.provider) return storageService;
+  const cached = secondary.get(provider);
+  if (cached) return cached;
+  if (provider === "local") {
+    const local = new LocalDiskStorage(resolveStorageDirectory());
+    secondary.set(provider, local);
+    return local;
+  }
+  if ((provider === "s3" || provider === "r2") && env.STORAGE_BACKENDS_JSON) {
+    try {
+      const configs = z.object({ s3: backendSchema.optional(), r2: backendSchema.optional() })
+        .strict().parse(JSON.parse(env.STORAGE_BACKENDS_JSON));
+      const config = configs[provider];
+      if (config && (provider !== "r2" || config.endpoint) && (provider !== "s3" || config.region !== "auto")) {
+        const service = new S3CompatibleStorage({ ...config, provider,
+          ...(config.endpoint ? { endpoint: normalizeStorageEndpoint(config.endpoint, config.bucket) } : {}),
+        });
+        secondary.set(provider, service);
+        return service;
+      }
+    } catch {
+      // Do not include config values or credentials in validation errors.
+      throw new AppError("Invalid secondary storage configuration.", { statusCode: 503, code: "STORAGE_PROVIDER_UNAVAILABLE" });
+    }
+  }
+  throw new AppError("This file's storage backend is not configured.", { statusCode: 503, code: "STORAGE_PROVIDER_UNAVAILABLE" });
+}

@@ -1,7 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { ContextManager, estimateTokens, MAX_HISTORY_MESSAGES } from "./ContextManager.js";
+import { ContextManager, estimateTokens, estimateContextTokens, MAX_HISTORY_MESSAGES } from "./ContextManager.js";
 
 describe("ContextManager", () => {
+  it("rejects one oversized newest message before provider dispatch", () => {
+    expect(() => new ContextManager().build({ messages: [{ role: "user", content: "hello ".repeat(20_000) }],
+      modelId: "mock", providerId: "groq" })).toThrow(/input limit/);
+  });
+
+  it("budgets system framing and truncation markers on small windows", () => {
+    const result = new ContextManager().build({ messages: [
+      { role: "system", content: "rules ".repeat(1000) },
+      { role: "system", kind: "summary", content: "summary ".repeat(1000) },
+      { role: "user", content: "Hi" },
+    ], modelId: "mock", providerId: "groq", contextWindow: 120 });
+    expect(estimateContextTokens(result)).toBeLessThanOrEqual(88);
+    expect(result.at(-1)?.content).toBe("Hi");
+  });
   it("keeps the latest messages when the window is exceeded", () => {
     const manager = new ContextManager();
     const messages = [

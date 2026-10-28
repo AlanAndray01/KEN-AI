@@ -1,0 +1,30 @@
+{
+  "date": "2026-10-12",
+  "scope": "Local source repairs for audit findings 01-27; no deployment",
+  "fullSuite": {
+    "shared": 32,
+    "server": 747,
+    "client": 316,
+    "worker": 50,
+    "responsive": 72
+  },
+  "focused": {
+    "parserAndAttachments": 6,
+    "analysisAndDeletion": 17,
+    "storageRoutingSpendingAnalysis": 9,
+    "seoMarkdownAccount": 39
+  },
+  "typecheck": "passed",
+  "lint": "passed with existing ChatImage Fast Refresh warning",
+  "build": "passed",
+  "dependencyAdvisories": {
+    "root": 0,
+    "worker": 0
+  },
+  "lockPlan": "root and worker offline npm ci dry-runs passed",
+  "notes": [
+    "Focused suites overlap the full suite; their counts must not be added to claim a unique total.",
+    "Some new tests were added after the full run and verified in focused runs.",
+    "Production storage, analysis infrastructure, Search Console, and live provider behavior were not tested."
+  ]
+}

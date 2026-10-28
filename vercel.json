@@ -6,15 +6,23 @@
   "framework": "vite",
   "rewrites": [
     {
-      "source": "/:page(privacy|terms|login|register|forgot-password|reset-password|verify-email|chat|search|history|library|gpts|settings|admin)",
-      "destination": "/index.html"
+      "source": "/:page(privacy|terms|login|register)",
+      "destination": "/:page/index.html"
+    },
+    {
+      "source": "/:page(forgot-password|reset-password|verify-email|chat|search|history|library|gpts|settings|admin)",
+      "destination": "/private.html"
     },
     {
       "source": "/:section(chat|share|gpts|settings|admin)/:rest*",
-      "destination": "/index.html"
+      "destination": "/private.html"
     }
   ],
   "headers": [
+    {
+      "source": "/:section(chat|share|search|history|library|gpts|settings|admin|forgot-password|reset-password|verify-email)/:rest*",
+      "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }]
+    },
     {
       "source": "/assets/(.*)",
       "headers": [

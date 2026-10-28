@@ -21,6 +21,14 @@ let app: Express;
 const credentials = { name: "Ada Lovelace", email: "ada@example.com", password: "Correct-horse-battery1!" };
 
 describe.skipIf(!mongo.ok)("auth routes (real MongoDB)", () => {
+  it("allows only one successor for concurrent refreshes with the same cookie", async () => {
+    const { cookies } = await registerVerified(app, { ...credentials, email: "refresh-race@example.com" });
+    const replies = await Promise.all(Array.from({ length: 4 }, () =>
+      request(app).post("/api/auth/refresh").set("Cookie", cookies)));
+    expect(replies.map(reply => reply.status).sort()).toEqual([200, 401, 401, 401]);
+    const reused = await request(app).post("/api/auth/refresh").set("Cookie", cookies);
+    expect(reused.status).toBe(401);
+  });
   beforeAll(async () => {
     app = await loadApp();
   });

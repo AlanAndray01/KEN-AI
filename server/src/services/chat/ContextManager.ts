@@ -2,6 +2,7 @@ import { estimatePromptTokens } from "@Ken/shared";
 import type { ChatMessage } from "../ai/AIProvider.js";
 import { getBuiltInProvider } from "../ai/catalog.js";
 import { compactCodeHistory } from "./contextCompression.js";
+import { AppError } from "../../utils/AppError.js";
 
 const DEFAULT_CONTEXT_WINDOW = 128_000;
 const OUTPUT_RESERVE = 2_048;
@@ -94,9 +95,9 @@ export class ContextManager {
     );
     // Old code blocks are shrunk before the budget is applied, so the space they
     // free is spent keeping more of the conversation rather than dropping it.
-    const prepared = compactCodeHistory(stripStaleInlineMedia(input.messages));
+    const prepared = ensureEndsWithUserTurn(compactCodeHistory(stripStaleInlineMedia(input.messages)));
     const system = clampSystem(prepared.filter((message) => message.role === "system"), {
-      system: MAX_SYSTEM_TOKENS,
+      system: Math.min(MAX_SYSTEM_TOKENS, Math.floor(budget / 2)),
       summary: Math.min(MAX_SUMMARY_TOKENS, Math.floor(budget / 4)),
     });
     const rest = prepared
@@ -110,7 +111,13 @@ export class ContextManager {
       const message = rest[index];
       if (!message) continue;
       const cost = messageCost(message);
-      if (kept.length > 0 && tokens + cost > budget) {
+      if (tokens + cost > budget) {
+        if (kept.length === 0) {
+          // Reject rather than silently changing the user's newest prompt or dropping its files.
+          throw new AppError("This message and its attachments exceed this model's input limit. Shorten the message or use a larger-context model.", {
+            statusCode: 413, code: "PROMPT_TOO_LARGE",
+          });
+        }
         // Stop, rather than skip this one and carry on into older messages.
         // Skipping leaves a hole — turn N-1 dropped while N-4 is kept — and
         // hands the model a conversation that contradicts itself. Barely
@@ -122,9 +129,6 @@ export class ContextManager {
     }
 
     kept.reverse();
-    if (kept.length === 0 && rest.length > 0 && rest.at(-1)) {
-      kept.push(clampMessage(rest.at(-1)!, Math.max(32, budget - tokens)));
-    }
 
     return ensureEndsWithUserTurn([...system, ...kept]);
   }
@@ -201,11 +205,13 @@ function clampSystem(messages: ChatMessage[], budgets: { system: number; summary
 }
 
 function clampMessage(message: ChatMessage, maxTokens: number): ChatMessage {
-  const maxChars = Math.max(32, maxTokens * 4);
+  const maxChars = Math.max(0, (maxTokens - 4) * 4);
   if (message.content.length <= maxChars && !message.parts?.length) return message;
   const next: ChatMessage = {
     role: message.role,
-    content: message.content.length > maxChars ? `${message.content.slice(0, maxChars)}\n[truncated]` : message.content,
+    ...(message.kind ? { kind: message.kind } : {}),
+    content: message.content.length > maxChars
+      ? `${message.content.slice(0, Math.max(0, maxChars - 12))}${maxChars >= 12 ? "\n[truncated]" : ""}` : message.content,
   };
   return next;
 }

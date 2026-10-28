@@ -20,7 +20,10 @@ const AUTO_LABEL = "Auto";
  * Tinted with the accent token rather than a fixed colour, so the mark follows
  * the theme. The control carries its own label, so the icon stays decorative.
  */
-const AUTO_ICON_CLASS = "size-6 shrink-0 text-accent";
+// Green is signal, not decoration: the trigger's mark stays quiet until the
+// picker is hovered or open; the menu row it labels is already an active choice.
+const AUTO_ICON_CLASS = "size-5 shrink-0 text-accent";
+const AUTO_TRIGGER_ICON_CLASS = "size-5 shrink-0 text-fg-muted transition-colors group-hover:text-accent";
 
 export function ModelSelector({
   models,
@@ -86,10 +89,10 @@ export function ModelSelector({
         aria-expanded={open}
         aria-controls={open ? "model-selector-listbox" : undefined}
         aria-label={label ? `Select model: ${label}` : "Select model"}
-        className="model-selector-trigger inline-flex max-w-[16rem] items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-medium hover:bg-surface-muted disabled:opacity-60"
+        className="model-selector-trigger group inline-flex max-w-[16rem] items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-medium hover:bg-surface-muted disabled:opacity-60"
         onClick={() => setOpen((value) => !value)}
       >
-        {auto ? <AutoModeIcon className={AUTO_ICON_CLASS} /> : null}
+        {auto ? <AutoModeIcon className={open ? AUTO_ICON_CLASS : AUTO_TRIGGER_ICON_CLASS} /> : null}
         <span className="truncate">{label ?? "Select model"}</span>
         <ChevronDown className="size-4 shrink-0 text-fg-muted" />
       </button>
@@ -126,7 +129,7 @@ export function ModelSelector({
           </li>
           {grouped.map(([groupId, groupModels]) => (
             <li key={groupId} className="px-1 py-1">
-              <div className="px-2 py-1 text-[11px] font-medium tracking-wide text-fg-muted uppercase">
+              <div className="px-2 py-1 text-xs font-medium tracking-wide text-fg-muted uppercase">
                 {groupId}
               </div>
               {groupModels.map((model) => {

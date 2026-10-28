@@ -15,6 +15,10 @@ import { UsageRecord } from "./UsageRecord.js";
 import { User } from "./User.js";
 import { UserProviderCredential } from "./UserProviderCredential.js";
 import { VerificationToken } from "./VerificationToken.js";
+import { StorageDeletion } from "./StorageDeletion.js";
+import { AnalysisJob } from "./AnalysisJob.js";
+import { AdminMembershipGuard } from "./AdminMembershipGuard.js";
+import { SpendBudget } from "./SpendBudget.js";
 
 export function registerModels(): string[] {
   return [
@@ -35,6 +39,10 @@ export function registerModels(): string[] {
     User.modelName,
     UserProviderCredential.modelName,
     VerificationToken.modelName,
+    StorageDeletion.modelName,
+    AnalysisJob.modelName,
+    AdminMembershipGuard.modelName,
+    SpendBudget.modelName,
   ];
 }
 
@@ -56,4 +64,8 @@ export {
   User,
   UserProviderCredential,
   VerificationToken,
+  StorageDeletion,
+  AnalysisJob,
+  AdminMembershipGuard,
+  SpendBudget,
 };

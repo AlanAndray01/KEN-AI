@@ -2,8 +2,10 @@ import { logger } from "../../config/logger.js";
 import { File as StoredFile } from "../../models/File.js";
 import { toSafeError } from "../../utils/redact.js";
 import { splitIntoSections } from "../chat/documentSections.js";
-import { extractDocumentText, isExtractableDocumentMime } from "./extractDocument.js";
-import { storageService } from "./index.js";
+import { isExtractableDocumentMime } from "./extractDocument.js";
+import { extractDocumentTextIsolated } from "./extractDocumentIsolated.js";
+import { storageForProvider } from "./index.js";
+import type { StorageProviderId } from "./StorageService.js";
 
 /** Bump when splitIntoSections changes, so stored sections are rebuilt with it. */
 export const SECTION_INDEX_VERSION = 1;
@@ -12,6 +14,7 @@ export interface IndexableFile {
   _id: { toString(): string };
   mimeType: string;
   storageKey: string;
+  storageProvider?: StorageProviderId;
   textSections?: string[] | null;
   textSectionsVersion?: number | null;
 }
@@ -27,8 +30,8 @@ export async function documentSectionsFor(file: IndexableFile): Promise<string[]
   if (file.textSectionsVersion === SECTION_INDEX_VERSION && Array.isArray(file.textSections)) {
     return file.textSections;
   }
-  const buffer = await storageService.get(file.storageKey);
-  const sections = splitIntoSections(extractDocumentText(buffer, file.mimeType));
+  const buffer = await storageForProvider(file.storageProvider).get(file.storageKey);
+  const sections = splitIntoSections(await extractDocumentTextIsolated(buffer, file.mimeType));
   try {
     await StoredFile.updateOne(
       { _id: file._id },

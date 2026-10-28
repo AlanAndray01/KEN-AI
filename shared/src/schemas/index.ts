@@ -324,6 +324,8 @@ export const listMessagesQuerySchema = z.object({
 export const listConversationsQuerySchema = z.object({
   archived: queryBooleanSchema(),
   limit: queryIntSchema(1, 100),
+  cursor: queryStringSchema(512),
+  q: queryStringSchema(200),
 });
 
 export const listMemoriesQuerySchema = z.object({

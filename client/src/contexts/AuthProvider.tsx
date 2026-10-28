@@ -1,14 +1,17 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { PublicUser } from "@Ken/shared";
 import { AuthContext, type AuthUser } from "@/contexts/auth-context";
 import { prefetchSignedInWorkspace } from "@/query";
-import { ApiError, api, onUnauthorized } from "@/services/api";
-import { hydrateModelSelection } from "@/stores/modelStore";
+import { ApiError, api, onUnauthorized, resetApiSession } from "@/services/api";
+import { hydrateModelSelection, resetModelSelection } from "@/stores/modelStore";
+import { useDraftStore } from "@/stores/draftStore";
+import { useUiStore } from "@/stores/uiStore";
+import { useToastStore } from "@/stores/toastStore";
+import { resetChatImageCache } from "@/utils/chatImageCache";
 import { readCachedAuthUser, writeCachedAuthUser } from "@/utils/authCache";
 
 function toAuthUser(user: PublicUser): AuthUser {
-  hydrateModelSelection(user.preferences);
   return {
     id: user.id,
     name: user.name,
@@ -23,6 +26,7 @@ function toAuthUser(user: PublicUser): AuthUser {
 
 function hydrateFromCache(): AuthUser | null {
   const cached = readCachedAuthUser();
+  useDraftStore.getState().setOwner(cached?.id ?? null);
   if (!cached) return null;
   hydrateModelSelection(cached.preferences);
   return cached;
@@ -32,6 +36,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [user, setUser] = useState<AuthUser | null>(hydrateFromCache);
   const [isLoading, setIsLoading] = useState(() => !readCachedAuthUser());
+  const identity = useRef(user?.id ?? null);
+  const authRevision = useRef(0);
 
   useEffect(() => {
     if (!user) return;
@@ -39,22 +45,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [queryClient, user]);
 
   const commitUser = useCallback((next: AuthUser | null) => {
+    authRevision.current += 1;
+    if (identity.current !== (next?.id ?? null)) {
+      // Destroy old queries before remounting protected UI; late work is cancelled.
+      resetApiSession();
+      void queryClient.cancelQueries();
+      queryClient.clear();
+      resetChatImageCache();
+      resetModelSelection();
+      useUiStore.setState({ chatFilter: "", mobileOpen: false, keysPanelOpen: false, shortcutsOpen: false });
+      useToastStore.setState({ toasts: [] });
+      identity.current = next?.id ?? null;
+    }
+    useDraftStore.getState().setOwner(next?.id ?? null);
+    if (next) hydrateModelSelection(next.preferences);
     writeCachedAuthUser(next);
     setUser(next);
-  }, []);
+  }, [queryClient]);
 
   useEffect(() => {
     let cancelled = false;
+    const revision = authRevision.current;
 
     void api.auth
       .me()
       .then((response) => {
-        if (!cancelled) {
+        if (!cancelled && revision === authRevision.current) {
           commitUser(toAuthUser(response.user));
         }
       })
       .catch((error: unknown) => {
-        if (cancelled) return;
+        if (cancelled || revision !== authRevision.current) return;
         if (
           error instanceof ApiError &&
           (error.status === 401 || error.code === "EMAIL_NOT_VERIFIED")
@@ -136,5 +157,5 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [user, isLoading, login, register, verifyEmail, resendCode, logout, refreshUser],
   );
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider key={user?.id ?? "guest"} value={value}>{children}</AuthContext.Provider>;
 }
